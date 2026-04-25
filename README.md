@@ -1,74 +1,68 @@
 # Coaching SaaS MVP
 
-This repo now includes a working exam-portal MVP with:
+Exam portal with blueprint-based exam generation, automated evaluation, and adaptive suggestions.
 
-- `backend`: Express + TypeScript API with PostgreSQL-backed persistence, seeded academic hierarchy, auth, blueprint-based exam generation, automated evaluation, and PDF subject-book parsing
-- `frontend`: React + Vite app with login, protected routes, dashboard, question bank, exam builder, subject-book management, and live exam experience
+## Prerequisites
 
-## MVP Flow
+- Node.js 18+
+- PostgreSQL
 
-1. Open the Exam Builder page
-2. Generate a live exam from the seeded blueprint
-3. Open the Live Exam page
-4. Attempt questions and submit
-5. Review instant score and weakest topics
+## Setup
 
-## Run
-
-```bash
-npm install
-PORT=3030 npm run dev:backend
-npm run dev:frontend
-```
-
-## Backend Environment
-
-The backend now expects PostgreSQL.
-
-```bash
-DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/coaching_saas
-JWT_SECRET=replace-me
-PORT=3030
-```
-
-If the database does not exist yet:
+### 1. Create the database
 
 ```bash
 createdb coaching_saas
 ```
 
-## Seeded Login Accounts
-
-- `admin@coaching.local` / `admin123`
-- `teacher@coaching.local` / `teacher123`
-- `student@coaching.local` / `student123`
-
-## Frontend API Config
-
-For local development, the frontend uses Vite proxying so `/api` and `/uploads` resolve to the backend on `http://localhost:3030`.
-
-For deployed environments, set:
+### 2. Create backend environment file
 
 ```bash
-VITE_API_BASE_URL=/api
-VITE_PUBLIC_ASSET_BASE_URL=
+cp frontend/.env.example .env
 ```
 
-If your backend is hosted on a different public origin, point these variables at that public URL instead of `localhost`.
+Or create `.env` in the project root:
 
-## PDF Book Parsing
+```env
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/coaching_saas
+JWT_SECRET=replace-me
+PORT=3030
+```
 
-Teacher/admin users can upload subject PDF books from the `Subject Books` page. The backend stores:
+### 3. Install dependencies
 
-- file metadata
-- page count
-- extracted text
-- preview text for the UI
+```bash
+npm install
+```
 
-## Reference Papers
+## Running Locally
 
-If you place exam papers inside the project-level `books-papers` directory, the app now exposes them in the `Subject Books` page as reference PDFs for teachers.
+Open two terminals:
 
-## Adaptive Suggestions
+**Terminal 1 — Backend:**
+```bash
+PORT=3030 npm run dev:backend
+```
 
-Students now get an auto-suggested adaptive practice card directly on the dashboard once they have at least one past submission. They can start their personalized improvement test from there.
+**Terminal 2 — Frontend:**
+```bash
+npm run dev:frontend
+```
+
+Frontend: http://localhost:5222  
+Backend API: http://localhost:3030/api
+
+## Seeded Login Accounts
+
+| Role    | Email                    | Password   |
+|---------|--------------------------|------------|
+| Admin   | admin@coaching.local     | admin123   |
+| Teacher | teacher@coaching.local   | teacher123 |
+| Student | student@coaching.local   | student123 |
+
+## MVP Flow
+
+1. Log in as teacher/admin
+2. Open **Exam Builder** → generate a live exam from the seeded blueprint
+3. Log in as student → open **Live Exam** → attempt questions and submit
+4. Review instant score and weakest topics on the dashboard
