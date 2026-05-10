@@ -4,17 +4,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --env-file=.env src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@google/genai": "^1.50.1",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.2",
-    "pg": "^8.14.1"
+    "pg": "^8.14.1",
+    "puppeteer": "^24.43.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

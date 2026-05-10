@@ -4,21 +4,35 @@ import type { SubjectBooksResponse } from "../types";
 
 export function SubjectBooksPage() {
   const [data, setData] = useState<SubjectBooksResponse | null>(null);
+  const [allChapters, setAllChapters] = useState<any[]>([]);
+  const [allTopics, setAllTopics] = useState<any[]>([]);
+  
+  // Upload State
+  const [selectedClassId, setSelectedClassId] = useState("");
+  const [selectedStreamId, setSelectedStreamId] = useState("");
   const [subjectId, setSubjectId] = useState("");
   const [title, setTitle] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState("Teachers can upload PDF books subject-wise here.");
+  
+  // AI Generation State
+  const [generatingForBook, setGeneratingForBook] = useState<string | null>(null);
+  const [selectedChapterId, setSelectedChapterId] = useState("");
+  const [selectedTopicId, setSelectedTopicId] = useState("");
+  const [questionCount, setQuestionCount] = useState(5);
 
-  const loadBooks = async () => {
-    const response = await apiClient.getSubjectBooks();
+  const loadData = async () => {
+    const [response, qbResponse] = await Promise.all([
+      apiClient.getSubjectBooks(),
+      apiClient.getQuestionBank()
+    ]);
     setData(response);
-    if (!subjectId && response.subjects.length > 0) {
-      setSubjectId(response.subjects[0].id);
-    }
+    setAllChapters(qbResponse.chapters);
+    setAllTopics(qbResponse.topics);
   };
 
   useEffect(() => {
-    loadBooks().catch(console.error);
+    loadData().catch(console.error);
   }, []);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -34,16 +48,49 @@ export function SubjectBooksPage() {
       setTitle("");
       setFile(null);
       setStatus("PDF uploaded successfully.");
-      await loadBooks();
+      await loadData();
     } catch (error) {
       console.error(error);
       setStatus("Unable to upload the PDF book.");
     }
   };
 
+  const handleGenerateQuestions = async (bookId: string) => {
+    if (!selectedTopicId) {
+      setStatus("Please select a topic before generating questions.");
+      return;
+    }
+    setGeneratingForBook(bookId);
+    setStatus("AI is reading the PDF and generating questions with STEM formatting... This may take up to a minute.");
+    try {
+      const result = await apiClient.generateQuestionsFromBook(bookId, {
+        topicId: selectedTopicId,
+        questionCount
+      });
+      setStatus(`Success: ${result.message}`);
+      setGeneratingForBook(null);
+    } catch (error: any) {
+      console.error(error);
+      setStatus("Failed to generate AI questions.");
+      setGeneratingForBook(null);
+    }
+  };
+
   if (!data) {
     return <p>Loading subject books...</p>;
   }
+
+  // Derived filterings for Upload
+  const filteredStreams = data.subjects
+    .filter(s => s.classId === selectedClassId)
+    .reduce((acc: any[], curr) => {
+      if (!acc.find(s => s.id === curr.streamId)) {
+        acc.push({ id: curr.streamId, name: curr.streamName });
+      }
+      return acc;
+    }, []);
+
+  const filteredSubjects = data.subjects.filter(s => s.classId === selectedClassId && s.streamId === selectedStreamId);
 
   return (
     <div className="page">
@@ -56,15 +103,32 @@ export function SubjectBooksPage() {
       <section className="grid-two">
         <article className="panel">
           <h3>Upload Subject PDF</h3>
-          <form className="book-form" onSubmit={(event) => void handleSubmit(event)}>
+          <form className="book-form stack" onSubmit={(event) => void handleSubmit(event)}>
+            <div className="grid-two">
+              <label className="field">
+                <span>Class</span>
+                <select value={selectedClassId} onChange={(e) => { setSelectedClassId(e.target.value); setSelectedStreamId(""); setSubjectId(""); }}>
+                  <option value="">Select Class</option>
+                  {Array.from(new Set(data.subjects.map(s => s.classId))).map(cid => (
+                    <option key={cid} value={cid}>{data.subjects.find(s => s.classId === cid)?.className}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="field">
+                <span>Stream</span>
+                <select value={selectedStreamId} onChange={(e) => { setSelectedStreamId(e.target.value); setSubjectId(""); }}>
+                  <option value="">Select Stream</option>
+                  {filteredStreams.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </label>
+            </div>
+
             <label className="field">
               <span>Subject</span>
-              <select value={subjectId} onChange={(event) => setSubjectId(event.target.value)}>
-                {data.subjects.map((subject) => (
-                  <option key={subject.id} value={subject.id}>
-                    {subject.className} {subject.streamName} - {subject.name}
-                  </option>
-                ))}
+              <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
+                <option value="">Select Subject</option>
+                {filteredSubjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </label>
 
@@ -87,7 +151,7 @@ export function SubjectBooksPage() {
               />
             </label>
 
-            <button className="primary-button" type="submit">Upload PDF</button>
+            <button className="primary-button" type="submit" disabled={!subjectId}>Upload PDF</button>
           </form>
         </article>
 
@@ -99,21 +163,71 @@ export function SubjectBooksPage() {
             <ul className="plain-list">
               {data.books.map((book) => (
                 <li key={book.id}>
-                  <div>
-                    <strong>{book.title}</strong>
+                  <div style={{ marginBottom: "15px" }}>
+                    <div className="row-between">
+                      <strong>{book.title}</strong>
+                      <a className="text-link" href={buildPublicAssetUrl(book.fileUrl)} target="_blank" rel="noreferrer">Open PDF</a>
+                    </div>
                     <div className="muted-copy">
                       {book.subjectName} • {new Date(book.uploadedAt).toLocaleString()}
                     </div>
-                    {book.pageCount ? (
-                      <div className="muted-copy">
-                        {book.pageCount} pages parsed{book.extractedAt ? ` • ${new Date(book.extractedAt).toLocaleString()}` : ""}
-                      </div>
-                    ) : null}
-                    {book.previewText ? <p className="preview-text">{book.previewText}</p> : null}
                   </div>
-                  <a className="text-link" href={buildPublicAssetUrl(book.fileUrl)} target="_blank" rel="noreferrer">
-                    Open PDF
-                  </a>
+
+                  {/* AI Question Generation UI */}
+                  <div className="panel" style={{ background: "var(--color-bg-secondary)", border: "1px solid var(--color-border)" }}>
+                    <strong>Generate AI Questions</strong>
+                    <div className="stack" style={{ marginTop: "10px" }}>
+                      <div className="grid-two">
+                        <label className="field">
+                          <span>Chapter</span>
+                          <select 
+                            value={selectedChapterId} 
+                            onChange={(e) => { setSelectedChapterId(e.target.value); setSelectedTopicId(""); }}
+                          >
+                            <option value="">Select Chapter...</option>
+                            {allChapters.filter(c => c.subjectId === book.subjectId).map(c => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="field">
+                          <span>Topic</span>
+                          <select 
+                            value={selectedTopicId} 
+                            onChange={(e) => setSelectedTopicId(e.target.value)}
+                          >
+                            <option value="">Select Topic...</option>
+                            {allTopics.filter(t => t.chapterId === selectedChapterId).map(t => (
+                              <option key={t.id} value={t.id}>{t.name}</option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      
+                      <div className="row-between">
+                        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                          Question Count:
+                          <input 
+                            type="number" 
+                            min="1" 
+                            max="20" 
+                            value={questionCount} 
+                            onChange={(e) => setQuestionCount(Number(e.target.value))} 
+                            style={{ width: "60px" }}
+                          />
+                        </label>
+
+                        <button 
+                          className="primary-button" 
+                          disabled={generatingForBook === book.id || !selectedTopicId} 
+                          onClick={() => void handleGenerateQuestions(book.id)}
+                        >
+                          {generatingForBook === book.id ? "Generating..." : "Generate AI Questions"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
                 </li>
               ))}
             </ul>
@@ -121,33 +235,21 @@ export function SubjectBooksPage() {
         </article>
       </section>
 
-      <article className="panel">
-        <h3>Reference Papers from Project Directory</h3>
-        <p className="muted-copy">
-          These PDFs are loaded from the `books-papers` folder and can be used by teachers as syllabus and paper-pattern references.
-        </p>
-        {data.referencePapers.length === 0 ? (
-          <p>No reference papers found in the project directory.</p>
-        ) : (
-          <div className="question-grid">
-            {data.referencePapers.map((paper) => (
-              <article className="panel question-card" key={paper.id}>
-                <div className="row-between">
-                  <span className="tag">{paper.classLevel}</span>
-                  <span className="tag muted">{paper.category}</span>
-                </div>
-                <h3>{paper.displayName}</h3>
-                <p className="muted-copy">
-                  {paper.subject} • {paper.fileType.toUpperCase()}
-                </p>
-                <p className="muted-copy">{paper.relativePath}</p>
-                <a className="text-link" href={buildPublicAssetUrl(paper.fileUrl)} target="_blank" rel="noreferrer">
-                  Open Reference File
-                </a>
-              </article>
-            ))}
-          </div>
-        )}
+      <article className="panel" style={{ marginTop: "30px" }}>
+        <h3>Reference Papers</h3>
+        <div className="question-grid">
+          {data.referencePapers.map((paper) => (
+            <article className="panel question-card" key={paper.id}>
+              <div className="row-between">
+                <span className="tag">{paper.classLevel}</span>
+                <span className="tag muted">{paper.category}</span>
+              </div>
+              <h3>{paper.displayName}</h3>
+              <p className="muted-copy">{paper.subject} • {paper.fileType.toUpperCase()}</p>
+              <a className="text-link" href={buildPublicAssetUrl(paper.fileUrl)} target="_blank" rel="noreferrer">Open Reference</a>
+            </article>
+          ))}
+        </div>
       </article>
     </div>
   );

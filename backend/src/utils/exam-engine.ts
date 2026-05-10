@@ -350,7 +350,9 @@ export async function generateCustomExam(request: TeacherCustomExamRequest): Pro
       durationMinutes: request.durationMinutes,
       generationMode: "custom",
       adaptiveSummary: `${request.selectionMode === "chapter" ? "Chapter-wise" : "Topic-wise"} weighted paper: ${coverageText}`,
-      sourceSignature
+      sourceSignature,
+      scheduledStartTime: request.scheduledStartTime,
+      scheduledEndTime: request.scheduledEndTime
     },
     questions: selectedQuestions
   });
@@ -722,6 +724,21 @@ export async function evaluateExamSubmission(
     insightsMap.set(question.topicId, currentTopic);
   });
 
+  const review = questions.map(question => {
+    const answer = answers.find(a => a.questionId === question.id);
+    const selectedOptionIds = answer?.selectedOptionIds ?? [];
+    const isCorrect = sameSelections(selectedOptionIds, question.correctOptionIds);
+    return {
+      questionId: question.id,
+      prompt: question.prompt,
+      selectedOptionIds,
+      correctOptionIds: question.correctOptionIds,
+      explanation: question.explanation,
+      isCorrect,
+      options: question.options
+    };
+  });
+
   const insights = Array.from(insightsMap.values()).map((topic) => {
     const accuracy = topic.totalQuestions === 0 ? 0 : (topic.correctAnswers / topic.totalQuestions) * 100;
     const weaknessScore =
@@ -747,7 +764,8 @@ export async function evaluateExamSubmission(
     unattemptedAnswers,
     percentage: Number(((obtainedMarks / Math.max(1, totalMarks)) * 100).toFixed(2)),
     weakestTopics: [...insights].sort((a, b) => b.weaknessScore - a.weaknessScore).slice(0, 3),
-    insights
+    insights,
+    review
   };
 
   await upsertRecord("submissions", result);

@@ -17,6 +17,8 @@ export function ExamBuilderPage() {
   const [selectionMode, setSelectionMode] = useState<"chapter" | "topic">("chapter");
   const [durationMinutes, setDurationMinutes] = useState(30);
   const [totalQuestions, setTotalQuestions] = useState(6);
+  const [scheduledStartTime, setScheduledStartTime] = useState("");
+  const [scheduledEndTime, setScheduledEndTime] = useState("");
   const [weightages, setWeightages] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -118,6 +120,8 @@ export function ExamBuilderPage() {
         durationMinutes,
         totalQuestions,
         selectionMode,
+        scheduledStartTime: scheduledStartTime || undefined,
+        scheduledEndTime: scheduledEndTime || undefined,
         rules: Object.entries(weightages)
           .map(([entityId, weightagePercent]) => ({
             entityId,
@@ -229,6 +233,22 @@ export function ExamBuilderPage() {
               min="5"
               value={durationMinutes}
               onChange={(event) => setDurationMinutes(Number(event.target.value) || 5)}
+            />
+          </label>
+          <label className="field">
+            <span>Start Time</span>
+            <input
+              type="datetime-local"
+              value={scheduledStartTime}
+              onChange={(event) => setScheduledStartTime(event.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span>End Time</span>
+            <input
+              type="datetime-local"
+              value={scheduledEndTime}
+              onChange={(event) => setScheduledEndTime(event.target.value)}
             />
           </label>
         </div>

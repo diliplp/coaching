@@ -63,7 +63,16 @@ export const apiClient = {
     }),
   getMe: () => request<AuthResponse["user"]>("/me"),
   getOverview: () => request<OverviewResponse>("/overview"),
+  getAnalytics: () => request<any>("/analytics"),
+  getExams: () => request<any[]>("/exams"),
+  getExam: (id: string) => request<ExamPayload>(`/exams/${id}`),
+  selfGenerateExam: (payload: { topicId: string; questionCount?: number }) =>
+    request<ExamPayload>("/exams/self-generate", { method: "POST", body: JSON.stringify(payload) }),
+  deleteExam: (id: string) => request<void>(`/exams/${id}`, { method: "DELETE" }),
   getQuestionBank: () => request<QuestionBankResponse>("/question-bank"),
+  createQuestion: (payload: any) => request<any>("/questions", { method: "POST", body: JSON.stringify(payload) }),
+  updateQuestion: (id: string, payload: any) => request<any>(`/questions/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteQuestion: (id: string) => request<void>(`/questions/${id}`, { method: "DELETE" }),
   getBlueprints: () => request<BlueprintSummary[]>("/blueprints"),
   getAdaptivePlan: (studentId: string, subjectId?: string) =>
     request<AdaptivePlan>(`/adaptive-plan/${studentId}${subjectId ? `?subjectId=${encodeURIComponent(subjectId)}` : ""}`),
@@ -112,5 +121,47 @@ export const apiClient = {
     request<ExamResult>(`/exams/${examId}/submit`, {
       method: "POST",
       body: JSON.stringify(payload)
-    })
+    }),
+  generateQuestionsFromBook: (bookId: string, payload: { topicId: string; questionCount: number }) =>
+    request<{ message: string; questions: any[] }>(`/subject-books/${bookId}/generate-questions`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  // Admin Methods
+  admin: {
+    getClasses: () => request<any[]>("/admin/classes"),
+    createClass: (payload: { name: string }) => request<any>("/admin/classes", { method: "POST", body: JSON.stringify(payload) }),
+    updateClass: (id: string, payload: { name: string }) => request<any>(`/admin/classes/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+    deleteClass: (id: string) => request<void>(`/admin/classes/${id}`, { method: "DELETE" }),
+    
+    getStreams: () => request<any[]>("/admin/streams"),
+    createStream: (payload: { name: string; classId: string }) => request<any>("/admin/streams", { method: "POST", body: JSON.stringify(payload) }),
+    updateStream: (id: string, payload: { name: string; classId: string }) => request<any>(`/admin/streams/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+    deleteStream: (id: string) => request<void>(`/admin/streams/${id}`, { method: "DELETE" }),
+    
+    getBatches: () => request<any[]>("/admin/batches"),
+    createBatch: (payload: { name: string; classId: string; streamId: string }) => request<any>("/admin/batches", { method: "POST", body: JSON.stringify(payload) }),
+    updateBatch: (id: string, payload: { name: string; classId: string; streamId: string }) => request<any>(`/admin/batches/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+    deleteBatch: (id: string) => request<void>(`/admin/batches/${id}`, { method: "DELETE" }),
+    
+    getSubjects: () => request<any[]>("/admin/subjects"),
+    createSubject: (payload: { name: string; classId: string; streamId: string }) => request<any>("/admin/subjects", { method: "POST", body: JSON.stringify(payload) }),
+    updateSubject: (id: string, payload: { name: string; classId: string; streamId: string }) => request<any>(`/admin/subjects/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+    deleteSubject: (id: string) => request<void>(`/admin/subjects/${id}`, { method: "DELETE" }),
+    
+    getChapters: () => request<any[]>("/admin/chapters"),
+    createChapter: (payload: { name: string; subjectId: string }) => request<any>("/admin/chapters", { method: "POST", body: JSON.stringify(payload) }),
+    updateChapter: (id: string, payload: { name: string; subjectId: string }) => request<any>(`/admin/chapters/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+    deleteChapter: (id: string) => request<void>(`/admin/chapters/${id}`, { method: "DELETE" }),
+    
+    getTopics: () => request<any[]>("/admin/topics"),
+    createTopic: (payload: { name: string; subjectId: string; chapterId: string }) => request<any>("/admin/topics", { method: "POST", body: JSON.stringify(payload) }),
+    updateTopic: (id: string, payload: { name: string; subjectId: string; chapterId: string }) => request<any>(`/admin/topics/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+    deleteTopic: (id: string) => request<void>(`/admin/topics/${id}`, { method: "DELETE" }),
+    
+    getUsers: () => request<any[]>("/admin/users"),
+    createUser: (payload: any) => request<any>("/admin/users", { method: "POST", body: JSON.stringify(payload) }),
+    updateUser: (id: string, payload: any) => request<any>(`/admin/users/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+    deleteUser: (id: string) => request<void>(`/admin/users/${id}`, { method: "DELETE" }),
+  }
 };

@@ -7,6 +7,10 @@ import { LiveExamPage } from "./pages/LiveExamPage";
 import { LoginPage } from "./pages/LoginPage";
 import { QuestionBankPage } from "./pages/QuestionBankPage";
 import { SubjectBooksPage } from "./pages/SubjectBooksPage";
+import { AdminPage } from "./pages/AdminPage";
+import { AnalyticsPage } from "./pages/AnalyticsPage";
+import { ExamsListPage } from "./pages/ExamsListPage";
+import { CurriculumPage } from "./pages/CurriculumPage";
 
 export default function App() {
   return (
@@ -30,6 +34,10 @@ export default function App() {
           <Route path="/exam-builder" element={<ExamBuilderPage />} />
           <Route path="/subject-books" element={<SubjectBooksPage />} />
           <Route path="/live-exam" element={<LiveExamPage />} />
+          <Route path="/analytics" element={<AnalyticsPage />} />
+          <Route path="/exams" element={<ExamsListPage />} />
+          <Route path="/curriculum" element={<CurriculumPage />} />
+          <Route path="/admin" element={<AdminPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

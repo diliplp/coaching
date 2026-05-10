@@ -2,6 +2,7 @@ import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { initDatabase } from "./data/database.js";
 import { apiRouter } from "./routes/api.js";
+import { adminRouter } from "./routes/admin.js";
 import { referencePapersRoot, uploadsRoot } from "./utils/paths.js";
 
 const app = express();
@@ -15,6 +16,7 @@ app.use((req, _res, next) => {
 });
 app.use("/uploads", express.static(uploadsRoot));
 app.use("/reference-files", express.static(referencePapersRoot));
+app.use("/api/admin", adminRouter);
 app.use("/api", apiRouter);
 app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
   console.error(`[api-error] ${req.method} ${req.originalUrl}`, error);

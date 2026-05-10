@@ -7,7 +7,11 @@ const navItems = [
   { to: "/question-bank", label: "Question Bank", roles: ["super_admin", "teacher", "student"] },
   { to: "/exam-builder", label: "Exam Builder", roles: ["super_admin", "teacher"] },
   { to: "/subject-books", label: "Subject Books", roles: ["super_admin", "teacher"] },
-  { to: "/live-exam", label: "Live Exam", roles: ["super_admin", "teacher", "student"] }
+  { to: "/analytics", label: "Analytics", roles: ["super_admin", "teacher"] },
+  { to: "/exams", label: "Manage Exams", roles: ["super_admin", "teacher"] },
+  { to: "/curriculum", label: "Curriculum", roles: ["super_admin", "teacher"] },
+  { to: "/live-exam", label: "Live Exam", roles: ["super_admin", "teacher", "student"] },
+  { to: "/admin", label: "Admin Settings", roles: ["super_admin"] }
 ];
 
 export function Layout() {

@@ -79,6 +79,13 @@ export async function upsertRecord<T extends RecordWithId>(collection: string, d
   );
 }
 
+export async function deleteRecord(collection: string, id: string) {
+  await pool.query(
+    "DELETE FROM app_records WHERE collection = $1 AND id = $2",
+    [collection, id]
+  );
+}
+
 async function seedCollection<T extends RecordWithId>(collection: string, records: T[]) {
   for (const record of records) {
     await upsertRecord(collection, record);

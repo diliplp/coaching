@@ -5,6 +5,7 @@ export interface OverviewResponse {
   batches: Array<{ id: string; name: string; classId: string; streamId: string }>;
   students: Array<{ id: string; name: string; batchId: string; classId: string; streamId: string }>;
   blueprints: Array<{ id: string; name: string; durationMinutes: number }>;
+  scheduledExams: Array<{ id: string; name: string; durationMinutes: number; scheduledStartTime?: string; scheduledEndTime?: string }>;
   recentSubmissions: ExamResult[];
 }
 
@@ -36,6 +37,8 @@ export interface ExamPayload {
     durationMinutes: number;
     generationMode?: "blueprint" | "adaptive" | "custom";
     adaptiveSummary?: string;
+    scheduledStartTime?: string;
+    scheduledEndTime?: string;
   };
   questions: Question[];
   plan?: AdaptivePlan;
@@ -58,6 +61,8 @@ export interface TeacherCustomExamRequest {
   durationMinutes: number;
   totalQuestions: number;
   selectionMode: "chapter" | "topic";
+  scheduledStartTime?: string;
+  scheduledEndTime?: string;
   rules: Array<{
     entityId: string;
     weightagePercent: number;
@@ -113,6 +118,15 @@ export interface ExamResult {
   percentage: number;
   weakestTopics: TopicInsight[];
   insights: TopicInsight[];
+  review?: Array<{
+    questionId: string;
+    prompt: string;
+    selectedOptionIds: string[];
+    correctOptionIds: string[];
+    explanation: string;
+    isCorrect: boolean;
+    options: any[];
+  }>;
 }
 
 export interface AuthUser {

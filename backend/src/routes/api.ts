@@ -14,6 +14,7 @@ import {
   listBatchAdaptivePlans
 } from "../utils/exam-engine.js";
 import { extractPdfText } from "../utils/pdf.js";
+import { generateQuestionsFromText } from "../utils/ai-generator.js";
 import { listReferencePapers } from "../utils/reference-papers.js";
 import { findUserByEmail, requireAuth, requireRole, signAuthToken, verifyPassword } from "../utils/auth.js";
 import type { AuthenticatedRequest, SubjectBook } from "../types.js";
@@ -110,8 +111,23 @@ apiRouter.get("/me", async (req, res) => {
   });
 });
 
-apiRouter.get("/overview", async (_req, res) => {
+apiRouter.get("/overview", async (req, res) => {
   const state = await getAppState();
+  const auth = (req as AuthenticatedRequest).auth;
+  const user = state.users.find(u => u.id === auth?.sub);
+  
+  let scheduledExams = state.exams;
+  if (user?.role === "student" && user.studentId) {
+    const student = state.students.find(s => s.id === user.studentId);
+    if (student) {
+      const now = new Date().toISOString();
+      scheduledExams = state.exams.filter(exam => 
+        exam.batchId === student.batchId &&
+        (!exam.scheduledStartTime || exam.scheduledStartTime <= now) &&
+        (!exam.scheduledEndTime || exam.scheduledEndTime >= now)
+      );
+    }
+  }
 
   res.json({
     stats: {
@@ -130,7 +146,56 @@ apiRouter.get("/overview", async (_req, res) => {
     batches: state.batches,
     students: state.students,
     blueprints: state.blueprints,
-    recentSubmissions: state.submissions.slice(0, 5)
+    scheduledExams,
+    recentSubmissions: state.submissions.filter(s => user?.role === "student" ? s.studentId === user.studentId : true).slice(0, 5)
+  });
+});
+
+apiRouter.post("/exams/self-generate", requireRole(["student", "super_admin", "teacher"]), async (req, res) => {
+  const { topicId, questionCount } = req.body;
+  if (!topicId) return res.status(400).json({ message: "topicId is required" });
+
+  const state = await getAppState();
+  const topic = state.topics.find(t => t.id === topicId);
+  if (!topic) return res.status(404).json({ message: "Topic not found" });
+
+  const subject = state.subjects.find(s => s.id === topic.subjectId);
+  const questions = state.questions.filter(q => q.topicId === topicId);
+  
+  if (questions.length === 0) {
+    return res.status(400).json({ message: "No questions available for this topic" });
+  }
+
+  const count = Math.min(questions.length, Number(questionCount) || 10);
+  const selectedQuestions = questions.sort(() => 0.5 - Math.random()).slice(0, count);
+
+  const auth = (req as AuthenticatedRequest).auth;
+  const user = state.users.find(u => u.id === auth?.sub);
+  const student = state.students.find(s => s.id === user?.studentId);
+
+  const exam = {
+    id: `self-${Date.now()}`,
+    blueprintId: "self-generated",
+    name: `${topic.name} Practice Test`,
+    classId: student?.classId || "",
+    streamId: student?.streamId || "",
+    batchId: student?.batchId || "",
+    subjectId: topic.subjectId,
+    durationMinutes: count * 2, // 2 mins per question
+    generatedAt: new Date().toISOString(),
+    generationMode: "custom" as const,
+    questions: selectedQuestions.map((q, i) => ({
+      questionId: q.id,
+      order: i + 1,
+      optionOrderIds: q.options.map(o => o.id).sort(() => 0.5 - Math.random())
+    }))
+  };
+
+  await upsertRecord("exams", exam);
+
+  res.status(201).json({
+    exam,
+    questions: selectedQuestions
   });
 });
 
@@ -150,6 +215,69 @@ apiRouter.get("/question-bank", async (_req, res) => {
     chapters: state.chapters,
     topics: state.topics,
     questions
+  });
+});
+
+apiRouter.post("/questions", requireRole(["super_admin", "teacher"]), async (req, res) => {
+  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation } = req.body;
+  if (!subjectId || !topicId || !prompt || !options || !correctOptionIds) {
+    return res.status(400).json({ message: "Missing required fields" });
+  }
+
+  const newQuestion = {
+    id: `q-${Date.now()}`,
+    subjectId,
+    topicId,
+    type: type || "single_correct",
+    prompt,
+    difficulty: difficulty || "medium",
+    marks: Number(marks) || 4,
+    negativeMarks: Number(negativeMarks) || 1,
+    correctOptionIds,
+    options,
+    explanation: explanation || ""
+  };
+  
+  await upsertRecord("questions", newQuestion);
+  res.status(201).json(newQuestion);
+});
+
+apiRouter.put("/questions/:id", requireRole(["super_admin", "teacher"]), async (req, res) => {
+  const { id } = req.params;
+  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation } = req.body;
+  
+  const updatedQuestion = {
+    id,
+    subjectId,
+    topicId,
+    type,
+    prompt,
+    difficulty,
+    marks: Number(marks),
+    negativeMarks: Number(negativeMarks),
+    correctOptionIds,
+    options,
+    explanation
+  };
+
+  await upsertRecord("questions", updatedQuestion);
+  res.json(updatedQuestion);
+});
+
+apiRouter.delete("/questions/:id", requireRole(["super_admin", "teacher"]), async (req, res) => {
+  const { deleteRecord } = await import("../data/database.js");
+  await deleteRecord("questions", req.params.id);
+  res.status(204).end();
+});
+
+apiRouter.get("/analytics", requireRole(["super_admin", "teacher"]), async (_req, res) => {
+  const state = await getAppState();
+  res.json({
+    submissions: state.submissions,
+    exams: state.exams,
+    students: state.students,
+    batches: state.batches,
+    subjects: state.subjects
   });
 });
 
@@ -259,7 +387,14 @@ apiRouter.post("/subject-books", requireRole(["super_admin", "teacher"]), upload
     return;
   }
 
-  const parsed = await extractPdfText(file.path);
+  let parsed;
+  try {
+    parsed = await extractPdfText(file.path);
+  } catch (err: any) {
+    console.error("PDF extraction failed:", err);
+    res.status(500).json({ message: "Failed to extract text from PDF. Please check the backend console." });
+    return;
+  }
 
   const newBook: SubjectBook = {
     id: `book-${Date.now()}`,
@@ -276,6 +411,50 @@ apiRouter.post("/subject-books", requireRole(["super_admin", "teacher"]), upload
 
   await upsertRecord("subjectBooks", newBook);
   res.status(201).json(newBook);
+});
+
+apiRouter.post("/subject-books/:bookId/generate-questions", requireRole(["super_admin", "teacher"]), async (req, res) => {
+  const state = await getAppState();
+  const bookId = req.params.bookId;
+  const topicId = getSingleFormValue(req.body.topicId) as string | undefined;
+  const questionCount = parseInt(getSingleFormValue(req.body.questionCount) as string || "5", 10);
+
+  if (!topicId) {
+    res.status(400).json({ message: "topicId is required" });
+    return;
+  }
+
+  const book = state.subjectBooks.find((b) => b.id === bookId);
+  if (!book) {
+    res.status(404).json({ message: "Book (PDF) not found" });
+    return;
+  }
+
+  if (!book.parsedText) {
+    res.status(400).json({ message: "Book does not have parsed text. Was it fully processed?" });
+    return;
+  }
+
+  try {
+    const generated = await generateQuestionsFromText({
+      text: book.parsedText,
+      topicId,
+      subjectId: book.subjectId,
+      questionCount,
+    });
+
+    // Save generated questions to the database
+    for (const q of generated) {
+      await upsertRecord("questions", q);
+    }
+
+    res.status(201).json({
+      message: `Successfully generated and saved ${generated.length} questions.`,
+      questions: generated
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error?.message || "Failed to generate questions" });
+  }
 });
 
 apiRouter.post("/exams/generate/:blueprintId", requireRole(["super_admin", "teacher"]), async (req, res) => {
@@ -355,6 +534,17 @@ apiRouter.post("/students/me/adaptive-generate", requireRole(["student"]), async
     plan: generated.plan,
     questions: await getExamQuestions(generated.exam.id)
   });
+});
+
+apiRouter.get("/exams", requireRole(["super_admin", "teacher"]), async (_req, res) => {
+  const state = await getAppState();
+  res.json(state.exams);
+});
+
+apiRouter.delete("/exams/:id", requireRole(["super_admin", "teacher"]), async (req, res) => {
+  const { deleteRecord } = await import("../data/database.js");
+  await deleteRecord("exams", req.params.id);
+  res.status(204).end();
 });
 
 apiRouter.get("/exams/:examId", async (req, res) => {

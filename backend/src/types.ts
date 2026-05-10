@@ -148,6 +148,8 @@ export interface Exam {
   adaptiveSummary?: string;
   sourceSignature?: string;
   questions: GeneratedExamQuestion[];
+  scheduledStartTime?: string;
+  scheduledEndTime?: string;
 }
 
 export interface TeacherCustomExamRequest {
@@ -157,6 +159,8 @@ export interface TeacherCustomExamRequest {
   durationMinutes: number;
   totalQuestions: number;
   selectionMode: TeacherExamSelectionMode;
+  scheduledStartTime?: string;
+  scheduledEndTime?: string;
   rules: WeightedExamRule[];
 }
 
@@ -189,6 +193,15 @@ export interface ExamSubmissionResult {
   percentage: number;
   weakestTopics: TopicInsight[];
   insights: TopicInsight[];
+  review?: Array<{
+    questionId: string;
+    prompt: string;
+    selectedOptionIds: string[];
+    correctOptionIds: string[];
+    explanation: string;
+    isCorrect: boolean;
+    options: any[];
+  }>;
 }
 
 export interface AdaptiveExamPlanTopic {

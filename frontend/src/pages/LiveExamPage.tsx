@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiClient } from "../api/client";
 import { getStoredSession } from "../auth";
 import { liveExamState } from "../data/mockExamContext";
+import { RichText } from "../components/RichText";
 
 export function LiveExamPage() {
   const session = getStoredSession();
@@ -9,6 +10,7 @@ export function LiveExamPage() {
   const [timeLeft, setTimeLeft] = useState<number>(generatedExam ? generatedExam.exam.durationMinutes * 60 : 0);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
+  const [isReviewMode, setIsReviewMode] = useState(false);
   const [resultVersion, setResultVersion] = useState(0);
 
   useEffect(() => {
@@ -19,10 +21,11 @@ export function LiveExamPage() {
     setTimeLeft(generatedExam.exam.durationMinutes * 60);
     setCurrentIndex(0);
     setAnswers({});
+    setIsReviewMode(false);
   }, [generatedExam]);
 
   useEffect(() => {
-    if (!generatedExam) {
+    if (!generatedExam || isReviewMode) {
       return;
     }
 
@@ -36,7 +39,7 @@ export function LiveExamPage() {
     }, 1000);
 
     return () => window.clearTimeout(timer);
-  }, [timeLeft, generatedExam]);
+  }, [timeLeft, generatedExam, isReviewMode]);
 
   const formattedTime = useMemo(() => {
     const minutes = Math.floor(timeLeft / 60).toString().padStart(2, "0");
@@ -50,7 +53,7 @@ export function LiveExamPage() {
         <section className="section-heading">
           <p className="eyebrow">Live Exam</p>
           <h2>No active exam yet</h2>
-          <p>Generate an exam first from the Exam Builder page.</p>
+          <p>Go to Dashboard or Exam Builder to start a test.</p>
         </section>
       </div>
     );
@@ -59,6 +62,7 @@ export function LiveExamPage() {
   const currentQuestion = generatedExam.questions[currentIndex];
 
   const toggleOption = (questionId: string, optionId: string, multiCorrect: boolean) => {
+    if (isReviewMode) return;
     setAnswers((current) => {
       const existing = current[questionId] ?? [];
       const hasOption = existing.includes(optionId);
@@ -94,12 +98,15 @@ export function LiveExamPage() {
       const result = await apiClient.submitExam(liveExamState.generatedExam.exam.id, payload);
       liveExamState.latestResult = result;
       setResultVersion((value) => value + 1);
+      setIsReviewMode(true);
+      setCurrentIndex(0);
     } catch (error) {
       console.error(error);
     }
   };
 
   const latestResult = liveExamState.latestResult;
+  const reviewData = latestResult?.review?.[currentIndex];
 
   return (
     <div className="page">
@@ -107,39 +114,64 @@ export function LiveExamPage() {
         <article className="panel exam-main">
           <div className="row-between">
             <div>
-              <p className="eyebrow">Student Exam Experience</p>
+              <p className="eyebrow">{isReviewMode ? "Exam Review" : "Live Exam"}</p>
               <h2>{generatedExam.exam.name}</h2>
               {generatedExam.exam.adaptiveSummary ? (
                 <p className="muted-copy">{generatedExam.exam.adaptiveSummary}</p>
               ) : null}
             </div>
-            <div className="timer-box">{formattedTime}</div>
+            {!isReviewMode && <div className="timer-box">{formattedTime}</div>}
           </div>
 
-          <div className="question-shell">
+          <div className="question-shell" style={{ border: isReviewMode ? `2px solid ${reviewData?.isCorrect ? "green" : "red"}` : "none", padding: isReviewMode ? "20px" : "0", borderRadius: "8px" }}>
             <p className="question-meta">
               Question {currentIndex + 1} of {generatedExam.questions.length}
+              {isReviewMode && (
+                <span style={{ marginLeft: "10px", fontWeight: "bold", color: reviewData?.isCorrect ? "green" : "red" }}>
+                  {reviewData?.isCorrect ? "✓ Correct" : "✗ Incorrect"}
+                </span>
+              )}
             </p>
-            <h3>{currentQuestion.prompt}</h3>
+            <h3><RichText content={currentQuestion.prompt} /></h3>
 
             <div className="options-grid">
               {currentQuestion.options.map((option) => {
-                const isSelected = (answers[currentQuestion.id] ?? []).includes(option.id);
+                const isSelected = (isReviewMode ? (reviewData?.selectedOptionIds ?? []) : (answers[currentQuestion.id] ?? [])).includes(option.id);
+                const isCorrect = isReviewMode && reviewData?.correctOptionIds.includes(option.id);
+                
+                let btnClass = "option-button";
+                if (isSelected) btnClass += " selected";
+                if (isReviewMode && isCorrect) btnClass += " correct-review";
+                if (isReviewMode && isSelected && !isCorrect) btnClass += " incorrect-review";
+
                 return (
                   <button
                     type="button"
                     key={option.id}
-                    className={isSelected ? "option-button selected" : "option-button"}
+                    className={btnClass}
                     onClick={() => toggleOption(currentQuestion.id, option.id, currentQuestion.type === "multi_correct")}
+                    disabled={isReviewMode}
+                    style={{
+                      borderColor: isReviewMode && isCorrect ? "green" : (isReviewMode && isSelected && !isCorrect ? "red" : ""),
+                      backgroundColor: isReviewMode && isCorrect ? "#e6ffed" : (isReviewMode && isSelected && !isCorrect ? "#fff5f5" : "")
+                    }}
                   >
                     <strong>{option.label}</strong>
-                    <span>{option.value}</span>
+                    <span><RichText content={option.value} /></span>
+                    {isReviewMode && isCorrect && <span style={{ marginLeft: "auto" }}>✓</span>}
                   </button>
                 );
               })}
             </div>
 
-            <div className="row-between">
+            {isReviewMode && reviewData?.explanation && (
+              <div className="explanation-box" style={{ marginTop: "20px", padding: "15px", background: "var(--color-bg-secondary)", borderRadius: "8px" }}>
+                <h4>Explanation:</h4>
+                <RichText content={reviewData.explanation} />
+              </div>
+            )}
+
+            <div className="row-between" style={{ marginTop: "20px" }}>
               <button
                 className="secondary-button"
                 disabled={currentIndex === 0}
@@ -151,52 +183,82 @@ export function LiveExamPage() {
                 className="primary-button"
                 onClick={() => setCurrentIndex((index) => Math.min(generatedExam.questions.length - 1, index + 1))}
               >
-                Save & Next
+                {currentIndex === generatedExam.questions.length - 1 ? "Finish" : "Next"}
               </button>
             </div>
           </div>
         </article>
 
         <aside className="panel exam-sidebar">
-          <h3>Question Palette</h3>
-          <div className="palette-grid">
-            {generatedExam.questions.map((question, index) => {
-              const attempted = (answers[question.id] ?? []).length > 0;
-              return (
-                <button
-                  type="button"
-                  key={question.id}
-                  className={attempted ? "palette-button answered" : "palette-button"}
-                  onClick={() => setCurrentIndex(index)}
-                >
-                  {index + 1}
-                </button>
-              );
-            })}
-          </div>
+          {isReviewMode ? (
+            <div key={resultVersion} className="result-card">
+              <h3>Result Summary</h3>
+              <div style={{ fontSize: "2rem", fontWeight: "bold", margin: "10px 0" }}>{latestResult?.percentage}%</div>
+              <p>{latestResult?.obtainedMarks} / {latestResult?.totalMarks} marks</p>
+              <p>{latestResult?.correctAnswers} Correct • {latestResult?.incorrectAnswers} Incorrect</p>
+              
+              <h4 style={{ marginTop: "20px", color: "var(--color-primary)" }}>Performance Analysis</h4>
+              
+              <div style={{ marginTop: "15px" }}>
+                <strong style={{ color: "green" }}>✓ Your Strengths</strong>
+                <ul className="plain-list compact" style={{ marginTop: "5px" }}>
+                  {latestResult?.insights
+                    .filter(t => t.accuracy >= 75)
+                    .map((topic) => (
+                      <li key={topic.topicId}>
+                        <strong>{topic.topicName}</strong>
+                        <div className="muted-copy">{topic.accuracy}% Accuracy • Strong</div>
+                      </li>
+                    ))}
+                  {latestResult?.insights.filter(t => t.accuracy >= 75).length === 0 && <li className="muted-copy">Keep practicing to build strengths!</li>}
+                </ul>
+              </div>
 
-          <button className="primary-button full-width" onClick={() => void submitExam()}>
-            Submit Exam
-          </button>
-          {session?.user.role !== "student" && (
-            <p className="muted-copy">Teacher/admin users can review the flow here. Student account submits against its linked student record.</p>
+              <div style={{ marginTop: "15px" }}>
+                <strong style={{ color: "red" }}>⚠ Areas for Improvement</strong>
+                <ul className="plain-list compact" style={{ marginTop: "5px" }}>
+                  {latestResult?.insights
+                    .filter(t => t.accuracy < 75)
+                    .sort((a, b) => a.accuracy - b.accuracy)
+                    .map((topic) => (
+                      <li key={topic.topicId}>
+                        <strong>{topic.topicName}</strong>
+                        <div className="muted-copy">{topic.accuracy}% Accuracy • Focus here</div>
+                      </li>
+                    ))}
+                  {latestResult?.insights.filter(t => t.accuracy < 75).length === 0 && <li className="muted-copy">Excellent coverage!</li>}
+                </ul>
+              </div>
+            </div>
+          ) : (
+            <>
+              <h3>Question Palette</h3>
+              <div className="palette-grid">
+                {generatedExam.questions.map((question, index) => {
+                  const attempted = (answers[question.id] ?? []).length > 0;
+                  return (
+                    <button
+                      type="button"
+                      key={question.id}
+                      className={attempted ? "palette-button answered" : "palette-button"}
+                      onClick={() => setCurrentIndex(index)}
+                    >
+                      {index + 1}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button className="primary-button full-width" onClick={() => void submitExam()}>
+                Submit Exam
+              </button>
+            </>
           )}
 
-          {latestResult && (
-            <div key={resultVersion} className="result-card">
-              <h4>Instant Result</h4>
-              <p>{latestResult.obtainedMarks} / {latestResult.totalMarks} marks</p>
-              <p>{latestResult.percentage}% score</p>
-              <h5>Weakest Topics</h5>
-              <ul className="plain-list compact">
-                {latestResult.weakestTopics.map((topic) => (
-                  <li key={topic.topicId}>
-                    <strong>{topic.topicName}</strong>
-                    <span>Weakness score {topic.weaknessScore}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+          {isReviewMode && (
+            <button className="secondary-button full-width" style={{ marginTop: "20px" }} onClick={() => navigate("/")}>
+              Back to Dashboard
+            </button>
           )}
         </aside>
       </section>
