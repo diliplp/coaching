@@ -110,15 +110,15 @@ async function seedUsers() {
 }
 
 async function seedIfEmpty() {
-  await seedCollection("classes", seedData.classes);
-  await seedCollection("streams", seedData.streams);
-  await seedCollection("batches", seedData.batches);
-  await seedCollection("students", seedData.students);
-  await seedCollection("subjects", seedData.subjects);
-  await seedCollection("chapters", seedData.chapters);
-  await seedCollection("topics", seedData.topics);
-  await seedCollection("questions", seedData.questions);
-  await seedCollection("blueprints", seedData.blueprints);
+  if ((await countCollection("classes")) === 0) await seedCollection("classes", seedData.classes);
+  if ((await countCollection("streams")) === 0) await seedCollection("streams", seedData.streams);
+  if ((await countCollection("batches")) === 0) await seedCollection("batches", seedData.batches);
+  if ((await countCollection("students")) === 0) await seedCollection("students", seedData.students);
+  if ((await countCollection("subjects")) === 0) await seedCollection("subjects", seedData.subjects);
+  if ((await countCollection("chapters")) === 0) await seedCollection("chapters", seedData.chapters);
+  if ((await countCollection("topics")) === 0) await seedCollection("topics", seedData.topics);
+  if ((await countCollection("questions")) === 0) await seedCollection("questions", seedData.questions);
+  if ((await countCollection("blueprints")) === 0) await seedCollection("blueprints", seedData.blueprints);
   if ((await countCollection("users")) === 0) {
     await seedUsers();
   }

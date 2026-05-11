@@ -4,7 +4,7 @@ import { clearSession, getStoredSession } from "../auth";
 
 const navItems = [
   { to: "/", label: "Dashboard", roles: ["super_admin", "teacher", "student"] },
-  { to: "/question-bank", label: "Question Bank", roles: ["super_admin", "teacher", "student"] },
+  { to: "/question-bank", label: "Question Bank", roles: ["super_admin", "teacher"] },
   { to: "/exam-builder", label: "Exam Builder", roles: ["super_admin", "teacher"] },
   { to: "/subject-books", label: "Subject Books", roles: ["super_admin", "teacher"] },
   { to: "/analytics", label: "Analytics", roles: ["super_admin", "teacher"] },

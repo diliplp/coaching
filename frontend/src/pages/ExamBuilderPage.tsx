@@ -20,6 +20,7 @@ export function ExamBuilderPage() {
   const [scheduledStartTime, setScheduledStartTime] = useState("");
   const [scheduledEndTime, setScheduledEndTime] = useState("");
   const [weightages, setWeightages] = useState<Record<string, string>>({});
+  const [allowedSources, setAllowedSources] = useState<string[]>(["pyq", "reference", "ai_generated", "custom"]);
 
   useEffect(() => {
     Promise.all([apiClient.getBlueprints(), apiClient.getQuestionBank(), apiClient.getOverview()])
@@ -127,7 +128,8 @@ export function ExamBuilderPage() {
             entityId,
             weightagePercent: Number(weightagePercent) || 0
           }))
-          .filter((rule) => rule.weightagePercent > 0)
+          .filter((rule) => rule.weightagePercent > 0),
+        allowedSourceTypes: allowedSources as any
       });
       liveExamState.generatedExam = payload;
       liveExamState.latestResult = null;
@@ -251,6 +253,25 @@ export function ExamBuilderPage() {
               onChange={(event) => setScheduledEndTime(event.target.value)}
             />
           </label>
+        </div>
+
+        <div className="field" style={{ marginTop: "20px" }}>
+          <span>Allowed Question Sources</span>
+          <div style={{ display: "flex", gap: "15px", marginTop: "8px", flexWrap: "wrap" }}>
+            {["pyq", "reference", "ai_generated", "custom"].map(source => (
+              <label key={source} style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", background: "var(--color-bg-secondary)", padding: "5px 12px", borderRadius: "20px", fontSize: "0.9rem" }}>
+                <input 
+                  type="checkbox" 
+                  checked={allowedSources.includes(source)}
+                  onChange={(e) => {
+                    if (e.target.checked) setAllowedSources([...allowedSources, source]);
+                    else if (allowedSources.length > 1) setAllowedSources(allowedSources.filter(s => s !== source));
+                  }}
+                />
+                {source === "pyq" ? "PYQs" : (source === "reference" ? "Ref Books" : source.replace("_", " ").toUpperCase())}
+              </label>
+            ))}
+          </div>
         </div>
 
         <div className="weightage-grid">

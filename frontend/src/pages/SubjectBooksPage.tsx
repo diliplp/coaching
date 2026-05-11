@@ -12,13 +12,14 @@ export function SubjectBooksPage() {
   const [selectedStreamId, setSelectedStreamId] = useState("");
   const [subjectId, setSubjectId] = useState("");
   const [title, setTitle] = useState("");
+  const [bookType, setBookType] = useState<"pyq" | "reference">("reference");
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState("Teachers can upload PDF books subject-wise here.");
   
   // AI Generation State
   const [generatingForBook, setGeneratingForBook] = useState<string | null>(null);
   const [selectedChapterId, setSelectedChapterId] = useState("");
-  const [selectedTopicId, setSelectedTopicId] = useState("");
+  const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
   const [questionCount, setQuestionCount] = useState(5);
 
   const loadData = async () => {
@@ -44,7 +45,7 @@ export function SubjectBooksPage() {
 
     setStatus("Uploading PDF book...");
     try {
-      await apiClient.uploadSubjectBook({ subjectId, title, file });
+      await apiClient.uploadSubjectBook({ subjectId, title, file, bookType });
       setTitle("");
       setFile(null);
       setStatus("PDF uploaded successfully.");
@@ -56,15 +57,16 @@ export function SubjectBooksPage() {
   };
 
   const handleGenerateQuestions = async (bookId: string) => {
-    if (!selectedTopicId) {
-      setStatus("Please select a topic before generating questions.");
+    if (!selectedChapterId) {
+      setStatus("Please select at least a chapter before generating questions.");
       return;
     }
     setGeneratingForBook(bookId);
     setStatus("AI is reading the PDF and generating questions with STEM formatting... This may take up to a minute.");
     try {
       const result = await apiClient.generateQuestionsFromBook(bookId, {
-        topicId: selectedTopicId,
+        chapterId: selectedChapterId,
+        topicIds: selectedTopicIds.length > 0 ? selectedTopicIds : undefined,
         questionCount
       });
       setStatus(`Success: ${result.message}`);
@@ -143,6 +145,14 @@ export function SubjectBooksPage() {
             </label>
 
             <label className="field">
+              <span>Book Type</span>
+              <select value={bookType} onChange={(e) => setBookType(e.target.value as any)}>
+                <option value="reference">Reference Book</option>
+                <option value="pyq">PYQ (Previous Year Question)</option>
+              </select>
+            </label>
+
+            <label className="field">
               <span>PDF File</span>
               <input
                 type="file"
@@ -162,67 +172,149 @@ export function SubjectBooksPage() {
           ) : (
             <ul className="plain-list">
               {data.books.map((book) => (
-                <li key={book.id}>
-                  <div style={{ marginBottom: "15px" }}>
-                    <div className="row-between">
-                      <strong>{book.title}</strong>
-                      <a className="text-link" href={buildPublicAssetUrl(book.fileUrl)} target="_blank" rel="noreferrer">Open PDF</a>
+                <li key={book.id} className="panel" style={{ marginBottom: "2rem", padding: "1.5rem", borderRadius: "12px", background: "white", border: "1px solid var(--color-border)" }}>
+                  {/* Book Info Section */}
+                  <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
+                    <div style={{ 
+                      background: "rgba(0, 128, 128, 0.1)", 
+                      color: "var(--color-primary)", 
+                      padding: "8px 16px", 
+                      borderRadius: "20px", 
+                      display: "inline-block", 
+                      fontSize: "0.75rem", 
+                      fontWeight: "bold",
+                      marginBottom: "0.5rem"
+                    }}>
+                      {book.bookType === "pyq" ? "PREVIOUS YEAR PAPER" : "REFERENCE BOOK"}
                     </div>
-                    <div className="muted-copy">
-                      {book.subjectName} • {new Date(book.uploadedAt).toLocaleString()}
+                    <h4 style={{ margin: "0.5rem 0", fontSize: "1.25rem" }}>{book.title}</h4>
+                    <p className="muted-copy" style={{ fontSize: "0.85rem" }}>
+                      {book.subjectName} • {new Date(book.uploadedAt).toLocaleDateString()}
+                    </p>
+                    
+                    <div style={{ display: "flex", gap: "10px", justifyContent: "center", marginTop: "1rem" }}>
+                      <a 
+                        className="secondary-button" 
+                        href={buildPublicAssetUrl(book.fileUrl)} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        style={{ fontSize: "0.85rem", padding: "6px 16px" }}
+                      >
+                        View PDF
+                      </a>
+                      <button 
+                        className="secondary-button" 
+                        style={{ color: "var(--color-error)", borderColor: "var(--color-error)", fontSize: "0.85rem", padding: "6px 16px" }}
+                        onClick={async () => {
+                          if (confirm(`Delete "${book.title}"?`)) {
+                            try {
+                              await apiClient.deleteSubjectBook(book.id);
+                              loadData();
+                            } catch (e) {
+                              alert("Failed to delete book");
+                            }
+                          }
+                        }}
+                      >
+                        Delete
+                      </button>
                     </div>
                   </div>
 
-                  {/* AI Question Generation UI */}
-                  <div className="panel" style={{ background: "var(--color-bg-secondary)", border: "1px solid var(--color-border)" }}>
-                    <strong>Generate AI Questions</strong>
-                    <div className="stack" style={{ marginTop: "10px" }}>
-                      <div className="grid-two">
-                        <label className="field">
-                          <span>Chapter</span>
-                          <select 
-                            value={selectedChapterId} 
-                            onChange={(e) => { setSelectedChapterId(e.target.value); setSelectedTopicId(""); }}
-                          >
-                            <option value="">Select Chapter...</option>
-                            {allChapters.filter(c => c.subjectId === book.subjectId).map(c => (
-                              <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="field">
-                          <span>Topic</span>
-                          <select 
-                            value={selectedTopicId} 
-                            onChange={(e) => setSelectedTopicId(e.target.value)}
-                          >
-                            <option value="">Select Topic...</option>
-                            {allTopics.filter(t => t.chapterId === selectedChapterId).map(t => (
-                              <option key={t.id} value={t.id}>{t.name}</option>
-                            ))}
-                          </select>
-                        </label>
+                  {/* AI Tool Section - Vertical Stack */}
+                  <div style={{ 
+                    background: "var(--color-bg-secondary)", 
+                    padding: "1.25rem", 
+                    borderRadius: "10px", 
+                    border: "1px solid var(--color-border)",
+                    marginTop: "1.5rem"
+                  }}>
+                    <div style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem", marginBottom: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <strong style={{ fontSize: "0.9rem" }}>AI Question Generator</strong>
+                      <span className="tag muted" style={{ fontSize: "0.7rem" }}>STEM-AI</span>
+                    </div>
+
+                    <div className="stack" style={{ gap: "1rem" }}>
+                      <label className="field">
+                        <span>Select Chapter</span>
+                        <select 
+                          value={selectedChapterId} 
+                          onChange={(e) => { setSelectedChapterId(e.target.value); setSelectedTopicId(""); }}
+                          style={{ background: "white" }}
+                        >
+                          <option value="">Choose...</option>
+                          {allChapters.filter(c => c.subjectId === book.subjectId).map(c => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <div className="field">
+                        <span>Select Topics</span>
+                        <div style={{ 
+                          background: "white", 
+                          border: "1px solid var(--color-border)", 
+                          borderRadius: "8px", 
+                          padding: "10px",
+                          maxHeight: "150px",
+                          overflowY: "auto",
+                          marginTop: "4px"
+                        }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", paddingBottom: "8px", borderBottom: "1px solid var(--color-bg-secondary)", fontWeight: "bold" }}>
+                            <input 
+                              type="checkbox" 
+                              checked={selectedTopicIds.length === allTopics.filter(t => t.chapterId === selectedChapterId).length && selectedTopicIds.length > 0}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedTopicIds(allTopics.filter(t => t.chapterId === selectedChapterId).map(t => t.id));
+                                } else {
+                                  setSelectedTopicIds([]);
+                                }
+                              }}
+                            />
+                            Select All Topics
+                          </label>
+                          {allTopics.filter(t => t.chapterId === selectedChapterId).map(t => (
+                            <label key={t.id} style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px", fontSize: "0.9rem" }}>
+                              <input 
+                                type="checkbox" 
+                                checked={selectedTopicIds.includes(t.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedTopicIds([...selectedTopicIds, t.id]);
+                                  } else {
+                                    setSelectedTopicIds(selectedTopicIds.filter(id => id !== t.id));
+                                  }
+                                }}
+                              />
+                              {t.name}
+                            </label>
+                          ))}
+                          {allTopics.filter(t => t.chapterId === selectedChapterId).length === 0 && (
+                            <p className="muted-copy" style={{ fontSize: "0.8rem", margin: 0 }}>No topics found in this chapter.</p>
+                          )}
+                        </div>
                       </div>
-                      
-                      <div className="row-between">
-                        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                          Question Count:
+
+                      <div style={{ display: "flex", gap: "10px", alignItems: "flex-end" }}>
+                        <label className="field" style={{ flex: 1 }}>
+                          <span>Count</span>
                           <input 
                             type="number" 
                             min="1" 
                             max="20" 
                             value={questionCount} 
                             onChange={(e) => setQuestionCount(Number(e.target.value))} 
-                            style={{ width: "60px" }}
+                            style={{ background: "white" }}
                           />
                         </label>
-
                         <button 
                           className="primary-button" 
-                          disabled={generatingForBook === book.id || !selectedTopicId} 
+                          disabled={generatingForBook === book.id || !selectedChapterId} 
                           onClick={() => void handleGenerateQuestions(book.id)}
+                          style={{ flex: 2, height: "42px" }}
                         >
-                          {generatingForBook === book.id ? "Generating..." : "Generate AI Questions"}
+                          {generatingForBook === book.id ? "Working..." : "Generate AI Questions"}
                         </button>
                       </div>
                     </div>

@@ -9,6 +9,8 @@ export interface OverviewResponse {
   recentSubmissions: ExamResult[];
 }
 
+export type QuestionSource = "pyq" | "reference" | "ai_generated" | "custom";
+
 export interface QuestionBankResponse {
   subjects: Array<{ id: string; name: string; classId: string; streamId: string }>;
   chapters: Array<{ id: string; name: string; subjectId: string }>;
@@ -25,9 +27,13 @@ export interface Question {
   negativeMarks: number;
   explanation: string;
   options: Array<{ id: string; label: string; value: string }>;
+  correctOptionIds: string[];
+  subjectId: string;
+  topicId: string;
   subjectName?: string;
   topicName?: string;
   chapterName?: string;
+  sourceType?: QuestionSource;
 }
 
 export interface ExamPayload {
@@ -67,6 +73,7 @@ export interface TeacherCustomExamRequest {
     entityId: string;
     weightagePercent: number;
   }>;
+  allowedSourceTypes?: QuestionSource[];
 }
 
 export interface SubjectBook {
@@ -76,6 +83,7 @@ export interface SubjectBook {
   fileName: string;
   fileUrl: string;
   uploadedAt: string;
+  bookType?: "pyq" | "reference";
   subjectName?: string;
   previewText?: string;
   pageCount?: number;

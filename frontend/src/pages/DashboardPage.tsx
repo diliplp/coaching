@@ -17,7 +17,8 @@ export function DashboardPage() {
   
   // Self-generation state
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
-  const [selectedTopicId, setSelectedTopicId] = useState("");
+  const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
+  const [allowedSources, setAllowedSources] = useState<string[]>(["pyq", "reference", "ai_generated", "custom"]);
   const [qCount, setQCount] = useState(10);
 
   useEffect(() => {
@@ -94,14 +95,18 @@ export function DashboardPage() {
   };
 
   const handleSelfGenerate = async () => {
-    if (!selectedTopicId) return;
+    if (selectedTopicIds.length === 0) return;
     try {
-      const payload = await apiClient.selfGenerateExam({ topicId: selectedTopicId, questionCount: qCount });
+      const payload = await apiClient.selfGenerateExam({ 
+        topicIds: selectedTopicIds, 
+        questionCount: qCount,
+        allowedSourceTypes: allowedSources as any
+      });
       liveExamState.generatedExam = payload;
       liveExamState.latestResult = null;
       navigate("/live-exam");
-    } catch (e) {
-      alert("Failed to generate practice test");
+    } catch (e: any) {
+      alert(e.message || "Failed to generate practice test");
     }
   };
 
@@ -147,23 +152,69 @@ export function DashboardPage() {
             <div className="stack" style={{ marginTop: "15px" }}>
               <label className="field">
                 <span>Subject</span>
-                <select value={selectedSubjectId} onChange={e => { setSelectedSubjectId(e.target.value); setSelectedTopicId(""); }}>
+                <select value={selectedSubjectId} onChange={e => { setSelectedSubjectId(e.target.value); setSelectedTopicIds([]); }}>
                   <option value="">Select Subject</option>
                   {questionBank?.subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </label>
-              <label className="field">
-                <span>Topic</span>
-                <select value={selectedTopicId} onChange={e => setSelectedTopicId(e.target.value)}>
-                  <option value="">Select Topic</option>
-                  {questionBank?.topics.filter(t => t.subjectId === selectedSubjectId).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-              </label>
+              
+              <div className="field">
+                <span>Select Topics</span>
+                <div style={{ 
+                  background: "white", 
+                  border: "1px solid var(--color-border)", 
+                  borderRadius: "8px", 
+                  padding: "10px",
+                  maxHeight: "150px",
+                  overflowY: "auto",
+                  marginTop: "4px"
+                }}>
+                  {questionBank?.topics.filter(t => t.subjectId === selectedSubjectId).map(t => (
+                    <label key={t.id} style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px", fontSize: "0.9rem" }}>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedTopicIds.includes(t.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedTopicIds([...selectedTopicIds, t.id]);
+                          } else {
+                            setSelectedTopicIds(selectedTopicIds.filter(id => id !== t.id));
+                          }
+                        }}
+                      />
+                      {t.name}
+                    </label>
+                  ))}
+                  {(!selectedSubjectId || questionBank?.topics.filter(t => t.subjectId === selectedSubjectId).length === 0) && (
+                    <p className="muted-copy" style={{ fontSize: "0.8rem", margin: 0 }}>Please select a subject first.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="field">
+                <span>Question Sources</span>
+                <div style={{ display: "flex", gap: "10px", marginTop: "8px", flexWrap: "wrap" }}>
+                  {["pyq", "reference"].map(source => (
+                    <label key={source} style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "0.85rem", background: "var(--color-bg-secondary)", padding: "4px 10px", borderRadius: "15px" }}>
+                      <input 
+                        type="checkbox" 
+                        checked={allowedSources.includes(source)}
+                        onChange={(e) => {
+                          if (e.target.checked) setAllowedSources([...allowedSources, source]);
+                          else if (allowedSources.length > 1) setAllowedSources(allowedSources.filter(s => s !== source));
+                        }}
+                      />
+                      {source === "pyq" ? "PYQs" : "Ref Books"}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              
               <label className="field">
                 <span>Questions</span>
                 <input type="number" value={qCount} onChange={e => setQCount(Number(e.target.value))} min={1} max={50} />
               </label>
-              <button className="primary-button" disabled={!selectedTopicId} onClick={handleSelfGenerate}>Generate Test</button>
+              <button className="primary-button" disabled={selectedTopicIds.length === 0} onClick={handleSelfGenerate}>Generate Test</button>
             </div>
           </section>
         </div>

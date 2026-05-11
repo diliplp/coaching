@@ -4,6 +4,8 @@ export type UserRole = "super_admin" | "teacher" | "student";
 
 export type QuestionType = "single_correct" | "multi_correct";
 
+export type QuestionSource = "pyq" | "reference" | "ai_generated" | "custom";
+
 export interface ClassNode {
   id: string;
   name: string;
@@ -57,6 +59,7 @@ export interface SubjectBook {
   fileName: string;
   fileUrl: string;
   uploadedAt: string;
+  bookType?: "pyq" | "reference";
   parsedText?: string;
   previewText?: string;
   pageCount?: number;
@@ -101,6 +104,7 @@ export interface Question {
   correctOptionIds: string[];
   options: QuestionOption[];
   explanation: string;
+  sourceType?: QuestionSource;
 }
 
 export interface ExamBlueprintTopicRule {
@@ -162,6 +166,7 @@ export interface TeacherCustomExamRequest {
   scheduledStartTime?: string;
   scheduledEndTime?: string;
   rules: WeightedExamRule[];
+  allowedSourceTypes?: QuestionSource[];
 }
 
 export interface StudentAnswerInput {

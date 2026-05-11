@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { Router } from "express";
 import multer from "multer";
-import { getAppState, upsertRecord } from "../data/database.js";
+import { getAppState, upsertRecord, deleteRecord } from "../data/database.js";
 import { booksUploadsRoot } from "../utils/paths.js";
 import {
   buildAdaptiveExamPlan,
@@ -152,56 +152,79 @@ apiRouter.get("/overview", async (req, res) => {
 });
 
 apiRouter.post("/exams/self-generate", requireRole(["student", "super_admin", "teacher"]), async (req, res) => {
-  const { topicId, questionCount } = req.body;
-  if (!topicId) return res.status(400).json({ message: "topicId is required" });
+  try {
+    const { topicId, topicIds: rawTopicIds, questionCount, allowedSourceTypes } = req.body;
+    
+    let targetTopicIds: string[] = [];
+    if (Array.isArray(rawTopicIds)) {
+      targetTopicIds = rawTopicIds.map(String);
+    } else if (topicId) {
+      targetTopicIds = [String(topicId)];
+    }
 
-  const state = await getAppState();
-  const topic = state.topics.find(t => t.id === topicId);
-  if (!topic) return res.status(404).json({ message: "Topic not found" });
+    if (targetTopicIds.length === 0) {
+      return res.status(400).json({ message: "At least one topicId is required" });
+    }
 
-  const subject = state.subjects.find(s => s.id === topic.subjectId);
-  const questions = state.questions.filter(q => q.topicId === topicId);
-  
-  if (questions.length === 0) {
-    return res.status(400).json({ message: "No questions available for this topic" });
+    const state = await getAppState();
+    const validTopics = state.topics.filter(t => targetTopicIds.includes(t.id));
+    if (validTopics.length === 0) return res.status(404).json({ message: "Topics not found" });
+
+    const subjectId = validTopics[0].subjectId;
+    let questions = state.questions.filter(q => targetTopicIds.includes(q.topicId));
+    
+    // Filter by source if specified
+    if (Array.isArray(allowedSourceTypes) && allowedSourceTypes.length > 0) {
+      questions = questions.filter(q => allowedSourceTypes.includes(q.sourceType || "custom"));
+    }
+    
+    if (questions.length === 0) {
+      return res.status(400).json({ message: "No questions available for selected topics and source filters" });
+    }
+
+    const count = Math.min(questions.length, Number(questionCount) || 10);
+    const selectedQuestions = questions.sort(() => 0.5 - Math.random()).slice(0, count);
+
+    const auth = (req as AuthenticatedRequest).auth;
+    const user = state.users.find(u => u.id === auth?.sub);
+    const student = state.students.find(s => s.id === user?.studentId);
+
+    const exam = {
+      id: `self-${Date.now()}`,
+      blueprintId: "self-generated",
+      name: targetTopicIds.length === 1 ? `${validTopics[0].name} Practice` : "Mixed Topics Practice",
+      classId: student?.classId || "",
+      streamId: student?.streamId || "",
+      batchId: student?.batchId || "",
+      subjectId,
+      durationMinutes: count * 2, // 2 mins per question
+      generatedAt: new Date().toISOString(),
+      generationMode: "custom" as const,
+      questions: selectedQuestions.map((q, i) => ({
+        questionId: q.id,
+        order: i + 1,
+        optionOrderIds: q.options.map(o => o.id).sort(() => 0.5 - Math.random())
+      }))
+    };
+
+    await upsertRecord("exams", exam);
+
+    res.status(201).json({
+      exam,
+      questions: selectedQuestions
+    });
+  } catch (error) {
+    console.error("Error in self-generate:", error);
+    res.status(500).json({ message: "Internal server error during exam generation" });
   }
-
-  const count = Math.min(questions.length, Number(questionCount) || 10);
-  const selectedQuestions = questions.sort(() => 0.5 - Math.random()).slice(0, count);
-
-  const auth = (req as AuthenticatedRequest).auth;
-  const user = state.users.find(u => u.id === auth?.sub);
-  const student = state.students.find(s => s.id === user?.studentId);
-
-  const exam = {
-    id: `self-${Date.now()}`,
-    blueprintId: "self-generated",
-    name: `${topic.name} Practice Test`,
-    classId: student?.classId || "",
-    streamId: student?.streamId || "",
-    batchId: student?.batchId || "",
-    subjectId: topic.subjectId,
-    durationMinutes: count * 2, // 2 mins per question
-    generatedAt: new Date().toISOString(),
-    generationMode: "custom" as const,
-    questions: selectedQuestions.map((q, i) => ({
-      questionId: q.id,
-      order: i + 1,
-      optionOrderIds: q.options.map(o => o.id).sort(() => 0.5 - Math.random())
-    }))
-  };
-
-  await upsertRecord("exams", exam);
-
-  res.status(201).json({
-    exam,
-    questions: selectedQuestions
-  });
 });
 
-apiRouter.get("/question-bank", async (_req, res) => {
+apiRouter.get("/question-bank", requireAuth, async (req, res) => {
+  const auth = (req as AuthenticatedRequest).auth;
   const state = await getAppState();
-  const questions = state.questions.map((question) => ({
+  
+  // If student, return metadata but NO questions
+  const questions = auth?.role === "student" ? [] : state.questions.map((question) => ({
     ...question,
     subjectName: state.subjects.find((subject) => subject.id === question.subjectId)?.name ?? "Unknown",
     topicName: state.topics.find((topic) => topic.id === question.topicId)?.name ?? "Unknown",
@@ -219,7 +242,7 @@ apiRouter.get("/question-bank", async (_req, res) => {
 });
 
 apiRouter.post("/questions", requireRole(["super_admin", "teacher"]), async (req, res) => {
-  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation } = req.body;
+  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation, sourceType } = req.body;
   if (!subjectId || !topicId || !prompt || !options || !correctOptionIds) {
     return res.status(400).json({ message: "Missing required fields" });
   }
@@ -235,7 +258,8 @@ apiRouter.post("/questions", requireRole(["super_admin", "teacher"]), async (req
     negativeMarks: Number(negativeMarks) || 1,
     correctOptionIds,
     options,
-    explanation: explanation || ""
+    explanation: explanation || "",
+    sourceType: sourceType || "custom"
   };
   
   await upsertRecord("questions", newQuestion);
@@ -244,7 +268,7 @@ apiRouter.post("/questions", requireRole(["super_admin", "teacher"]), async (req
 
 apiRouter.put("/questions/:id", requireRole(["super_admin", "teacher"]), async (req, res) => {
   const { id } = req.params;
-  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation } = req.body;
+  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation, sourceType } = req.body;
   
   const updatedQuestion = {
     id,
@@ -257,7 +281,8 @@ apiRouter.put("/questions/:id", requireRole(["super_admin", "teacher"]), async (
     negativeMarks: Number(negativeMarks),
     correctOptionIds,
     options,
-    explanation
+    explanation,
+    sourceType: sourceType || "custom"
   };
 
   await upsertRecord("questions", updatedQuestion);
@@ -374,6 +399,7 @@ apiRouter.post("/subject-books", requireRole(["super_admin", "teacher"]), upload
   const state = await getAppState();
   const subjectId = getSingleFormValue(req.body.subjectId) as string | undefined;
   const title = getSingleFormValue(req.body.title) as string | undefined;
+  const bookType = getSingleFormValue(req.body.bookType) as "pyq" | "reference" | undefined;
   const file = req.file;
 
   if (!subjectId || !title || !file) {
@@ -406,6 +432,7 @@ apiRouter.post("/subject-books", requireRole(["super_admin", "teacher"]), upload
     parsedText: parsed.extractedText,
     previewText: parsed.previewText,
     pageCount: parsed.pageCount,
+    bookType: bookType || "reference",
     extractedAt: new Date().toISOString()
   };
 
@@ -413,14 +440,41 @@ apiRouter.post("/subject-books", requireRole(["super_admin", "teacher"]), upload
   res.status(201).json(newBook);
 });
 
+apiRouter.delete("/subject-books/:id", requireRole(["super_admin", "teacher"]), async (req, res) => {
+  try {
+    const { id } = req.params;
+    await deleteRecord("subjectBooks", id);
+    res.status(204).end();
+  } catch (error) {
+    console.error("Error deleting book:", error);
+    res.status(500).json({ message: "Failed to delete book" });
+  }
+});
+
 apiRouter.post("/subject-books/:bookId/generate-questions", requireRole(["super_admin", "teacher"]), async (req, res) => {
   const state = await getAppState();
   const bookId = req.params.bookId;
-  const topicId = getSingleFormValue(req.body.topicId) as string | undefined;
+  const chapterId = getSingleFormValue(req.body.chapterId) as string | undefined;
+  const rawTopicIds = req.body.topicIds;
+  let topicIds: string[] = [];
+
+  if (Array.isArray(rawTopicIds)) {
+    topicIds = rawTopicIds.map(String);
+  } else if (typeof rawTopicIds === "string" && rawTopicIds) {
+    topicIds = [rawTopicIds];
+  } else if (chapterId) {
+    // Default to all topics in the chapter if no specific topic selected
+    topicIds = state.topics.filter(t => t.chapterId === chapterId).map(t => t.id);
+  } else {
+    // Try to get the single topicId for backward compatibility
+    const singleTopicId = getSingleFormValue(req.body.topicId) as string | undefined;
+    if (singleTopicId) topicIds = [singleTopicId];
+  }
+
   const questionCount = parseInt(getSingleFormValue(req.body.questionCount) as string || "5", 10);
 
-  if (!topicId) {
-    res.status(400).json({ message: "topicId is required" });
+  if (topicIds.length === 0) {
+    res.status(400).json({ message: "At least one topic or a chapter must be selected" });
     return;
   }
 
@@ -438,19 +492,25 @@ apiRouter.post("/subject-books/:bookId/generate-questions", requireRole(["super_
   try {
     const generated = await generateQuestionsFromText({
       text: book.parsedText,
-      topicId,
+      topicId: topicIds[0],
       subjectId: book.subjectId,
       questionCount,
     });
 
-    // Save generated questions to the database
-    for (const q of generated) {
+    // Tag questions with topics cyclically
+    const finalizedQuestions = generated.map((q, i) => ({
+      ...q,
+      topicId: topicIds[i % topicIds.length],
+      sourceType: book.bookType || "ai_generated"
+    }));
+
+    for (const q of finalizedQuestions) {
       await upsertRecord("questions", q);
     }
 
-    res.status(201).json({
-      message: `Successfully generated and saved ${generated.length} questions.`,
-      questions: generated
+    res.json({
+      message: `Successfully generated ${finalizedQuestions.length} questions across ${topicIds.length} topics.`,
+      count: finalizedQuestions.length
     });
   } catch (error: any) {
     res.status(500).json({ message: error?.message || "Failed to generate questions" });

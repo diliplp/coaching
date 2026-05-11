@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { getStoredSession } from "../auth";
 import { liveExamState } from "../data/mockExamContext";
 import { RichText } from "../components/RichText";
 
 export function LiveExamPage() {
+  const { examId } = useParams<{ examId: string }>();
+  const navigate = useNavigate();
   const session = getStoredSession();
   const generatedExam = liveExamState.generatedExam;
   const [timeLeft, setTimeLeft] = useState<number>(generatedExam ? generatedExam.exam.durationMinutes * 60 : 0);
@@ -124,14 +127,30 @@ export function LiveExamPage() {
           </div>
 
           <div className="question-shell" style={{ border: isReviewMode ? `2px solid ${reviewData?.isCorrect ? "green" : "red"}` : "none", padding: isReviewMode ? "20px" : "0", borderRadius: "8px" }}>
-            <p className="question-meta">
-              Question {currentIndex + 1} of {generatedExam.questions.length}
-              {isReviewMode && (
-                <span style={{ marginLeft: "10px", fontWeight: "bold", color: reviewData?.isCorrect ? "green" : "red" }}>
-                  {reviewData?.isCorrect ? "✓ Correct" : "✗ Incorrect"}
+            <div className="row-between" style={{ alignItems: "center", marginBottom: "8px" }}>
+              <p className="question-meta" style={{ margin: 0 }}>
+                Question {currentIndex + 1} of {generatedExam.questions.length}
+                {isReviewMode && (
+                  <span style={{ marginLeft: "10px", fontWeight: "bold", color: reviewData?.isCorrect ? "green" : "red" }}>
+                    {reviewData?.isCorrect ? "✓ Correct" : "✗ Incorrect"}
+                  </span>
+                )}
+              </p>
+              {currentQuestion.sourceType && (
+                <span 
+                  className="tag" 
+                  style={{ 
+                    fontSize: "0.7rem", 
+                    background: currentQuestion.sourceType === "pyq" ? "#fff3cd" : "#d1ecf1",
+                    color: currentQuestion.sourceType === "pyq" ? "#856404" : "#0c5460",
+                    border: "none",
+                    fontWeight: "bold"
+                  }}
+                >
+                  {currentQuestion.sourceType === "pyq" ? "PREVIOUS YEAR" : (currentQuestion.sourceType === "reference" ? "REFERENCE BOOK" : currentQuestion.sourceType.toUpperCase())}
                 </span>
               )}
-            </p>
+            </div>
             <h3><RichText content={currentQuestion.prompt} /></h3>
 
             <div className="options-grid">

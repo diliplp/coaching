@@ -68,8 +68,8 @@ export function CurriculumPage() {
       else if (activeTab === "chapters") await apiClient.admin.deleteChapter(id);
       else await apiClient.admin.deleteTopic(id);
       fetchData();
-    } catch (e) {
-      alert("Error deleting record");
+    } catch (e: any) {
+      alert(`Error deleting record: ${e.message || "Unknown error"}`);
     }
   };
 

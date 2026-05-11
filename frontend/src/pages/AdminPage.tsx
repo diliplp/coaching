@@ -117,8 +117,12 @@ export function AdminPage() {
 
   const handleDeleteSubject = async (id: string) => {
     if (confirm("Are you sure?")) {
-      await apiClient.admin.deleteSubject(id);
-      fetchData();
+      try {
+        await apiClient.admin.deleteSubject(id);
+        fetchData();
+      } catch (error: any) {
+        alert(`Error deleting subject: ${error.message || "Unknown error"}`);
+      }
     }
   };
 
@@ -171,7 +175,7 @@ export function AdminPage() {
       </section>
 
       <div style={{ display: "flex", gap: "10px", marginBottom: "20px", borderBottom: "1px solid var(--color-border)", paddingBottom: "10px" }}>
-        {(["classes", "streams", "batches", "users"] as const).map((tab) => (
+        {(["classes", "streams", "batches", "subjects", "users"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}

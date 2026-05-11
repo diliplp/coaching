@@ -271,7 +271,13 @@ export async function generateCustomExam(request: TeacherCustomExamRequest): Pro
   }
 
   const subjectTopics = state.topics.filter((topic) => topic.subjectId === request.subjectId);
-  const subjectQuestions = state.questions.filter((question) => question.subjectId === request.subjectId);
+  let subjectQuestions = state.questions.filter((question) => question.subjectId === request.subjectId);
+  
+  // Apply Source Filtering
+  if (Array.isArray(request.allowedSourceTypes) && request.allowedSourceTypes.length > 0) {
+    subjectQuestions = subjectQuestions.filter(q => request.allowedSourceTypes?.includes(q.sourceType || "custom"));
+  }
+
   const availabilityByEntity = new Map<string, number>();
 
   if (request.selectionMode === "topic") {

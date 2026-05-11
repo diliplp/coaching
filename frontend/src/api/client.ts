@@ -49,10 +49,22 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    let errorMessage = `Request failed: ${response.status}`;
+    try {
+      const errorData = await response.json();
+      if (errorData.message) errorMessage = errorData.message;
+    } catch (e) {
+      // Ignore if not JSON
+    }
+    throw new Error(errorMessage);
   }
 
-  return response.json() as Promise<T>;
+  if (response.status === 204) {
+    return null as any;
+  }
+
+  const text = await response.text();
+  return text ? (JSON.parse(text) as T) : (null as any);
 }
 
 export const apiClient = {
@@ -66,7 +78,7 @@ export const apiClient = {
   getAnalytics: () => request<any>("/analytics"),
   getExams: () => request<any[]>("/exams"),
   getExam: (id: string) => request<ExamPayload>(`/exams/${id}`),
-  selfGenerateExam: (payload: { topicId: string; questionCount?: number }) =>
+  selfGenerateExam: (payload: { topicId?: string; topicIds?: string[]; questionCount?: number }) =>
     request<ExamPayload>("/exams/self-generate", { method: "POST", body: JSON.stringify(payload) }),
   deleteExam: (id: string) => request<void>(`/exams/${id}`, { method: "DELETE" }),
   getQuestionBank: () => request<QuestionBankResponse>("/question-bank"),
@@ -80,12 +92,13 @@ export const apiClient = {
     request<BatchAdaptivePlan[]>(`/adaptive-plan/batches${subjectId ? `?subjectId=${encodeURIComponent(subjectId)}` : ""}`),
   getMyAdaptiveSuggestion: () => request<AdaptivePlan>("/students/me/adaptive-suggestion"),
   getSubjectBooks: () => request<SubjectBooksResponse>("/subject-books"),
-  uploadSubjectBook: async (payload: { subjectId: string; title: string; file: File }) => {
+  uploadSubjectBook: async (payload: { subjectId: string; title: string; file: File; bookType?: string }) => {
     const session = getStoredSession();
     const formData = new FormData();
     formData.append("subjectId", payload.subjectId);
     formData.append("title", payload.title);
     formData.append("pdf", payload.file);
+    if (payload.bookType) formData.append("bookType", payload.bookType);
 
     const response = await fetch(buildApiUrl("/subject-books"), {
       method: "POST",
@@ -99,6 +112,7 @@ export const apiClient = {
 
     return response.json() as Promise<SubjectBook>;
   },
+  deleteSubjectBook: (id: string) => request<void>(`/subject-books/${id}`, { method: "DELETE" }),
   generateExam: (blueprintId: string) =>
     request<ExamPayload>(`/exams/generate/${blueprintId}`, {
       method: "POST"
@@ -122,7 +136,7 @@ export const apiClient = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
-  generateQuestionsFromBook: (bookId: string, payload: { topicId: string; questionCount: number }) =>
+  generateQuestionsFromBook: (bookId: string, payload: { chapterId?: string; topicId?: string; topicIds?: string[]; questionCount: number }) =>
     request<{ message: string; questions: any[] }>(`/subject-books/${bookId}/generate-questions`, {
       method: "POST",
       body: JSON.stringify(payload)
@@ -158,6 +172,7 @@ export const apiClient = {
     createTopic: (payload: { name: string; subjectId: string; chapterId: string }) => request<any>("/admin/topics", { method: "POST", body: JSON.stringify(payload) }),
     updateTopic: (id: string, payload: { name: string; subjectId: string; chapterId: string }) => request<any>(`/admin/topics/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
     deleteTopic: (id: string) => request<void>(`/admin/topics/${id}`, { method: "DELETE" }),
+    clearAllQuestions: () => request<void>("/admin/questions/clear-all", { method: "DELETE" }),
     
     getUsers: () => request<any[]>("/admin/users"),
     createUser: (payload: any) => request<any>("/admin/users", { method: "POST", body: JSON.stringify(payload) }),

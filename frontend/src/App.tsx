@@ -30,14 +30,35 @@ export default function App() {
           }
         >
           <Route path="/" element={<DashboardPage />} />
-          <Route path="/question-bank" element={<QuestionBankPage />} />
-          <Route path="/exam-builder" element={<ExamBuilderPage />} />
-          <Route path="/subject-books" element={<SubjectBooksPage />} />
+          <Route 
+            path="/question-bank" 
+            element={<ProtectedRoute roles={["super_admin", "teacher"]}><QuestionBankPage /></ProtectedRoute>} 
+          />
+          <Route 
+            path="/exam-builder" 
+            element={<ProtectedRoute roles={["super_admin", "teacher"]}><ExamBuilderPage /></ProtectedRoute>} 
+          />
+          <Route 
+            path="/subject-books" 
+            element={<ProtectedRoute roles={["super_admin", "teacher"]}><SubjectBooksPage /></ProtectedRoute>} 
+          />
           <Route path="/live-exam" element={<LiveExamPage />} />
-          <Route path="/analytics" element={<AnalyticsPage />} />
-          <Route path="/exams" element={<ExamsListPage />} />
-          <Route path="/curriculum" element={<CurriculumPage />} />
-          <Route path="/admin" element={<AdminPage />} />
+          <Route 
+            path="/analytics" 
+            element={<ProtectedRoute roles={["super_admin", "teacher"]}><AnalyticsPage /></ProtectedRoute>} 
+          />
+          <Route 
+            path="/exams" 
+            element={<ProtectedRoute roles={["super_admin", "teacher"]}><ExamsListPage /></ProtectedRoute>} 
+          />
+          <Route 
+            path="/curriculum" 
+            element={<ProtectedRoute roles={["super_admin", "teacher"]}><CurriculumPage /></ProtectedRoute>} 
+          />
+          <Route 
+            path="/admin" 
+            element={<ProtectedRoute roles={["super_admin"]}><AdminPage /></ProtectedRoute>} 
+          />
         </Route>
       </Routes>
     </BrowserRouter>

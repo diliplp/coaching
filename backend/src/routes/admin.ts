@@ -142,8 +142,22 @@ adminRouter.put("/subjects/:id", async (req, res) => {
 });
 
 adminRouter.delete("/subjects/:id", async (req, res) => {
-  await deleteRecord("subjects", req.params.id);
-  res.status(204).end();
+  try {
+    const { id } = req.params;
+    // Optional: Cascade delete chapters and topics
+    const state = await getAppState();
+    const chaptersToDelete = state.chapters.filter(c => c.subjectId === id);
+    const topicsToDelete = state.topics.filter(t => t.subjectId === id);
+
+    for (const ch of chaptersToDelete) await deleteRecord("chapters", ch.id);
+    for (const top of topicsToDelete) await deleteRecord("topics", top.id);
+
+    await deleteRecord("subjects", id);
+    res.status(204).end();
+  } catch (error) {
+    console.error("Error deleting subject:", error);
+    res.status(500).json({ message: "Failed to delete subject and its dependencies" });
+  }
 });
 
 // --- Chapters ---
@@ -198,6 +212,19 @@ adminRouter.put("/topics/:id", async (req, res) => {
 adminRouter.delete("/topics/:id", async (req, res) => {
   await deleteRecord("topics", req.params.id);
   res.status(204).end();
+});
+
+adminRouter.delete("/questions/clear-all", async (req, res) => {
+  try {
+    const state = await getAppState();
+    for (const q of state.questions) {
+      await deleteRecord("questions", q.id);
+    }
+    res.status(204).end();
+  } catch (error) {
+    console.error("Error clearing question bank:", error);
+    res.status(500).json({ message: "Failed to clear questions" });
+  }
 });
 
 // --- Users ---

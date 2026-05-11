@@ -16,44 +16,42 @@ export async function generateQuestionsFromText(params: {
   }
 
   const prompt = `
-You are an expert educator creating multiple-choice exam questions based purely on the provided reference text.
-Read the textbook content below. Then generate exactly ${questionCount} multiple-choice questions from it.
+You are an expert educator. Generate exactly ${questionCount} multiple-choice questions from the text below.
 
-IMPORTANT STEM FORMATTING RULES:
-1. For Mathematical and Physics equations, formulas, or symbols, you MUST use LaTeX formatting.
-   - Use $...$ for inline equations (e.g., $E = mc^2$).
-   - Use $$...$$ for block equations.
-   - CRITICAL: Since you are outputting JSON, you MUST double-escape all LaTeX backslashes (e.g. use \\\\frac instead of \\frac).
-2. For chemical structures and molecules, you MUST use SMILES strings enclosed in [SMILES: ... ].
-   - Always use strict SMILES notation. Metals and complex ions must be enclosed in brackets.
-   - Example: [SMILES: CC(=O)O] for acetic acid, [SMILES: [Ag]F] for silver fluoride.
-   - NEVER put full chemical reaction equations inside a SMILES tag. Only use it for single molecules or compounds.
+STRICT STEM RULES:
+1. LaTeX: Use $...$ for inline and $$...$$ for blocks.
+2. JSON ESCAPING: In the JSON, use FOUR backslashes for LaTeX (e.g., "\\\\frac").
+3. Chemistry: Use [SMILES: ...].
 
-Do NOT include any markdown formatting like \`\`\`json. Output ONLY raw JSON.
+JSON RULES:
+1. NO markdown wrappers (no \`\`\`json).
+2. NO trailing commas.
+3. Use DOUBLE QUOTES only.
+4. Output ONLY the JSON object.
 
-Output format must be a single JSON object containing a "questions" array, with this exact structure for each question:
+JSON STRUCTURE:
 {
   "questions": [
     {
-      "prompt": "The text of the question. What is the derivative of $x^2$?",
-      "difficulty": "easy", // Must be "easy", "medium", or "hard"
+      "prompt": "Question text with LaTeX if needed.",
+      "difficulty": "medium",
       "marks": 2,
       "negativeMarks": 0,
       "options": [
-        { "label": "A", "value": "Option A text", "isCorrect": true },
-        { "label": "B", "value": "Option B text", "isCorrect": false },
-        { "label": "C", "value": "Option C text", "isCorrect": false },
-        { "label": "D", "value": "Option D text", "isCorrect": false }
+        { "label": "A", "value": "Option 1", "isCorrect": true },
+        { "label": "B", "value": "Option 2", "isCorrect": false },
+        { "label": "C", "value": "Option 3", "isCorrect": false },
+        { "label": "D", "value": "Option 4", "isCorrect": false }
       ],
-      "explanation": "Brief explanation why the answer is correct."
+      "explanation": "Why it is correct."
     }
   ]
 }
 
-Textbook Content:
--------------------
+TEXT CONTENT:
+---
 ${text.substring(0, 30000)}
--------------------
+---
   `;
 
   try {
@@ -65,9 +63,9 @@ ${text.substring(0, 30000)}
       },
       body: JSON.stringify({
         // The model can be changed here:
-        model: "z-ai/glm-4.5-air:free", 
-        messages: [{ role: "user", content: prompt }]
-        // Note: response_format: { type: "json_object" } is omitted because the free LLaMA model rejects it
+        model: "openai/gpt-4o-mini", 
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" }
       })
     });
 
@@ -80,15 +78,25 @@ ${text.substring(0, 30000)}
     const data = await response.json();
     let rawResponse = data.choices?.[0]?.message?.content || '{"questions": []}';
     
-    // Safely strip any markdown wrappers that the AI might include
-    rawResponse = rawResponse.replace(/```json/gi, "").replace(/```/g, "").trim();
+    // Simple extraction: find the first { and last }
+    const startIdx = rawResponse.indexOf("{");
+    const endIdx = rawResponse.lastIndexOf("}");
+    if (startIdx !== -1 && endIdx !== -1) {
+      rawResponse = rawResponse.substring(startIdx, endIdx + 1);
+    }
 
     let parsedObj: any;
     try {
       parsedObj = JSON.parse(rawResponse);
     } catch (parseError) {
-      console.error("CRITICAL JSON PARSE ERROR. Raw AI Response was:", rawResponse);
-      throw parseError;
+      console.error("PARSE ERROR. Raw Response:", rawResponse);
+      // Try to remove potential markdown leftovers if any
+      try {
+        const cleaned = rawResponse.replace(/```json/g, "").replace(/```/g, "").trim();
+        parsedObj = JSON.parse(cleaned);
+      } catch (e) {
+        throw new Error(`AI returned invalid JSON: ${parseError.message}`);
+      }
     }
 
     let parsed = parsedObj.questions;

@@ -23,7 +23,8 @@ export function QuestionBankPage() {
       { id: "opt-3", label: "C", value: "" },
       { id: "opt-4", label: "D", value: "" },
     ],
-    explanation: ""
+    explanation: "",
+    sourceType: "custom" as any
   });
 
   const session = getStoredSession();
@@ -54,7 +55,8 @@ export function QuestionBankPage() {
         negativeMarks: question.negativeMarks,
         correctOptionIds: question.correctOptionIds,
         options: question.options,
-        explanation: question.explanation || ""
+        explanation: question.explanation || "",
+        sourceType: question.sourceType || "custom"
       });
     } else {
       setEditingQuestion(null);
@@ -73,7 +75,8 @@ export function QuestionBankPage() {
           { id: "opt-3", label: "C", value: "" },
           { id: "opt-4", label: "D", value: "" },
         ],
-        explanation: ""
+        explanation: "",
+        sourceType: "custom"
       });
     }
     setIsFormOpen(true);
@@ -107,6 +110,20 @@ export function QuestionBankPage() {
     }
   };
 
+  const handleClearAll = async () => {
+    const confirmation = prompt("This will PERMANENTLY delete ALL questions in the bank. Type 'DELETE ALL' to confirm.");
+    if (confirmation !== "DELETE ALL") return;
+    
+    try {
+      await apiClient.admin.clearAllQuestions();
+      refreshData();
+      alert("Question bank cleared successfully.");
+    } catch (error) {
+      console.error(error);
+      alert("Failed to clear question bank.");
+    }
+  };
+
   const toggleOption = (id: string) => {
     setFormData(prev => {
       if (prev.type === "single_correct") {
@@ -129,9 +146,18 @@ export function QuestionBankPage() {
             <h2>Subject and topic organized MCQ library</h2>
           </div>
           {isTeacher && (
-            <button className="primary-button" onClick={() => handleOpenForm()}>
-              + Add Question
-            </button>
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button 
+                className="secondary-button" 
+                style={{ color: "red", borderColor: "red" }} 
+                onClick={handleClearAll}
+              >
+                Clear Entire Bank
+              </button>
+              <button className="primary-button" onClick={() => handleOpenForm()}>
+                + Add Question
+              </button>
+            </div>
           )}
         </div>
       </section>
@@ -193,6 +219,16 @@ export function QuestionBankPage() {
                 <input type="number" value={formData.negativeMarks} onChange={e => setFormData({...formData, negativeMarks: Number(e.target.value)})} />
               </label>
             </div>
+
+            <label className="field">
+              <span>Question Source</span>
+              <select value={formData.sourceType} onChange={e => setFormData({...formData, sourceType: e.target.value})}>
+                <option value="pyq">PYQ (Previous Year Question)</option>
+                <option value="reference">Reference Book</option>
+                <option value="ai_generated">AI Generated</option>
+                <option value="custom">Custom/Self Created</option>
+              </select>
+            </label>
 
             <label className="field">
               <span>Question Prompt (Supports LaTeX and SMILES)</span>
@@ -257,6 +293,19 @@ export function QuestionBankPage() {
               <div>
                 <span className="tag">{question.subjectName}</span>
                 <span className="tag muted" style={{ marginLeft: "5px" }}>{question.topicName}</span>
+                {question.sourceType && (
+                  <span 
+                    className="tag" 
+                    style={{ 
+                      marginLeft: "5px", 
+                      background: question.sourceType === "pyq" ? "#fff3cd" : (question.sourceType === "reference" ? "#d1ecf1" : "#e2e3e5"),
+                      color: question.sourceType === "pyq" ? "#856404" : (question.sourceType === "reference" ? "#0c5460" : "#383d41"),
+                      borderColor: question.sourceType === "pyq" ? "#ffeeba" : (question.sourceType === "reference" ? "#bee5eb" : "#d6d8db")
+                    }}
+                  >
+                    {question.sourceType.toUpperCase()}
+                  </span>
+                )}
               </div>
               {isTeacher && (
                 <div style={{ display: "flex", gap: "10px" }}>
