@@ -490,10 +490,13 @@ apiRouter.post("/subject-books/:bookId/generate-questions", requireRole(["super_
   }
 
   try {
+    const subject = state.subjects.find(s => s.id === book.subjectId);
+    
     const generated = await generateQuestionsFromText({
       text: book.parsedText,
       topicId: topicIds[0],
       subjectId: book.subjectId,
+      subject: subject?.name,
       questionCount,
     });
 

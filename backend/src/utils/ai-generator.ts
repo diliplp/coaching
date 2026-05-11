@@ -7,13 +7,17 @@ export async function generateQuestionsFromText(params: {
   text: string;
   topicId: string;
   subjectId: string;
+  subject?: string;
   questionCount?: number;
 }): Promise<Question[]> {
-  const { text, topicId, subjectId, questionCount = 5 } = params;
+  const { text, topicId, subjectId, subject, questionCount = 5 } = params;
 
   if (!process.env.OPENROUTER_API_KEY) {
     throw new Error("OPENROUTER_API_KEY is missing. Please set it in your .env file.");
   }
+
+  const chemKeywords = ["chemistry", "molecule", "reaction", "bond", "acid", "organic", "compound", "structure", "formula", "chemical"];
+  const isChemistry = subject?.toLowerCase().includes("chemistry") || chemKeywords.some(k => text.toLowerCase().includes(k));
 
   const prompt = `
 You are an expert educator. Generate exactly ${questionCount} multiple-choice questions from the text below.
@@ -21,7 +25,7 @@ You are an expert educator. Generate exactly ${questionCount} multiple-choice qu
 STRICT STEM RULES:
 1. LaTeX: Use $...$ for inline and $$...$$ for blocks.
 2. JSON ESCAPING: In the JSON, use FOUR backslashes for LaTeX (e.g., "\\\\frac").
-3. Chemistry: Use [SMILES: ...].
+3. Chemistry: Use [SMILES: ...]. ${isChemistry ? "IMPORTANT: This is a chemistry text. You MUST include chemical structures using [SMILES: notation] in at least 2 questions to help visualize the molecules." : ""}
 
 JSON RULES:
 1. NO markdown wrappers (no \`\`\`json).
@@ -33,17 +37,17 @@ JSON STRUCTURE:
 {
   "questions": [
     {
-      "prompt": "Question text with LaTeX if needed.",
+      "prompt": "Which of the following is the structure of Ethanol? [SMILES: CCO]",
       "difficulty": "medium",
       "marks": 2,
       "negativeMarks": 0,
       "options": [
-        { "label": "A", "value": "Option 1", "isCorrect": true },
-        { "label": "B", "value": "Option 2", "isCorrect": false },
-        { "label": "C", "value": "Option 3", "isCorrect": false },
-        { "label": "D", "value": "Option 4", "isCorrect": false }
+        { "label": "A", "value": "Ethanol", "isCorrect": true },
+        { "label": "B", "value": "Methanol", "isCorrect": false },
+        { "label": "C", "value": "Propanol", "isCorrect": false },
+        { "label": "D", "value": "Butanol", "isCorrect": false }
       ],
-      "explanation": "Why it is correct."
+      "explanation": "Ethanol has the formula C2H5OH, represented as CCO in SMILES."
     }
   ]
 }
