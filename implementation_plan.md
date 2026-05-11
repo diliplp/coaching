@@ -299,20 +299,20 @@ Based on the existing stack direction, the following is a practical implementati
 
 ## 10. Phased Delivery Plan
 
-### Phase 1: Foundation
+### Phase 1: Foundation [DONE]
 - Initialize frontend and backend project
 - Set up auth and role model
 - Create core entities for class, stream, batch, subject, topic, and users
 - Set up question bank CRUD
 
-### Phase 2: Exam Engine MVP
+### Phase 2: Exam Engine MVP [DONE]
 - Create exam blueprints
 - Generate dynamic papers
 - Build timed exam interface
 - Implement answer autosave and auto-submit
 - Implement instant evaluation and result summary
 
-### Phase 3: Analytics MVP
+### Phase 3: Analytics MVP [IN PROGRESS]
 - Student topic-wise analysis
 - Weak-topic detection
 - Teacher batch dashboard

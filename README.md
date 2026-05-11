@@ -60,9 +60,17 @@ Backend API: http://localhost:3030/api
 | Teacher | teacher@coaching.local   | teacher123 |
 | Student | student@coaching.local   | student123 |
 
+## Recent Enhancements
+
+- **Smart Practice Builder**: Students can select multiple topics and filter by source (PYQ vs Reference) for self-generation.
+- **AI Question Engine (STEM)**: Generate questions from PDFs with automatic source tagging and STEM formatting (LaTeX/SMILES).
+- **Question Source Tagging**: Categorize content by source (PYQ, Reference, etc.) with visual badges in the bank and during exams.
+- **Enhanced Security**: Role-based access control for API endpoints and persistent database seeding.
+
 ## MVP Flow
 
 1. Log in as teacher/admin
-2. Open **Exam Builder** → generate a live exam from the seeded blueprint
-3. Log in as student → open **Live Exam** → attempt questions and submit
-4. Review instant score and weakest topics on the dashboard
+2. Open **Exam Builder** → generate a live exam from the seeded blueprint or build a weighted paper.
+3. Log in as student → open **Live Exam** → attempt questions and submit.
+4. Review instant score, solutions, and weakest topics on the dashboard.
+5. Use **Self-Practice Builder** to reinforce weak topics by selecting them specifically.
