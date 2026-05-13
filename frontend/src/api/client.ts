@@ -107,7 +107,12 @@ export const apiClient = {
     });
 
     if (!response.ok) {
-      throw new Error(`Upload failed: ${response.status}`);
+      let errorMessage = `Upload failed: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        if (errorData.message) errorMessage = errorData.message;
+      } catch (e) { /* ignore */ }
+      throw new Error(errorMessage);
     }
 
     return response.json() as Promise<SubjectBook>;

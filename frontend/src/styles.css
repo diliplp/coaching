@@ -436,6 +436,37 @@ button {
   color: white;
 }
 
+.tab-nav {
+  display: flex;
+  gap: 12px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 16px;
+  width: fit-content;
+}
+
+.tab-button {
+  padding: 10px 20px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  color: #64748b;
+}
+
+.tab-button.active {
+  background: white;
+  color: #0f766e;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  border-color: rgba(148, 163, 184, 0.1);
+}
+
+.tab-button:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.8);
+  color: #10203b;
+}
+
 @media (max-width: 960px) {
   .app-shell,
   .exam-layout,
@@ -461,3 +492,4 @@ button {
     flex-direction: column;
   }
 }
+

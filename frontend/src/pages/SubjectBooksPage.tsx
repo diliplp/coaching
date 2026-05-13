@@ -50,9 +50,9 @@ export function SubjectBooksPage() {
       setFile(null);
       setStatus("PDF uploaded successfully.");
       await loadData();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setStatus("Unable to upload the PDF book.");
+      setStatus(`Upload failed: ${error.message || "Unknown error"}`);
     }
   };
 
@@ -73,7 +73,7 @@ export function SubjectBooksPage() {
       setGeneratingForBook(null);
     } catch (error: any) {
       console.error(error);
-      setStatus("Failed to generate AI questions.");
+      setStatus(`Failed to generate AI questions: ${error.message || "Unknown error"}`);
       setGeneratingForBook(null);
     }
   };

@@ -59,14 +59,16 @@ ${text.substring(0, 30000)}
   `;
 
   try {
+    console.log(`Starting AI generation for topic ${topicId} in subject ${subjectId}...`);
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://coaching-portal.render.com", // Optional, helps OpenRouter tracking
+        "X-Title": "Coaching Portal Exam Gen"
       },
       body: JSON.stringify({
-        // The model can be changed here:
         model: "openai/gpt-4o-mini", 
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" }
@@ -75,11 +77,13 @@ ${text.substring(0, 30000)}
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error(`OpenRouter API error (${response.status}):`, errText);
-      throw new Error(`OpenRouter API error (${response.status}): ${errText}`);
+      console.error(`OpenRouter API error (Status ${response.status}):`, errText);
+      throw new Error(`OpenRouter API error (Status ${response.status}): ${errText}`);
     }
 
     const data = await response.json();
+    console.log("AI generation response received successfully.");
+    
     let rawResponse = data.choices?.[0]?.message?.content || '{"questions": []}';
     
     // Simple extraction: find the first { and last }
@@ -93,34 +97,39 @@ ${text.substring(0, 30000)}
     try {
       parsedObj = JSON.parse(rawResponse);
     } catch (parseError) {
-      console.error("PARSE ERROR. Raw Response:", rawResponse);
+      console.error("JSON PARSE ERROR. Raw Response:", rawResponse);
       // Try to remove potential markdown leftovers if any
       try {
         const cleaned = rawResponse.replace(/```json/g, "").replace(/```/g, "").trim();
         parsedObj = JSON.parse(cleaned);
       } catch (e) {
-        throw new Error(`AI returned invalid JSON: ${parseError.message}`);
+        throw new Error(`AI returned invalid JSON: ${parseError.message}. Content: ${rawResponse.substring(0, 100)}...`);
       }
     }
 
     let parsed = parsedObj.questions;
     if (!Array.isArray(parsed)) {
-      // Fallback if the AI just returned an array directly despite instructions
-      if (Array.isArray(parsedObj)) parsed = parsedObj;
-      else throw new Error("Output does not contain a valid 'questions' array.");
+      if (Array.isArray(parsedObj)) {
+        parsed = parsedObj;
+      } else {
+        console.error("Unexpected AI Response Structure:", parsedObj);
+        throw new Error("AI output does not contain a valid 'questions' array.");
+      }
     }
+
+    console.log(`Successfully parsed ${parsed.length} questions.`);
 
     return parsed.map((item: any, index: number) => {
       const qId = `q-ai-${Date.now()}-${index}`;
       const correctOptionIds: string[] = [];
-      const options: QuestionOption[] = item.options.map((opt: any, optIndex: number) => {
+      const options: QuestionOption[] = (item.options || []).map((opt: any, optIndex: number) => {
         const oId = `opt-${Date.now()}-${index}-${optIndex}`;
         if (opt.isCorrect) {
           correctOptionIds.push(oId);
         }
         return {
           id: oId,
-          label: opt.label || String.fromCharCode(65 + optIndex), // Fallback to A, B, C, D
+          label: opt.label || String.fromCharCode(65 + optIndex),
           value: opt.value,
         };
       });
@@ -142,7 +151,12 @@ ${text.substring(0, 30000)}
       };
     });
   } catch (error: any) {
-    console.error("AI Generation failed:", error);
-    throw new Error(error.message || "Failed to generate AI questions.");
+    console.error("AI Generation failed detailed log:", {
+      message: error.message,
+      stack: error.stack,
+      topicId,
+      subjectId
+    });
+    throw new Error(`AI Generation failed: ${error.message}`);
   }
 }

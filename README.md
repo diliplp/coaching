@@ -4,8 +4,10 @@ Exam portal with blueprint-based exam generation, automated evaluation, and adap
 
 ## Prerequisites
 
-- Node.js 18+
-- PostgreSQL
+- **Node.js 18+**
+- **PostgreSQL 14+**
+- **Python 3.8+** (for PDF text extraction)
+- **Gemini API Key** (for AI question generation)
 
 ## Setup
 
@@ -17,22 +19,23 @@ createdb coaching_saas
 
 ### 2. Create backend environment file
 
-```bash
-cp frontend/.env.example .env
-```
-
-Or create `.env` in the project root:
+Create `.env` in the `backend` folder:
 
 ```env
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/coaching_saas
 JWT_SECRET=replace-me
 PORT=3030
+GEMINI_API_KEY=your_key_here
 ```
 
 ### 3. Install dependencies
 
 ```bash
+# Install Node dependencies
 npm install
+
+# Install Python dependencies
+pip install -r requirements.txt
 ```
 
 ## Running Locally
@@ -41,7 +44,7 @@ Open two terminals:
 
 **Terminal 1 — Backend:**
 ```bash
-PORT=3030 npm run dev:backend
+npm run dev:backend
 ```
 
 **Terminal 2 — Frontend:**
@@ -49,7 +52,7 @@ PORT=3030 npm run dev:backend
 npm run dev:frontend
 ```
 
-Frontend: http://localhost:5222  
+Frontend: http://localhost:5173
 Backend API: http://localhost:3030/api
 
 ## Seeded Login Accounts

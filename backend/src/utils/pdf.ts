@@ -5,28 +5,34 @@ import { promisify } from "node:util";
 import { scriptsRoot } from "./paths.js";
 
 const execFileAsync = promisify(execFile);
-const bundledPython =
-  "/Users/dilipparmar/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3";
-
 function getPythonBinary() {
   if (process.env.PDF_PYTHON_PATH) {
     return process.env.PDF_PYTHON_PATH;
   }
-
-  if (fs.existsSync(bundledPython)) {
-    return bundledPython;
-  }
-
   return "python3";
 }
 
 export async function extractPdfText(filePath: string) {
   const python = getPythonBinary();
   const scriptPath = path.join(scriptsRoot, "extract_pdf_text.py");
-  const { stdout } = await execFileAsync(python, [scriptPath, filePath]);
-  return JSON.parse(stdout) as {
-    pageCount: number;
-    extractedText: string;
-    previewText: string;
-  };
+  
+  try {
+    const { stdout, stderr } = await execFileAsync(python, [scriptPath, filePath]);
+    if (stderr) {
+      console.warn("Python script stderr:", stderr);
+    }
+    return JSON.parse(stdout) as {
+      pageCount: number;
+      extractedText: string;
+      previewText: string;
+    };
+  } catch (err: any) {
+    console.error("PDF extraction command failed:", {
+      command: `${python} ${scriptPath} ${filePath}`,
+      error: err.message,
+      stack: err.stack,
+      stderr: err.stderr
+    });
+    throw new Error(`PDF extraction failed: ${err.message}${err.stderr ? " - " + err.stderr : ""}`);
+  }
 }

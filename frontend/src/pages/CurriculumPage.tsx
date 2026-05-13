@@ -13,6 +13,9 @@ export function CurriculumPage() {
 
   const [form, setForm] = useState<any>({ name: "", classId: "", streamId: "", subjectId: "", chapterId: "" });
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterSubjectId, setFilterSubjectId] = useState("");
+  const [filterChapterId, setFilterChapterId] = useState("");
 
   const fetchData = async () => {
     setLoading(true);
@@ -78,6 +81,28 @@ export function CurriculumPage() {
     setForm(item);
   };
 
+  const filteredItems = (() => {
+    if (activeTab === "subjects") {
+      return subjects.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    }
+    if (activeTab === "chapters") {
+      return chapters.filter(c => {
+        const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesSubject = filterSubjectId ? c.subjectId === filterSubjectId : true;
+        return matchesSearch && matchesSubject;
+      });
+    }
+    if (activeTab === "topics") {
+      return topics.filter(t => {
+        const matchesSearch = t.name.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesSubject = filterSubjectId ? t.subjectId === filterSubjectId : true;
+        const matchesChapter = filterChapterId ? t.chapterId === filterChapterId : true;
+        return matchesSearch && matchesSubject && matchesChapter;
+      });
+    }
+    return [];
+  })();
+
   if (loading) return <p>Loading curriculum...</p>;
 
   return (
@@ -92,7 +117,14 @@ export function CurriculumPage() {
           <button
             key={tab}
             className={activeTab === tab ? "tab-button active" : "tab-button"}
-            onClick={() => { setActiveTab(tab); setEditingId(null); setForm({ name: "", classId: "", streamId: "", subjectId: "", chapterId: "" }); }}
+            onClick={() => { 
+              setActiveTab(tab); 
+              setEditingId(null); 
+              setSearchTerm("");
+              setFilterSubjectId("");
+              setFilterChapterId("");
+              setForm({ name: "", classId: "", streamId: "", subjectId: "", chapterId: "" }); 
+            }}
           >
             {tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
@@ -152,26 +184,66 @@ export function CurriculumPage() {
           </form>
         </section>
 
-        <section className="panel">
-          <h3>Existing {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}</h3>
-          <ul className="plain-list" style={{ marginTop: "15px" }}>
-            {(activeTab === "subjects" ? subjects : activeTab === "chapters" ? chapters : topics).map(item => (
-              <li key={item.id} className="row-between" style={{ padding: "10px", borderBottom: "1px solid var(--color-border)" }}>
-                <div>
-                  <strong>{item.name}</strong>
-                  <div className="muted-copy">
-                    {activeTab === "subjects" && `${classes.find(c => c.id === item.classId)?.name} • ${streams.find(s => s.id === item.streamId)?.name}`}
-                    {activeTab === "chapters" && subjects.find(s => s.id === item.subjectId)?.name}
-                    {activeTab === "topics" && `${subjects.find(s => s.id === item.subjectId)?.name} • ${chapters.find(c => c.id === item.chapterId)?.name}`}
+        <section className="panel" style={{ display: "flex", flexDirection: "column" }}>
+          <div className="row-between" style={{ marginBottom: "15px", flexWrap: "wrap", gap: "10px" }}>
+            <h3>Existing {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}</h3>
+          </div>
+
+          <div className="stack" style={{ marginBottom: "20px", padding: "15px", background: "var(--color-bg-secondary)", borderRadius: "12px" }}>
+            <input 
+              type="text" 
+              placeholder={`Search ${activeTab}...`} 
+              value={searchTerm} 
+              onChange={e => setSearchTerm(e.target.value)} 
+              style={{ padding: "10px", borderRadius: "8px", border: "1px solid var(--color-border)" }}
+            />
+            
+            {(activeTab === "chapters" || activeTab === "topics") && (
+              <select 
+                value={filterSubjectId} 
+                onChange={e => { setFilterSubjectId(e.target.value); setFilterChapterId(""); }}
+                style={{ padding: "10px", borderRadius: "8px", border: "1px solid var(--color-border)" }}
+              >
+                <option value="">Filter by Subject</option>
+                {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            )}
+
+            {activeTab === "topics" && (
+              <select 
+                value={filterChapterId} 
+                onChange={e => setFilterChapterId(e.target.value)}
+                style={{ padding: "10px", borderRadius: "8px", border: "1px solid var(--color-border)" }}
+              >
+                <option value="">Filter by Chapter</option>
+                {chapters.filter(c => !filterSubjectId || c.subjectId === filterSubjectId).map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div style={{ maxHeight: "500px", overflowY: "auto" }}>
+            <ul className="plain-list">
+              {filteredItems.map(item => (
+                <li key={item.id} className="row-between" style={{ padding: "12px", borderBottom: "1px solid var(--color-border)" }}>
+                  <div>
+                    <strong>{item.name}</strong>
+                    <div className="muted-copy" style={{ fontSize: "0.85rem" }}>
+                      {activeTab === "subjects" && `${classes.find(c => c.id === item.classId)?.name} • ${streams.find(s => s.id === item.streamId)?.name}`}
+                      {activeTab === "chapters" && subjects.find(s => s.id === item.subjectId)?.name}
+                      {activeTab === "topics" && `${subjects.find(s => s.id === item.subjectId)?.name} • ${chapters.find(c => c.id === item.chapterId)?.name}`}
+                    </div>
                   </div>
-                </div>
-                <div style={{ display: "flex", gap: "10px" }}>
-                  <button className="secondary-button" onClick={() => handleEdit(item)}>Edit</button>
-                  <button className="secondary-button" style={{ color: "red", borderColor: "red" }} onClick={() => handleDelete(item.id)}>Delete</button>
-                </div>
-              </li>
-            ))}
-          </ul>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button className="secondary-button" style={{ padding: "6px 12px", fontSize: "0.85rem" }} onClick={() => handleEdit(item)}>Edit</button>
+                    <button className="secondary-button" style={{ padding: "6px 12px", fontSize: "0.85rem", color: "var(--color-error)", borderColor: "var(--color-error)" }} onClick={() => handleDelete(item.id)}>Delete</button>
+                  </div>
+                </li>
+              ))}
+              {filteredItems.length === 0 && <p className="muted-copy">No results found.</p>}
+            </ul>
+          </div>
         </section>
       </div>
     </div>
