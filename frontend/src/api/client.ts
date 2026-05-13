@@ -78,7 +78,7 @@ export const apiClient = {
   getAnalytics: () => request<any>("/analytics"),
   getExams: () => request<any[]>("/exams"),
   getExam: (id: string) => request<ExamPayload>(`/exams/${id}`),
-  selfGenerateExam: (payload: { topicId?: string; topicIds?: string[]; questionCount?: number }) =>
+  selfGenerateExam: (payload: { topicId?: string; topicIds?: string[]; questionCount?: number; allowedSourceTypes?: string[] }) =>
     request<ExamPayload>("/exams/self-generate", { method: "POST", body: JSON.stringify(payload) }),
   deleteExam: (id: string) => request<void>(`/exams/${id}`, { method: "DELETE" }),
   getQuestionBank: () => request<QuestionBankResponse>("/question-bank"),

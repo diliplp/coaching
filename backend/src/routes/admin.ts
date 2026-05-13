@@ -28,7 +28,7 @@ adminRouter.post("/classes", requireRole(["super_admin"]), async (req, res) => {
 });
 
 adminRouter.put("/classes/:id", requireRole(["super_admin"]), async (req, res) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
   const { name } = req.body;
   if (!name) return res.status(400).json({ message: "Name is required" });
   
@@ -38,7 +38,7 @@ adminRouter.put("/classes/:id", requireRole(["super_admin"]), async (req, res) =
 });
 
 adminRouter.delete("/classes/:id", requireRole(["super_admin"]), async (req, res) => {
-  await deleteRecord("classes", req.params.id);
+  await deleteRecord("classes", req.params.id as string);
   res.status(204).end();
 });
 
@@ -62,7 +62,7 @@ adminRouter.post("/streams", requireRole(["super_admin"]), async (req, res) => {
 });
 
 adminRouter.put("/streams/:id", requireRole(["super_admin"]), async (req, res) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
   const { name, classId } = req.body;
   if (!name || !classId) return res.status(400).json({ message: "Name and classId are required" });
 
@@ -72,7 +72,7 @@ adminRouter.put("/streams/:id", requireRole(["super_admin"]), async (req, res) =
 });
 
 adminRouter.delete("/streams/:id", requireRole(["super_admin"]), async (req, res) => {
-  await deleteRecord("streams", req.params.id);
+  await deleteRecord("streams", req.params.id as string);
   res.status(204).end();
 });
 
@@ -97,7 +97,7 @@ adminRouter.post("/batches", requireRole(["super_admin"]), async (req, res) => {
 });
 
 adminRouter.put("/batches/:id", requireRole(["super_admin"]), async (req, res) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
   const { name, classId, streamId } = req.body;
   if (!name || !classId || !streamId) return res.status(400).json({ message: "Name, classId, and streamId are required" });
 
@@ -107,7 +107,7 @@ adminRouter.put("/batches/:id", requireRole(["super_admin"]), async (req, res) =
 });
 
 adminRouter.delete("/batches/:id", requireRole(["super_admin"]), async (req, res) => {
-  await deleteRecord("batches", req.params.id);
+  await deleteRecord("batches", req.params.id as string);
   res.status(204).end();
 });
 

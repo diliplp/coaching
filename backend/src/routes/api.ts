@@ -267,7 +267,7 @@ apiRouter.post("/questions", requireRole(["super_admin", "teacher"]), async (req
 });
 
 apiRouter.put("/questions/:id", requireRole(["super_admin", "teacher"]), async (req, res) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
   const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation, sourceType } = req.body;
   
   const updatedQuestion = {
@@ -291,7 +291,7 @@ apiRouter.put("/questions/:id", requireRole(["super_admin", "teacher"]), async (
 
 apiRouter.delete("/questions/:id", requireRole(["super_admin", "teacher"]), async (req, res) => {
   const { deleteRecord } = await import("../data/database.js");
-  await deleteRecord("questions", req.params.id);
+  await deleteRecord("questions", req.params.id as string);
   res.status(204).end();
 });
 
@@ -443,7 +443,7 @@ apiRouter.post("/subject-books", requireRole(["super_admin", "teacher"]), upload
 apiRouter.delete("/subject-books/:id", requireRole(["super_admin", "teacher"]), async (req, res) => {
   try {
     const { id } = req.params;
-    await deleteRecord("subjectBooks", id);
+    await deleteRecord("subjectBooks", id as string);
     res.status(204).end();
   } catch (error) {
     console.error("Error deleting book:", error);
@@ -606,7 +606,7 @@ apiRouter.get("/exams", requireRole(["super_admin", "teacher"]), async (_req, re
 
 apiRouter.delete("/exams/:id", requireRole(["super_admin", "teacher"]), async (req, res) => {
   const { deleteRecord } = await import("../data/database.js");
-  await deleteRecord("exams", req.params.id);
+  await deleteRecord("exams", req.params.id as string);
   res.status(204).end();
 });
 

@@ -239,7 +239,7 @@ export function SubjectBooksPage() {
                         <span>Select Chapter</span>
                         <select 
                           value={selectedChapterId} 
-                          onChange={(e) => { setSelectedChapterId(e.target.value); setSelectedTopicId(""); }}
+                          onChange={(e) => { setSelectedChapterId(e.target.value); setSelectedTopicIds([]); }}
                           style={{ background: "white" }}
                         >
                           <option value="">Choose...</option>

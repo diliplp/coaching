@@ -96,7 +96,7 @@ ${text.substring(0, 30000)}
     let parsedObj: any;
     try {
       parsedObj = JSON.parse(rawResponse);
-    } catch (parseError) {
+    } catch (parseError: any) {
       console.error("JSON PARSE ERROR. Raw Response:", rawResponse);
       // Try to remove potential markdown leftovers if any
       try {
