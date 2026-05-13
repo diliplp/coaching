@@ -52,7 +52,8 @@ export const seedData: AppStore = {
   subjects: [
     { id: "subject-class9-math", name: "Mathematics", classId: "class-9", streamId: "stream-cbse" },
     { id: "subject-class9-science", name: "Science", classId: "class-9", streamId: "stream-cbse" },
-    { id: "subject-math", name: "Mathematics", classId: "class-12", streamId: "stream-science" }
+    { id: "subject-math", name: "Mathematics", classId: "class-12", streamId: "stream-science" },
+    { id: "subject-biology", name: "Biology", classId: "class-12", streamId: "stream-science" }
   ],
   subjectBooks: [],
   chapters: [
@@ -64,7 +65,9 @@ export const seedData: AppStore = {
     { id: "chapter-matter", subjectId: "subject-class9-science", name: "Matter in Our Surroundings" },
     { id: "chapter-algebra", subjectId: "subject-math", name: "Algebra" },
     { id: "chapter-calculus", subjectId: "subject-math", name: "Calculus" },
-    { id: "chapter-probability", subjectId: "subject-math", name: "Probability" }
+    { id: "chapter-probability", subjectId: "subject-math", name: "Probability" },
+    { id: "chapter-reproduction", subjectId: "subject-biology", name: "Reproduction" },
+    { id: "chapter-genetics", subjectId: "subject-biology", name: "Genetics and Evolution" }
   ],
   topics: [
     { id: "topic-number-systems", subjectId: "subject-class9-math", chapterId: "chapter-real-numbers", name: "Number Systems" },
@@ -75,7 +78,9 @@ export const seedData: AppStore = {
     { id: "topic-matter", subjectId: "subject-class9-science", chapterId: "chapter-matter", name: "Matter Around Us" },
     { id: "topic-algebra", subjectId: "subject-math", chapterId: "chapter-algebra", name: "Algebra" },
     { id: "topic-calculus", subjectId: "subject-math", chapterId: "chapter-calculus", name: "Calculus" },
-    { id: "topic-probability", subjectId: "subject-math", chapterId: "chapter-probability", name: "Probability" }
+    { id: "topic-probability", subjectId: "subject-math", chapterId: "chapter-probability", name: "Probability" },
+    { id: "topic-human-reproduction", subjectId: "subject-biology", chapterId: "chapter-reproduction", name: "Human Reproduction" },
+    { id: "topic-mendelian-genetics", subjectId: "subject-biology", chapterId: "chapter-genetics", name: "Principles of Inheritance" }
   ],
   questions: [
     {
@@ -455,6 +460,24 @@ export const seedData: AppStore = {
         { id: "q6o4", label: "D", value: "1.5" }
       ],
       explanation: "A valid probability lies between 0 and 1 inclusive."
+    },
+    {
+      id: "q-bio1",
+      subjectId: "subject-biology",
+      topicId: "topic-human-reproduction",
+      type: "single_correct",
+      prompt: "Which of the following is the primary male sex organ?",
+      difficulty: "easy",
+      marks: 4,
+      negativeMarks: 1,
+      correctOptionIds: ["q-bio1o1"],
+      options: [
+        { id: "q-bio1o1", label: "A", value: "Testis" },
+        { id: "q-bio1o2", label: "B", value: "Penis" },
+        { id: "q-bio1o3", label: "C", value: "Prostate gland" },
+        { id: "q-bio1o4", label: "D", value: "Vas deferens" }
+      ],
+      explanation: "The testes are the primary sex organs in males as they produce sperm and testosterone."
     }
   ],
   blueprints: [
@@ -501,6 +524,19 @@ export const seedData: AppStore = {
         { topicId: "topic-algebra", questionCount: 2 },
         { topicId: "topic-calculus", questionCount: 2 },
         { topicId: "topic-probability", questionCount: 2 }
+      ]
+    },
+    {
+      id: "bp-biology",
+      name: "Biology Unit Test (Reproduction)",
+      classId: "class-12",
+      streamId: "stream-science",
+      batchId: "batch-a1",
+      subjectId: "subject-biology",
+      durationMinutes: 20,
+      negativeMarkingEnabled: true,
+      topicRules: [
+        { topicId: "topic-human-reproduction", questionCount: 1 }
       ]
     }
   ],

@@ -10,3 +10,4 @@ export const uploadsRoot = path.join(backendRoot, "uploads");
 export const booksUploadsRoot = path.join(uploadsRoot, "books");
 export const scriptsRoot = path.join(backendRoot, "scripts");
 export const referencePapersRoot = path.join(workspaceRoot, "books-papers");
+export const frontendDistRoot = path.join(workspaceRoot, "frontend", "dist");

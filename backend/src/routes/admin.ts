@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { getAppState, listRecords, upsertRecord, deleteRecord } from "../data/database.js";
 import { requireAuth, requireRole } from "../utils/auth.js";
 import bcrypt from "bcryptjs";
@@ -10,7 +10,7 @@ adminRouter.use(requireAuth);
 adminRouter.use(requireRole(["super_admin", "teacher"]));
 
 // --- Classes (Super Admin only) ---
-adminRouter.get("/classes", async (_req, res) => {
+adminRouter.get("/classes", async (_req: Request, res: Response) => {
   const classes = await listRecords<ClassNode>("classes");
   res.json(classes);
 });
@@ -43,7 +43,7 @@ adminRouter.delete("/classes/:id", requireRole(["super_admin"]), async (req, res
 });
 
 // --- Streams (Super Admin only) ---
-adminRouter.get("/streams", async (_req, res) => {
+adminRouter.get("/streams", async (_req: Request, res: Response) => {
   const streams = await listRecords<StreamNode>("streams");
   res.json(streams);
 });
@@ -77,7 +77,7 @@ adminRouter.delete("/streams/:id", requireRole(["super_admin"]), async (req, res
 });
 
 // --- Batches (Super Admin only) ---
-adminRouter.get("/batches", async (_req, res) => {
+adminRouter.get("/batches", async (_req: Request, res: Response) => {
   const batches = await listRecords<BatchNode>("batches");
   res.json(batches);
 });
@@ -112,7 +112,7 @@ adminRouter.delete("/batches/:id", requireRole(["super_admin"]), async (req, res
 });
 
 // --- Subjects ---
-adminRouter.get("/subjects", async (_req, res) => {
+adminRouter.get("/subjects", async (_req: Request, res: Response) => {
   const subjects = await listRecords<any>("subjects");
   res.json(subjects);
 });
@@ -161,7 +161,7 @@ adminRouter.delete("/subjects/:id", async (req, res) => {
 });
 
 // --- Chapters ---
-adminRouter.get("/chapters", async (_req, res) => {
+adminRouter.get("/chapters", async (_req: Request, res: Response) => {
   const chapters = await listRecords<any>("chapters");
   res.json(chapters);
 });
@@ -188,7 +188,7 @@ adminRouter.delete("/chapters/:id", async (req, res) => {
 });
 
 // --- Topics ---
-adminRouter.get("/topics", async (_req, res) => {
+adminRouter.get("/topics", async (_req: Request, res: Response) => {
   const topics = await listRecords<any>("topics");
   res.json(topics);
 });
@@ -228,7 +228,7 @@ adminRouter.delete("/questions/clear-all", async (req, res) => {
 });
 
 // --- Users ---
-adminRouter.get("/users", async (_req, res) => {
+adminRouter.get("/users", async (_req: Request, res: Response) => {
   const users = await listRecords<UserAccount>("users");
   const safeUsers = users.map(u => {
     const { passwordHash, ...rest } = u;

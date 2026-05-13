@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import multer from "multer";
 import { getAppState, upsertRecord, deleteRecord } from "../data/database.js";
 import { booksUploadsRoot } from "../utils/paths.js";
@@ -295,7 +295,7 @@ apiRouter.delete("/questions/:id", requireRole(["super_admin", "teacher"]), asyn
   res.status(204).end();
 });
 
-apiRouter.get("/analytics", requireRole(["super_admin", "teacher"]), async (_req, res) => {
+apiRouter.get("/analytics", requireRole(["super_admin", "teacher"]), async (_req: Request, res: Response) => {
   const state = await getAppState();
   res.json({
     submissions: state.submissions,
@@ -306,7 +306,7 @@ apiRouter.get("/analytics", requireRole(["super_admin", "teacher"]), async (_req
   });
 });
 
-apiRouter.get("/blueprints", async (_req, res) => {
+apiRouter.get("/blueprints", async (_req: Request, res: Response) => {
   const state = await getAppState();
   res.json(
     state.blueprints.map((blueprint) => ({
@@ -378,7 +378,7 @@ apiRouter.get("/students/me/adaptive-suggestion", requireRole(["student"]), asyn
   res.json(plan);
 });
 
-apiRouter.get("/subject-books", async (_req, res) => {
+apiRouter.get("/subject-books", async (_req: Request, res: Response) => {
   const state = await getAppState();
   const referencePapers = await listReferencePapers();
   res.json({
@@ -599,7 +599,7 @@ apiRouter.post("/students/me/adaptive-generate", requireRole(["student"]), async
   });
 });
 
-apiRouter.get("/exams", requireRole(["super_admin", "teacher"]), async (_req, res) => {
+apiRouter.get("/exams", requireRole(["super_admin", "teacher"]), async (_req: Request, res: Response) => {
   const state = await getAppState();
   res.json(state.exams);
 });
