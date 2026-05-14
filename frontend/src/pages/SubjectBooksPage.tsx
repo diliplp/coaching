@@ -57,10 +57,6 @@ export function SubjectBooksPage() {
   };
 
   const handleGenerateQuestions = async (bookId: string) => {
-    if (!selectedChapterId) {
-      setStatus("Please select at least a chapter before generating questions.");
-      return;
-    }
     setGeneratingForBook(bookId);
     setStatus("AI is reading the PDF and generating questions with STEM formatting... This may take up to a minute.");
     try {
@@ -311,7 +307,7 @@ export function SubjectBooksPage() {
                         </label>
                         <button 
                           className="primary-button" 
-                          disabled={generatingForBook === book.id || !selectedChapterId} 
+                          disabled={generatingForBook === book.id} 
                           onClick={() => void handleGenerateQuestions(book.id)}
                           style={{ flex: 2, height: "42px" }}
                         >

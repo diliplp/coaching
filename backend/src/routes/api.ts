@@ -462,27 +462,58 @@ apiRouter.post("/subject-books/:bookId/generate-questions", requireRole(["super_
     topicIds = rawTopicIds.map(String);
   } else if (typeof rawTopicIds === "string" && rawTopicIds) {
     topicIds = [rawTopicIds];
-  } else if (chapterId) {
-    // Default to all topics in the chapter if no specific topic selected
-    topicIds = state.topics.filter(t => t.chapterId === chapterId).map(t => t.id);
-  } else {
-    // Try to get the single topicId for backward compatibility
-    const singleTopicId = getSingleFormValue(req.body.topicId) as string | undefined;
-    if (singleTopicId) topicIds = [singleTopicId];
   }
-
-  const questionCount = parseInt(getSingleFormValue(req.body.questionCount) as string || "5", 10);
-
-  if (topicIds.length === 0) {
-    res.status(400).json({ message: "At least one topic or a chapter must be selected" });
-    return;
-  }
-
   const book = state.subjectBooks.find((b) => b.id === bookId);
   if (!book) {
     res.status(404).json({ message: "Book (PDF) not found" });
     return;
   }
+
+  if (topicIds.length === 0) {
+    // If no specific topics exist in the chapter, create or find a "General" topic
+    if (chapterId) {
+      const chapter = state.chapters.find(c => c.id === chapterId);
+      const generalTopicName = `General - ${chapter?.name || "Chapter"}`;
+      let generalTopic = state.topics.find(t => t.chapterId === chapterId && t.name === generalTopicName);
+      if (!generalTopic) {
+        generalTopic = { 
+          id: `top-gen-${Date.now()}`, 
+          name: generalTopicName, 
+          subjectId: book.subjectId, 
+          chapterId: chapterId 
+        };
+        await upsertRecord("topics", generalTopic);
+        // Refresh state locally for immediate use
+        state.topics.push(generalTopic);
+      }
+      topicIds = [generalTopic.id];
+    } else {
+      // If no chapter selected, try to find any topic in the subject or create one
+      const subject = state.subjects.find(s => s.id === book.subjectId);
+      const generalTopicName = `General - ${subject?.name || "Subject"}`;
+      let generalTopic = state.topics.find(t => t.subjectId === book.subjectId && t.name === generalTopicName);
+      if (!generalTopic) {
+        // We need a chapter to create a topic. Let's find or create a "General" chapter.
+        let generalChapter = state.chapters.find(c => c.subjectId === book.subjectId && c.name === "General Content");
+        if (!generalChapter) {
+          generalChapter = { id: `ch-gen-${Date.now()}`, name: "General Content", subjectId: book.subjectId };
+          await upsertRecord("chapters", generalChapter);
+          state.chapters.push(generalChapter);
+        }
+        generalTopic = { 
+          id: `top-gen-${Date.now()}`, 
+          name: generalTopicName, 
+          subjectId: book.subjectId, 
+          chapterId: generalChapter.id 
+        };
+        await upsertRecord("topics", generalTopic);
+        state.topics.push(generalTopic);
+      }
+      topicIds = [generalTopic.id];
+    }
+  }
+
+  const questionCount = parseInt(getSingleFormValue(req.body.questionCount) as string || "5", 10);
 
   if (!book.parsedText) {
     res.status(400).json({ message: "Book does not have parsed text. Was it fully processed?" });
