@@ -1,4 +1,5 @@
 import { Question, QuestionOption, QuestionType } from "../types.js";
+import { listRecords } from "../data/database.js";
 
 // Initialize OpenRouter using native fetch
 // Expects process.env.OPENROUTER_API_KEY to be set.
@@ -19,6 +20,27 @@ export async function generateQuestionsFromText(params: {
   const chemKeywords = ["chemistry", "molecule", "reaction", "bond", "acid", "organic", "compound", "structure", "formula", "chemical"];
   const isChemistry = subject?.toLowerCase().includes("chemistry") || chemKeywords.some(k => text.toLowerCase().includes(k));
 
+  // Fetch verified questions to use as examples
+  const allQuestionsInDb = await listRecords<Question>("questions");
+  const verifiedExamples = allQuestionsInDb
+    .filter(q => q.isVerified && q.topicId === topicId)
+    .slice(0, 3)
+    .map(q => ({
+      prompt: q.prompt,
+      difficulty: q.difficulty,
+      marks: q.marks,
+      options: q.options.map(o => ({
+        label: o.label,
+        value: o.value,
+        isCorrect: q.correctOptionIds.includes(o.id)
+      })),
+      explanation: q.explanation
+    }));
+
+  const exampleInstruction = verifiedExamples.length > 0
+    ? `\nHere are some examples of high-quality questions for this topic. Follow their style and formatting:\n${JSON.stringify(verifiedExamples, null, 2)}\n`
+    : "";
+
   const allQuestions: Question[] = [];
   const batchSize = 10;
   const numBatches = Math.ceil(questionCount / batchSize);
@@ -36,12 +58,23 @@ export async function generateQuestionsFromText(params: {
 
     const prompt = `
 You are an expert educator. Generate exactly ${currentBatchCount} multiple-choice questions from the text below.
+${exampleInstruction}
 ${avoidanceInstruction}
 
 STRICT STEM RULES:
 1. LaTeX: Use $...$ for inline and $$...$$ for blocks.
 2. JSON ESCAPING: In the JSON, use FOUR backslashes for LaTeX (e.g., "\\\\frac").
-3. Chemistry: Use [SMILES: notation]. ${isChemistry ? "IMPORTANT: This is a chemistry text. You MUST include chemical structures using [SMILES: notation] (e.g. [SMILES: CC(=O)O]) in at least 2 questions. NEVER use placeholders like [SMILES: ?] or empty tags." : ""}
+3. Chemistry: Use [SMILES: notation] for chemical structures. 
+   IMPORTANT: A SMILES string is NOT a chemical formula. 
+   - WRONG: [SMILES: CH3COOH], [SMILES: H2O], [SMILES: C2H5OH]
+   - CORRECT: [SMILES: CC(=O)O], [SMILES: O], [SMILES: CCO]
+   - Examples for your reference:
+     * Acetic Acid: CC(=O)O
+     * Ethanol: CCO
+     * Methane: C
+     * Glucose: OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@H]1O
+     * Benzene: c1ccccc1
+   NEVER use placeholders like '?' or chemical formulas inside [SMILES: ] tags.
 
 JSON RULES:
 1. NO markdown wrappers (no \`\`\`json).

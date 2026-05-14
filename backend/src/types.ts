@@ -105,6 +105,7 @@ export interface Question {
   options: QuestionOption[];
   explanation: string;
   sourceType?: QuestionSource;
+  isVerified?: boolean;
 }
 
 export interface ExamBlueprintTopicRule {

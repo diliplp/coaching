@@ -110,6 +110,7 @@ export function RichText({ content }: { content: string }) {
 
 function SmilesRenderer({ smiles }: { smiles: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const cleanSmiles = smiles.trim();
 
   useEffect(() => {
     if (canvasRef.current) {
@@ -124,24 +125,24 @@ function SmilesRenderer({ smiles }: { smiles: string }) {
 
         const drawer = new DrawerConstructor({ width: 200, height: 200, terminalCarbons: true });
         parseFunc(
-          smiles,
+          cleanSmiles,
           (tree: any) => {
             drawer.draw(tree, canvasRef.current, "light", false);
           },
           (err: any) => {
-            console.error("Failed to parse/render smiles:", smiles, err);
+            console.error("Failed to parse/render smiles:", cleanSmiles, err);
           }
         );
       } catch (e) {
         console.error("Failed to initialize smiles drawer:", e);
       }
     }
-  }, [smiles]);
+  }, [cleanSmiles]);
 
   return (
-    <span style={{ display: "inline-block", margin: "0 10px", verticalAlign: "middle", textAlign: "center" }}>
-      <canvas ref={canvasRef} data-smiles={smiles} width="150" height="150" style={{ maxWidth: "100%", display: "block", margin: "0 auto" }}></canvas>
-      <span style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", fontFamily: "monospace" }}>{smiles}</span>
+    <span style={{ display: "inline-block", margin: "10px", verticalAlign: "middle", textAlign: "center", border: "1px solid var(--color-border)", borderRadius: "8px", padding: "10px", background: "#f9f9f9" }}>
+      <canvas ref={canvasRef} data-smiles={cleanSmiles} width="200" height="200" style={{ maxWidth: "100%", display: "block", margin: "0 auto" }}></canvas>
+      <span style={{ fontSize: "0.7rem", color: "var(--color-text-muted)", fontFamily: "monospace", display: "block", marginTop: "5px" }}>{cleanSmiles}</span>
     </span>
   );
 }

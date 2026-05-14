@@ -1,11 +1,11 @@
 import { Router, Request, Response } from "express";
-import { getAppState, listRecords, upsertRecord, deleteRecord } from "../data/database.js";
+import { getAppState, listRecords, upsertRecord, deleteRecord, getRecord } from "../data/database.js";
 import { requireAuth, requireRole } from "../utils/auth.js";
 import bcrypt from "bcryptjs";
 import multer from "multer";
 import { parseCurriculumDocx } from "../utils/curriculum-bulk.js";
 import { uploadsRoot } from "../utils/paths.js";
-import type { ClassNode, StreamNode, BatchNode, UserAccount, Student } from "../types.js";
+import type { ClassNode, StreamNode, BatchNode, UserAccount, Student, Question } from "../types.js";
 
 export const adminRouter = Router();
 
@@ -381,5 +381,17 @@ adminRouter.post("/curriculum/save-bulk", async (req: Request, res: Response) =>
   } catch (error: any) {
     console.error("Bulk save error:", error);
     res.status(500).json({ message: error.message });
+  }
+});
+
+adminRouter.post("/questions/:id/verify", async (req: Request, res: Response) => {
+  try {
+    const q = await getRecord<Question>("questions", req.params.id as string);
+    if (!q) return res.status(404).json({ error: "Question not found" });
+    q.isVerified = true;
+    await upsertRecord("questions", q);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
   }
 });

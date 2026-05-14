@@ -98,6 +98,16 @@ export function QuestionBankPage() {
     }
   };
 
+  const handleVerify = async (id: string) => {
+    try {
+      await apiClient.admin.verifyQuestion(id);
+      refreshData();
+    } catch (error) {
+      alert("Error verifying question");
+      console.error(error);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (confirm("Are you sure you want to delete this question?")) {
       try {
@@ -287,7 +297,7 @@ export function QuestionBankPage() {
       )}
 
       <div className="question-grid">
-        {data.questions.map((question) => (
+        {data.questions.map((question: any) => (
           <article className="panel question-card" key={question.id}>
             <div className="row-between">
               <div>
@@ -306,9 +316,23 @@ export function QuestionBankPage() {
                     {question.sourceType.toUpperCase()}
                   </span>
                 )}
+                {question.isVerified && (
+                  <span className="tag" style={{ marginLeft: "5px", background: "#d4edda", color: "#155724", borderColor: "#c3e6cb" }}>
+                    VERIFIED
+                  </span>
+                )}
               </div>
               {isTeacher && (
                 <div style={{ display: "flex", gap: "10px" }}>
+                  {!question.isVerified && (
+                    <button 
+                      className="secondary-button" 
+                      style={{ padding: "4px 8px", fontSize: "0.8rem", color: "#155724", borderColor: "#155724" }} 
+                      onClick={() => handleVerify(question.id)}
+                    >
+                      Verify
+                    </button>
+                  )}
                   <button className="secondary-button" style={{ padding: "4px 8px", fontSize: "0.8rem" }} onClick={() => handleOpenForm(question)}>Edit</button>
                   <button className="secondary-button" style={{ padding: "4px 8px", fontSize: "0.8rem", color: "red", borderColor: "red" }} onClick={() => handleDelete(question.id)}>Delete</button>
                 </div>
@@ -319,7 +343,7 @@ export function QuestionBankPage() {
               {question.type === "multi_correct" ? "Multi correct" : "Single correct"} • {question.difficulty} • {question.marks} marks • -{question.negativeMarks}
             </p>
             <ul className="option-list">
-              {question.options.map((option) => (
+              {question.options.map((option: any) => (
                 <li key={option.id} style={{ fontWeight: question.correctOptionIds.includes(option.id) ? "bold" : "normal", color: question.correctOptionIds.includes(option.id) ? "var(--color-primary)" : "inherit" }}>
                   {option.label}. <RichText content={option.value} />
                   {question.correctOptionIds.includes(option.id) && " ✓"}
