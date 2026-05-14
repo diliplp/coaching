@@ -25,7 +25,7 @@ You are an expert educator. Generate exactly ${questionCount} multiple-choice qu
 STRICT STEM RULES:
 1. LaTeX: Use $...$ for inline and $$...$$ for blocks.
 2. JSON ESCAPING: In the JSON, use FOUR backslashes for LaTeX (e.g., "\\\\frac").
-3. Chemistry: Use [SMILES: ...]. ${isChemistry ? "IMPORTANT: This is a chemistry text. You MUST include chemical structures using [SMILES: notation] in at least 2 questions to help visualize the molecules." : ""}
+3. Chemistry: Use [SMILES: notation]. ${isChemistry ? "IMPORTANT: This is a chemistry text. You MUST include chemical structures using [SMILES: notation] (e.g. [SMILES: CC(=O)O]) in at least 2 questions. NEVER use placeholders like [SMILES: ?] or empty tags." : ""}
 
 JSON RULES:
 1. NO markdown wrappers (no \`\`\`json).
@@ -65,7 +65,7 @@ ${text.substring(0, 30000)}
       headers: {
         "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://coaching-portal.render.com", // Optional, helps OpenRouter tracking
+        "HTTP-Referer": "https://railway.app", 
         "X-Title": "Coaching Portal Exam Gen"
       },
       body: JSON.stringify({

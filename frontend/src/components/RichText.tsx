@@ -114,8 +114,16 @@ function SmilesRenderer({ smiles }: { smiles: string }) {
   useEffect(() => {
     if (canvasRef.current) {
       try {
-        const drawer = new SmiDrawer.Drawer({ width: 150, height: 150, terminalCarbons: true });
-        SmiDrawer.parse(
+        const DrawerConstructor = SmiDrawer.Drawer || (SmiDrawer as any).default?.Drawer;
+        const parseFunc = SmiDrawer.parse || (SmiDrawer as any).default?.parse;
+
+        if (!DrawerConstructor || !parseFunc) {
+          console.error("SmilesDrawer components not found in import:", SmiDrawer);
+          return;
+        }
+
+        const drawer = new DrawerConstructor({ width: 200, height: 200, terminalCarbons: true });
+        parseFunc(
           smiles,
           (tree: any) => {
             drawer.draw(tree, canvasRef.current, "light", false);
