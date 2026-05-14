@@ -17,7 +17,7 @@ import { extractPdfText } from "../utils/pdf.js";
 import { generateQuestionsFromText, parseExamPrompt } from "../utils/ai-generator.js";
 import { listReferencePapers } from "../utils/reference-papers.js";
 import { findUserByEmail, requireAuth, requireRole, signAuthToken, verifyPassword } from "../utils/auth.js";
-import type { AuthenticatedRequest, SubjectBook } from "../types.js";
+import type { AuthenticatedRequest, Question, QuestionSource, SubjectBook } from "../types.js";
 
 export const apiRouter = Router();
 
@@ -666,8 +666,42 @@ apiRouter.post("/exams/generate-from-prompt", requireRole(["super_admin", "teach
       return res.status(404).json({ message: `Could not find any topics for subject: ${subject.name}` });
     }
 
-    // 4. Create Exam
+    // 4. Check if we have enough questions, if not, generate on-the-fly
     const totalQuestions = Math.min(parsed.questionCount, 50);
+    let existingQuestions = state.questions.filter(q => targetTopicIds.includes(q.topicId));
+    
+    if (existingQuestions.length < totalQuestions) {
+      const book = state.subjectBooks.find(b => b.subjectId === subject.id && b.parsedText);
+      if (book) {
+        const neededCount = totalQuestions - existingQuestions.length;
+        try {
+          const generated = await generateQuestionsFromText({
+            text: book.parsedText!,
+            topicId: targetTopicIds[0],
+            subjectId: subject.id,
+            subject: subject.name,
+            questionCount: neededCount,
+          });
+
+          const finalizedQuestions: Question[] = generated.map((q, i) => ({
+            ...q,
+            topicId: targetTopicIds[i % targetTopicIds.length],
+            sourceType: "ai_generated" as QuestionSource
+          }));
+
+          for (const q of finalizedQuestions) {
+            await upsertRecord("questions", q);
+            existingQuestions.push(q);
+          }
+          // Update state with newly added questions
+          state.questions.push(...finalizedQuestions);
+        } catch (genErr) {
+          console.error("On-the-fly generation failed:", genErr);
+          // Continue with what we have
+        }
+      }
+    }
+
     const weightagePerTopic = 100 / targetTopicIds.length;
 
     const generated = await generateCustomExam({
@@ -684,8 +718,14 @@ apiRouter.post("/exams/generate-from-prompt", requireRole(["super_admin", "teach
       allowedSourceTypes: ["pyq", "reference", "ai_generated", "custom"]
     });
 
-    if (!generated || "error" in generated) {
-      return res.status(400).json({ message: "Unable to generate exam from prompt" });
+    if (!generated) {
+      return res.status(400).json({ message: "Unable to generate exam from prompt: No questions available." });
+    }
+
+    if ("error" in generated) {
+      return res.status(400).json({ 
+        message: `Unable to generate exam: ${generated.error}. Matched Subject: ${subject.name}, Topics: ${matchedTopics.map(t => t.name).join(", ")}` 
+      });
     }
 
     res.status(201).json({

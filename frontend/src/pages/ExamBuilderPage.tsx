@@ -206,7 +206,7 @@ export function ExamBuilderPage() {
                 padding: "20px", 
                 border: "none", 
                 fontSize: "1.1rem",
-                color: "var(--color-text)",
+                color: "#1f2937",
                 background: "rgba(255,255,255,0.95)",
                 boxShadow: "inset 0 2px 4px rgba(0,0,0,0.1)"
               }}
