@@ -2,6 +2,9 @@ import { Router, Request, Response } from "express";
 import { getAppState, listRecords, upsertRecord, deleteRecord } from "../data/database.js";
 import { requireAuth, requireRole } from "../utils/auth.js";
 import bcrypt from "bcryptjs";
+import multer from "multer";
+import { parseCurriculumDocx } from "../utils/curriculum-bulk.js";
+import { uploadsRoot } from "../utils/paths.js";
 import type { ClassNode, StreamNode, BatchNode, UserAccount, Student } from "../types.js";
 
 export const adminRouter = Router();
@@ -327,6 +330,56 @@ adminRouter.delete("/users/:id", async (req, res) => {
   if (user?.studentId) {
     await deleteRecord("students", user.studentId);
   }
-  await deleteRecord("users", req.params.id);
+  await deleteRecord("users", req.params.id as string);
   res.status(204).end();
+});
+
+// --- Bulk Curriculum Upload ---
+const upload = multer({ dest: uploadsRoot });
+
+adminRouter.post("/curriculum/parse-docx", upload.single("docx"), async (req: any, res: Response) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+    const curriculum = await parseCurriculumDocx(req.file.path);
+    res.json(curriculum);
+  } catch (error: any) {
+    console.error("Bulk parse error:", error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+adminRouter.post("/curriculum/save-bulk", async (req: Request, res: Response) => {
+  try {
+    const { subjects, classId, streamId } = req.body; // Array of subjects with chapters and topics
+
+    for (const sub of subjects) {
+      // Find or create subject
+      const allSubjects = await listRecords<any>("subjects");
+      let subject = allSubjects.find(s => s.name.toLowerCase() === sub.name.toLowerCase() && s.classId === classId);
+      
+      if (!subject) {
+        subject = { id: `sub-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`, name: sub.name, classId, streamId };
+        await upsertRecord("subjects", subject);
+      }
+
+      for (const chap of sub.chapters) {
+        const chapter = { id: `ch-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`, name: chap.name, subjectId: subject.id };
+        await upsertRecord("chapters", chapter);
+
+        for (const topName of chap.topics) {
+          const topic = { 
+            id: `top-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`, 
+            name: topName, 
+            subjectId: subject.id, 
+            chapterId: chapter.id 
+          };
+          await upsertRecord("topics", topic);
+        }
+      }
+    }
+    res.json({ message: "Bulk curriculum imported successfully" });
+  } catch (error: any) {
+    console.error("Bulk save error:", error);
+    res.status(500).json({ message: error.message });
+  }
 });

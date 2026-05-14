@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { apiClient } from "../api/client";
 
 export function CurriculumPage() {
-  const [activeTab, setActiveTab] = useState<"subjects" | "chapters" | "topics">("subjects");
+  const [activeTab, setActiveTab] = useState<"subjects" | "chapters" | "topics" | "bulk">("subjects");
   const [subjects, setSubjects] = useState<any[]>([]);
   const [chapters, setChapters] = useState<any[]>([]);
   const [topics, setTopics] = useState<any[]>([]);
@@ -10,6 +10,13 @@ export function CurriculumPage() {
   const [streams, setStreams] = useState<any[]>([]);
 
   const [loading, setLoading] = useState(true);
+
+  // Bulk Upload State
+  const [bulkFile, setBulkFile] = useState<File | null>(null);
+  const [parsedData, setParsedData] = useState<any[] | null>(null);
+  const [bulkClassId, setBulkClassId] = useState("");
+  const [bulkStreamId, setBulkStreamId] = useState("");
+  const [bulkStatus, setBulkStatus] = useState("");
 
   const [form, setForm] = useState<any>({ name: "", classId: "", streamId: "", subjectId: "", chapterId: "" });
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -52,7 +59,7 @@ export function CurriculumPage() {
       } else if (activeTab === "chapters") {
         if (editingId) await apiClient.admin.updateChapter(editingId, form);
         else await apiClient.admin.createChapter(form);
-      } else {
+      } else if (activeTab === "topics") {
         if (editingId) await apiClient.admin.updateTopic(editingId, form);
         else await apiClient.admin.createTopic(form);
       }
@@ -64,12 +71,45 @@ export function CurriculumPage() {
     }
   };
 
+  const handleBulkParse = async () => {
+    if (!bulkFile) return;
+    setBulkStatus("Parsing document...");
+    try {
+      const data = await apiClient.admin.parseCurriculumDocx(bulkFile);
+      setParsedData(data);
+      setBulkStatus("Parsing complete. Please review and select Class/Stream below.");
+    } catch (e: any) {
+      setBulkStatus(`Error: ${e.message}`);
+    }
+  };
+
+  const handleBulkSave = async () => {
+    if (!parsedData || !bulkClassId || !bulkStreamId) {
+      alert("Please select Class and Stream first.");
+      return;
+    }
+    setBulkStatus("Saving to database...");
+    try {
+      await apiClient.admin.saveBulkCurriculum({
+        classId: bulkClassId,
+        streamId: bulkStreamId,
+        subjects: parsedData
+      });
+      setBulkStatus("Bulk upload successful!");
+      setParsedData(null);
+      setBulkFile(null);
+      fetchData();
+    } catch (e: any) {
+      setBulkStatus(`Error: ${e.message}`);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure?")) return;
     try {
       if (activeTab === "subjects") await apiClient.admin.deleteSubject(id);
       else if (activeTab === "chapters") await apiClient.admin.deleteChapter(id);
-      else await apiClient.admin.deleteTopic(id);
+      else if (activeTab === "topics") await apiClient.admin.deleteTopic(id);
       fetchData();
     } catch (e: any) {
       alert(`Error deleting record: ${e.message || "Unknown error"}`);
@@ -113,7 +153,7 @@ export function CurriculumPage() {
       </section>
 
       <nav className="tab-nav" style={{ marginBottom: "20px" }}>
-        {(["subjects", "chapters", "topics"] as const).map(tab => (
+        {(["subjects", "chapters", "topics", "bulk"] as const).map(tab => (
           <button
             key={tab}
             className={activeTab === tab ? "tab-button active" : "tab-button"}
@@ -126,126 +166,204 @@ export function CurriculumPage() {
               setForm({ name: "", classId: "", streamId: "", subjectId: "", chapterId: "" }); 
             }}
           >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            {tab === "bulk" ? "Bulk Upload" : tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
         ))}
       </nav>
 
-      <div className="grid-two">
-        <section className="panel">
-          <h3>{editingId ? "Edit" : "Add"} {activeTab.slice(0, -1)}</h3>
-          <form onSubmit={handleSubmit} className="stack" style={{ marginTop: "15px" }}>
-            <label className="field">
-              <span>Name</span>
-              <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required />
-            </label>
+      {activeTab === "bulk" ? (
+        <div className="stack" style={{ gap: "2rem" }}>
+          <section className="panel">
+            <h3>Import Curriculum from Word (.docx)</h3>
+            <p className="muted-copy" style={{ marginBottom: "20px" }}>
+              Upload a document containing Subjects, Chapters, and Topics. The system will automatically detect the structure.
+            </p>
+            
+            <div className="stack" style={{ gap: "1rem" }}>
+              <label className="field">
+                <span>Choose Word File</span>
+                <input 
+                  type="file" 
+                  accept=".docx" 
+                  onChange={e => setBulkFile(e.target.files?.[0] || null)} 
+                />
+              </label>
+              
+              <button 
+                className="primary-button" 
+                onClick={handleBulkParse} 
+                disabled={!bulkFile}
+              >
+                Parse Document
+              </button>
+              
+              {bulkStatus && <p style={{ fontWeight: "bold", color: "var(--color-primary)" }}>{bulkStatus}</p>}
+            </div>
+          </section>
 
-            {activeTab === "subjects" && (
-              <>
+          {parsedData && (
+            <section className="panel">
+              <h3>Review and Confirm Import</h3>
+              <div className="grid-two" style={{ marginBottom: "20px" }}>
                 <label className="field">
-                  <span>Class</span>
-                  <select value={form.classId} onChange={e => setForm({ ...form, classId: e.target.value })} required>
+                  <span>Target Class</span>
+                  <select value={bulkClassId} onChange={e => setBulkClassId(e.target.value)}>
                     <option value="">Select Class</option>
                     {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </label>
                 <label className="field">
-                  <span>Stream</span>
-                  <select value={form.streamId} onChange={e => setForm({ ...form, streamId: e.target.value })} required>
+                  <span>Target Stream</span>
+                  <select value={bulkStreamId} onChange={e => setBulkStreamId(e.target.value)}>
                     <option value="">Select Stream</option>
-                    {streams.filter(s => s.classId === form.classId).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    {streams.filter(s => s.classId === bulkClassId).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </label>
-              </>
-            )}
+              </div>
 
-            {(activeTab === "chapters" || activeTab === "topics") && (
+              <div style={{ maxHeight: "400px", overflowY: "auto", background: "var(--color-bg-secondary)", padding: "1rem", borderRadius: "8px" }}>
+                {parsedData.map((s: any, idx: number) => (
+                  <div key={idx} style={{ marginBottom: "1.5rem" }}>
+                    <h4 style={{ color: "var(--color-primary)" }}>Subject: {s.name}</h4>
+                    {s.chapters.map((c: any, cIdx: number) => (
+                      <div key={cIdx} style={{ marginLeft: "1rem", marginTop: "0.5rem" }}>
+                        <strong>Chapter: {c.name}</strong>
+                        <ul style={{ fontSize: "0.85rem", color: "var(--color-text-secondary)" }}>
+                          {c.topics.map((t: any, tIdx: number) => <li key={tIdx}>{t}</li>)}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+
+              <button 
+                className="primary-button" 
+                style={{ marginTop: "20px" }} 
+                onClick={handleBulkSave}
+              >
+                Confirm and Save to Database
+              </button>
+            </section>
+          )}
+        </div>
+      ) : (
+        <div className="grid-two">
+          <section className="panel">
+            <h3>{editingId ? "Edit" : "Add"} {activeTab.slice(0, -1)}</h3>
+            <form onSubmit={handleSubmit} className="stack" style={{ marginTop: "15px" }}>
               <label className="field">
-                <span>Subject</span>
-                <select value={form.subjectId} onChange={e => setForm({ ...form, subjectId: e.target.value })} required>
-                  <option value="">Select Subject</option>
+                <span>Name</span>
+                <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required />
+              </label>
+
+              {activeTab === "subjects" && (
+                <>
+                  <label className="field">
+                    <span>Class</span>
+                    <select value={form.classId} onChange={e => setForm({ ...form, classId: e.target.value })} required>
+                      <option value="">Select Class</option>
+                      {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>Stream</span>
+                    <select value={form.streamId} onChange={e => setForm({ ...form, streamId: e.target.value })} required>
+                      <option value="">Select Stream</option>
+                      {streams.filter(s => s.classId === form.classId).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </label>
+                </>
+              )}
+
+              {(activeTab === "chapters" || activeTab === "topics") && (
+                <label className="field">
+                  <span>Subject</span>
+                  <select value={form.subjectId} onChange={e => setForm({ ...form, subjectId: e.target.value })} required>
+                    <option value="">Select Subject</option>
+                    {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </label>
+              )}
+
+              {activeTab === "topics" && (
+                <label className="field">
+                  <span>Chapter</span>
+                  <select value={form.chapterId} onChange={e => setForm({ ...form, chapterId: e.target.value })} required>
+                    <option value="">Select Chapter</option>
+                    {chapters.filter(c => c.subjectId === form.subjectId).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </label>
+              )}
+
+              <button type="submit" className="primary-button">{editingId ? "Update" : "Create"}</button>
+              {editingId && <button type="button" className="secondary-button" onClick={() => { setEditingId(null); setForm({ name: "" }); }}>Cancel</button>}
+            </form>
+          </section>
+
+          <section className="panel" style={{ display: "flex", flexDirection: "column" }}>
+            <div className="row-between" style={{ marginBottom: "15px", flexWrap: "wrap", gap: "10px" }}>
+              <h3>Existing {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}</h3>
+            </div>
+
+            <div className="stack" style={{ marginBottom: "20px", padding: "15px", background: "var(--color-bg-secondary)", borderRadius: "12px" }}>
+              <input 
+                type="text" 
+                placeholder={`Search ${activeTab}...`} 
+                value={searchTerm} 
+                onChange={e => setSearchTerm(e.target.value)} 
+                style={{ padding: "10px", borderRadius: "8px", border: "1px solid var(--color-border)" }}
+              />
+              
+              {(activeTab === "chapters" || activeTab === "topics") && (
+                <select 
+                  value={filterSubjectId} 
+                  onChange={e => { setFilterSubjectId(e.target.value); setFilterChapterId(""); }}
+                  style={{ padding: "10px", borderRadius: "8px", border: "1px solid var(--color-border)" }}
+                >
+                  <option value="">Filter by Subject</option>
                   {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
-              </label>
-            )}
+              )}
 
-            {activeTab === "topics" && (
-              <label className="field">
-                <span>Chapter</span>
-                <select value={form.chapterId} onChange={e => setForm({ ...form, chapterId: e.target.value })} required>
-                  <option value="">Select Chapter</option>
-                  {chapters.filter(c => c.subjectId === form.subjectId).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {activeTab === "topics" && (
+                <select 
+                  value={filterChapterId} 
+                  onChange={e => setFilterChapterId(e.target.value)}
+                  style={{ padding: "10px", borderRadius: "8px", border: "1px solid var(--color-border)" }}
+                >
+                  <option value="">Filter by Chapter</option>
+                  {chapters.filter(c => !filterSubjectId || c.subjectId === filterSubjectId).map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
                 </select>
-              </label>
-            )}
+              )}
+            </div>
 
-            <button type="submit" className="primary-button">{editingId ? "Update" : "Create"}</button>
-            {editingId && <button type="button" className="secondary-button" onClick={() => { setEditingId(null); setForm({ name: "" }); }}>Cancel</button>}
-          </form>
-        </section>
-
-        <section className="panel" style={{ display: "flex", flexDirection: "column" }}>
-          <div className="row-between" style={{ marginBottom: "15px", flexWrap: "wrap", gap: "10px" }}>
-            <h3>Existing {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}</h3>
-          </div>
-
-          <div className="stack" style={{ marginBottom: "20px", padding: "15px", background: "var(--color-bg-secondary)", borderRadius: "12px" }}>
-            <input 
-              type="text" 
-              placeholder={`Search ${activeTab}...`} 
-              value={searchTerm} 
-              onChange={e => setSearchTerm(e.target.value)} 
-              style={{ padding: "10px", borderRadius: "8px", border: "1px solid var(--color-border)" }}
-            />
-            
-            {(activeTab === "chapters" || activeTab === "topics") && (
-              <select 
-                value={filterSubjectId} 
-                onChange={e => { setFilterSubjectId(e.target.value); setFilterChapterId(""); }}
-                style={{ padding: "10px", borderRadius: "8px", border: "1px solid var(--color-border)" }}
-              >
-                <option value="">Filter by Subject</option>
-                {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            )}
-
-            {activeTab === "topics" && (
-              <select 
-                value={filterChapterId} 
-                onChange={e => setFilterChapterId(e.target.value)}
-                style={{ padding: "10px", borderRadius: "8px", border: "1px solid var(--color-border)" }}
-              >
-                <option value="">Filter by Chapter</option>
-                {chapters.filter(c => !filterSubjectId || c.subjectId === filterSubjectId).map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            )}
-          </div>
-
-          <div style={{ maxHeight: "500px", overflowY: "auto" }}>
-            <ul className="plain-list">
-              {filteredItems.map(item => (
-                <li key={item.id} className="row-between" style={{ padding: "12px", borderBottom: "1px solid var(--color-border)" }}>
-                  <div>
-                    <strong>{item.name}</strong>
-                    <div className="muted-copy" style={{ fontSize: "0.85rem" }}>
-                      {activeTab === "subjects" && `${classes.find(c => c.id === item.classId)?.name} • ${streams.find(s => s.id === item.streamId)?.name}`}
-                      {activeTab === "chapters" && subjects.find(s => s.id === item.subjectId)?.name}
-                      {activeTab === "topics" && `${subjects.find(s => s.id === item.subjectId)?.name} • ${chapters.find(c => c.id === item.chapterId)?.name}`}
+            <div style={{ maxHeight: "500px", overflowY: "auto" }}>
+              <ul className="plain-list">
+                {filteredItems.map(item => (
+                  <li key={item.id} className="row-between" style={{ padding: "12px", borderBottom: "1px solid var(--color-border)" }}>
+                    <div>
+                      <strong>{item.name}</strong>
+                      <div className="muted-copy" style={{ fontSize: "0.85rem" }}>
+                        {activeTab === "subjects" && `${classes.find(c => c.id === item.classId)?.name} • ${streams.find(s => s.id === item.streamId)?.name}`}
+                        {activeTab === "chapters" && subjects.find(s => s.id === item.subjectId)?.name}
+                        {activeTab === "topics" && `${subjects.find(s => s.id === item.subjectId)?.name} • ${chapters.find(c => c.id === item.chapterId)?.name}`}
+                      </div>
                     </div>
-                  </div>
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <button className="secondary-button" style={{ padding: "6px 12px", fontSize: "0.85rem" }} onClick={() => handleEdit(item)}>Edit</button>
-                    <button className="secondary-button" style={{ padding: "6px 12px", fontSize: "0.85rem", color: "var(--color-error)", borderColor: "var(--color-error)" }} onClick={() => handleDelete(item.id)}>Delete</button>
-                  </div>
-                </li>
-              ))}
-              {filteredItems.length === 0 && <p className="muted-copy">No results found.</p>}
-            </ul>
-          </div>
-        </section>
-      </div>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button className="secondary-button" style={{ padding: "6px 12px", fontSize: "0.85rem" }} onClick={() => handleEdit(item)}>Edit</button>
+                      <button className="secondary-button" style={{ padding: "6px 12px", fontSize: "0.85rem", color: "var(--color-error)", borderColor: "var(--color-error)" }} onClick={() => handleDelete(item.id)}>Delete</button>
+                    </div>
+                  </li>
+                ))}
+                {filteredItems.length === 0 && <p className="muted-copy">No results found.</p>}
+              </ul>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

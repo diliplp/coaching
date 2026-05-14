@@ -83,7 +83,7 @@ export interface SubjectBook {
   fileName: string;
   fileUrl: string;
   uploadedAt: string;
-  bookType?: "pyq" | "reference";
+  bookType?: "pyq" | "reference" | "textbook";
   subjectName?: string;
   previewText?: string;
   pageCount?: number;

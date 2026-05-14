@@ -12,7 +12,7 @@ export function SubjectBooksPage() {
   const [selectedStreamId, setSelectedStreamId] = useState("");
   const [subjectId, setSubjectId] = useState("");
   const [title, setTitle] = useState("");
-  const [bookType, setBookType] = useState<"pyq" | "reference">("reference");
+  const [bookType, setBookType] = useState<"pyq" | "reference" | "textbook">("textbook");
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState("Teachers can upload PDF books subject-wise here.");
   
@@ -147,6 +147,7 @@ export function SubjectBooksPage() {
             <label className="field">
               <span>Book Type</span>
               <select value={bookType} onChange={(e) => setBookType(e.target.value as any)}>
+                <option value="textbook">Text Book</option>
                 <option value="reference">Reference Book</option>
                 <option value="pyq">PYQ (Previous Year Question)</option>
               </select>
@@ -185,7 +186,7 @@ export function SubjectBooksPage() {
                       fontWeight: "bold",
                       marginBottom: "0.5rem"
                     }}>
-                      {book.bookType === "pyq" ? "PREVIOUS YEAR PAPER" : "REFERENCE BOOK"}
+                      {book.bookType === "pyq" ? "PREVIOUS YEAR PAPER" : book.bookType === "textbook" ? "TEXT BOOK" : "REFERENCE BOOK"}
                     </div>
                     <h4 style={{ margin: "0.5rem 0", fontSize: "1.25rem" }}>{book.title}</h4>
                     <p className="muted-copy" style={{ fontSize: "0.85rem" }}>

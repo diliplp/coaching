@@ -183,5 +183,22 @@ export const apiClient = {
     createUser: (payload: any) => request<any>("/admin/users", { method: "POST", body: JSON.stringify(payload) }),
     updateUser: (id: string, payload: any) => request<any>(`/admin/users/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
     deleteUser: (id: string) => request<void>(`/admin/users/${id}`, { method: "DELETE" }),
+    
+    parseCurriculumDocx: async (file: File) => {
+      // Use raw fetch for FormData
+      const session = getStoredSession();
+      const formData = new FormData();
+      formData.append("docx", file);
+      
+      const response = await fetch(buildApiUrl("/admin/curriculum/parse-docx"), {
+        method: "POST",
+        headers: session?.token ? { Authorization: `Bearer ${session.token}` } : undefined,
+        body: formData
+      });
+      if (!response.ok) throw new Error("Failed to parse Word document");
+      return response.json();
+    },
+    saveBulkCurriculum: (payload: { classId: string; streamId: string; subjects: any[] }) => 
+      request<any>("/admin/curriculum/save-bulk", { method: "POST", body: JSON.stringify(payload) }),
   }
 };
