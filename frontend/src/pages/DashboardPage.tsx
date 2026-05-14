@@ -125,77 +125,120 @@ export function DashboardPage() {
       </section>
 
       {session?.user.role === "student" && (
-        <div className="grid-two" style={{ marginTop: "20px" }}>
-          <section className="panel">
-            <h3>Scheduled Exams</h3>
-            <p className="muted-copy">Official tests assigned to your batch</p>
+        <div className="grid-two" style={{ marginTop: "30px", gap: "30px" }}>
+          {/* Left Column: Scheduled Exams */}
+          <section className="panel" style={{ display: "flex", flexDirection: "column" }}>
+            <div style={{ marginBottom: "20px" }}>
+              <span className="tag" style={{ background: "rgba(0,112,243,0.1)", color: "#0070f3", border: "none" }}>BATCH UPDATES</span>
+              <h3 style={{ marginTop: "10px", fontSize: "1.5rem" }}>Scheduled Exams</h3>
+              <p className="muted-copy">Official tests assigned to your batch</p>
+            </div>
+            
             {data.scheduledExams.length === 0 ? (
-              <p style={{ marginTop: "15px" }}>No active scheduled exams.</p>
+              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "40px", background: "rgba(0,0,0,0.02)", borderRadius: "12px", border: "1px dashed var(--color-border)" }}>
+                <p className="muted-copy">No active scheduled exams right now.</p>
+              </div>
             ) : (
-              <div className="stack" style={{ marginTop: "15px" }}>
+              <div className="stack" style={{ gap: "12px" }}>
                 {data.scheduledExams.map(exam => (
-                  <article key={exam.id} className="row-between" style={{ padding: "10px", background: "var(--color-bg-secondary)", borderRadius: "8px" }}>
-                    <div>
-                      <strong>{exam.name}</strong>
-                      <div className="muted-copy">{exam.durationMinutes} mins</div>
+                  <article key={exam.id} className="row-between" style={{ padding: "16px", background: "white", borderRadius: "12px", border: "1px solid var(--color-border)", transition: "all 0.2s", cursor: "default" }}>
+                    <div style={{ display: "flex", gap: "15px", alignItems: "center" }}>
+                      <div style={{ width: "40px", height: "40px", borderRadius: "8px", background: "var(--color-bg-secondary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.2rem" }}>📝</div>
+                      <div>
+                        <strong style={{ fontSize: "1.1rem" }}>{exam.name}</strong>
+                        <div className="muted-copy" style={{ fontSize: "0.85rem" }}>⏱️ {exam.durationMinutes} minutes</div>
+                      </div>
                     </div>
-                    <button className="primary-button" onClick={() => startExam(exam.id)}>Start</button>
+                    <button className="primary-button" onClick={() => startExam(exam.id)} style={{ padding: "8px 20px" }}>Start Exam</button>
                   </article>
                 ))}
               </div>
             )}
           </section>
 
-          <section className="panel">
-            <h3>Self-Practice Builder</h3>
-            <p className="muted-copy">Pick any topic to generate a quick practice test</p>
-            <div className="stack" style={{ marginTop: "15px" }}>
+          {/* Right Column: Practice Builder */}
+          <section className="panel" style={{ border: "2px solid rgba(0,112,243,0.1)", background: "white" }}>
+            <div style={{ marginBottom: "20px" }}>
+              <span className="tag" style={{ background: "rgba(0,112,243,0.1)", color: "#0070f3", border: "none" }}>AI GENERATOR</span>
+              <h3 style={{ marginTop: "10px", fontSize: "1.5rem" }}>Self-Practice Builder</h3>
+              <p className="muted-copy">Pick any topic to generate a quick practice test</p>
+            </div>
+
+            <div className="stack" style={{ gap: "20px" }}>
               <label className="field">
-                <span>Subject</span>
-                <select value={selectedSubjectId} onChange={e => { setSelectedSubjectId(e.target.value); setSelectedTopicIds([]); }}>
+                <span style={{ fontWeight: "600", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>SUBJECT</span>
+                <select 
+                  value={selectedSubjectId} 
+                  onChange={e => { setSelectedSubjectId(e.target.value); setSelectedTopicIds([]); }}
+                  style={{ borderRadius: "10px", padding: "12px", border: "1px solid var(--color-border)", background: "var(--color-bg-secondary)" }}
+                >
                   <option value="">Select Subject</option>
                   {questionBank?.subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </label>
               
               <div className="field">
-                <span>Select Topics</span>
+                <span style={{ fontWeight: "600", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>SELECT TOPICS</span>
                 <div style={{ 
-                  background: "white", 
+                  background: "var(--color-bg-secondary)", 
                   border: "1px solid var(--color-border)", 
-                  borderRadius: "8px", 
-                  padding: "10px",
-                  maxHeight: "150px",
+                  borderRadius: "10px", 
+                  padding: "8px",
+                  maxHeight: "180px",
                   overflowY: "auto",
-                  marginTop: "4px"
+                  marginTop: "8px"
                 }}>
                   {questionBank?.topics.filter(t => t.subjectId === selectedSubjectId).map(t => (
-                    <label key={t.id} style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px", fontSize: "0.9rem" }}>
+                    <label key={t.id} style={{ 
+                      display: "flex", 
+                      alignItems: "center", 
+                      gap: "12px", 
+                      padding: "10px 12px", 
+                      marginBottom: "4px", 
+                      fontSize: "0.95rem",
+                      borderRadius: "8px",
+                      cursor: "pointer",
+                      transition: "background 0.2s",
+                      backgroundColor: selectedTopicIds.includes(t.id) ? "white" : "transparent",
+                      boxShadow: selectedTopicIds.includes(t.id) ? "0 2px 4px rgba(0,0,0,0.05)" : "none",
+                      border: selectedTopicIds.includes(t.id) ? "1px solid var(--color-primary-light)" : "1px solid transparent"
+                    }}>
                       <input 
                         type="checkbox" 
                         checked={selectedTopicIds.includes(t.id)}
                         onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedTopicIds([...selectedTopicIds, t.id]);
-                          } else {
-                            setSelectedTopicIds(selectedTopicIds.filter(id => id !== t.id));
-                          }
+                          if (e.target.checked) setSelectedTopicIds([...selectedTopicIds, t.id]);
+                          else setSelectedTopicIds(selectedTopicIds.filter(id => id !== t.id));
                         }}
+                        style={{ width: "18px", height: "18px" }}
                       />
-                      {t.name}
+                      <span style={{ fontWeight: selectedTopicIds.includes(t.id) ? "600" : "400" }}>{t.name}</span>
                     </label>
                   ))}
                   {(!selectedSubjectId || questionBank?.topics.filter(t => t.subjectId === selectedSubjectId).length === 0) && (
-                    <p className="muted-copy" style={{ fontSize: "0.8rem", margin: 0 }}>Please select a subject first.</p>
+                    <div style={{ textAlign: "center", padding: "30px" }}>
+                      <p className="muted-copy" style={{ fontSize: "0.9rem" }}>Select a subject to see topics</p>
+                    </div>
                   )}
                 </div>
               </div>
 
               <div className="field">
-                <span>Question Sources</span>
-                <div style={{ display: "flex", gap: "10px", marginTop: "8px", flexWrap: "wrap" }}>
+                <span style={{ fontWeight: "600", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>QUESTION SOURCES</span>
+                <div style={{ display: "flex", gap: "15px", marginTop: "10px" }}>
                   {["pyq", "reference"].map(source => (
-                    <label key={source} style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "0.85rem", background: "var(--color-bg-secondary)", padding: "4px 10px", borderRadius: "15px" }}>
+                    <label key={source} style={{ 
+                      display: "flex", 
+                      alignItems: "center", 
+                      gap: "8px", 
+                      cursor: "pointer", 
+                      fontSize: "0.9rem", 
+                      background: allowedSources.includes(source) ? "rgba(0,112,243,0.05)" : "var(--color-bg-secondary)", 
+                      padding: "10px 16px", 
+                      borderRadius: "12px",
+                      border: allowedSources.includes(source) ? "1px solid var(--color-primary)" : "1px solid var(--color-border)",
+                      transition: "all 0.2s"
+                    }}>
                       <input 
                         type="checkbox" 
                         checked={allowedSources.includes(source)}
@@ -204,17 +247,32 @@ export function DashboardPage() {
                           else if (allowedSources.length > 1) setAllowedSources(allowedSources.filter(s => s !== source));
                         }}
                       />
-                      {source === "pyq" ? "PYQs" : "Ref Books"}
+                      <span style={{ fontWeight: "500" }}>{source === "pyq" ? "PYQs" : "Reference Books"}</span>
                     </label>
                   ))}
                 </div>
               </div>
               
-              <label className="field">
-                <span>Questions</span>
-                <input type="number" value={qCount} onChange={e => setQCount(Number(e.target.value))} min={1} max={50} />
-              </label>
-              <button className="primary-button" disabled={selectedTopicIds.length === 0} onClick={handleSelfGenerate}>Generate Test</button>
+              <div className="grid-two" style={{ alignItems: "flex-end", gap: "20px" }}>
+                <label className="field" style={{ flex: 1 }}>
+                  <span style={{ fontWeight: "600", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>QUESTIONS</span>
+                  <input 
+                    type="number" 
+                    value={qCount} 
+                    onChange={e => setQCount(Number(e.target.value))} 
+                    min={1} max={50} 
+                    style={{ borderRadius: "10px", padding: "12px", border: "1px solid var(--color-border)", background: "var(--color-bg-secondary)" }}
+                  />
+                </label>
+                <button 
+                  className="primary-button" 
+                  disabled={selectedTopicIds.length === 0} 
+                  onClick={handleSelfGenerate}
+                  style={{ height: "48px", borderRadius: "10px", flex: 1, fontSize: "1rem", fontWeight: "600" }}
+                >
+                  Generate Practice Test
+                </button>
+              </div>
             </div>
           </section>
         </div>

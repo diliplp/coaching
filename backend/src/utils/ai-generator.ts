@@ -178,3 +178,54 @@ ${text.substring(0, 30000)}
 
   return allQuestions;
 }
+
+export async function parseExamPrompt(promptText: string): Promise<{
+  examName: string;
+  batchName: string;
+  subjectName: string;
+  topicKeywords: string[];
+  questionCount: number;
+  difficulty: string;
+  durationMinutes: number;
+}> {
+  if (!process.env.OPENROUTER_API_KEY) {
+    throw new Error("OPENROUTER_API_KEY is missing.");
+  }
+
+  const prompt = `
+    Analyze the teacher's request for an exam and extract the following details in JSON format.
+    Request: "${promptText}"
+
+    JSON STRUCTURE:
+    {
+      "examName": "A descriptive title for the exam",
+      "batchName": "The name of the batch or class group (e.g. 'Batch A', 'Class 10')",
+      "subjectName": "The subject (e.g. 'Physics', 'Maths')",
+      "topicKeywords": ["list", "of", "topic", "keywords"],
+      "questionCount": 10,
+      "difficulty": "medium",
+      "durationMinutes": 30
+    }
+
+    Rules:
+    1. If a value is not mentioned, provide a reasonable default.
+    2. Output ONLY the JSON.
+  `;
+
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "openai/gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" }
+    })
+  });
+
+  const data = await response.json();
+  const rawResponse = data.choices?.[0]?.message?.content || "{}";
+  return JSON.parse(rawResponse);
+}

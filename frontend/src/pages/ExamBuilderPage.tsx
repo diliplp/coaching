@@ -178,6 +178,102 @@ export function ExamBuilderPage() {
         <p>{status}</p>
       </section>
 
+      {/* NEW: AI Magic Builder Section */}
+      <article className="panel" style={{ 
+        background: "linear-gradient(135deg, #6366f1 0%, #a855f7 100%)", 
+        color: "white",
+        border: "none",
+        boxShadow: "0 10px 25px rgba(99, 102, 241, 0.3)",
+        position: "relative",
+        overflow: "hidden"
+      }}>
+        <div style={{ position: "relative", zIndex: 2 }}>
+          <div className="row-between">
+            <div>
+              <span className="tag" style={{ background: "rgba(255,255,255,0.2)", color: "white", border: "none" }}>NEW ✨ AI PROMPT BUILDER</span>
+              <h3 style={{ color: "white", marginTop: "10px", fontSize: "1.75rem" }}>What kind of exam do you want today?</h3>
+              <p style={{ opacity: 0.9, color: "white" }}>Just describe your exam in simple words and let AI do the heavy lifting.</p>
+            </div>
+          </div>
+
+          <div style={{ marginTop: "20px" }}>
+            <textarea 
+              placeholder="e.g., Create a 15-question Physics exam on Thermodynamics for Batch A. Make it difficult."
+              style={{ 
+                width: "100%", 
+                minHeight: "100px", 
+                borderRadius: "12px", 
+                padding: "20px", 
+                border: "none", 
+                fontSize: "1.1rem",
+                color: "var(--color-text)",
+                background: "rgba(255,255,255,0.95)",
+                boxShadow: "inset 0 2px 4px rgba(0,0,0,0.1)"
+              }}
+              id="ai-prompt-input"
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "15px" }}>
+              <button 
+                className="primary-button" 
+                style={{ 
+                  background: "white", 
+                  color: "#6366f1", 
+                  padding: "12px 30px", 
+                  fontSize: "1.1rem", 
+                  fontWeight: "bold",
+                  border: "none",
+                  boxShadow: "0 4px 10px rgba(0,0,0,0.1)"
+                }}
+                onClick={async () => {
+                  const prompt = (document.getElementById("ai-prompt-input") as HTMLTextAreaElement).value;
+                  if (!prompt) return;
+                  setStatus("AI Magic is working... parsing your request.");
+                  try {
+                    const result = await apiClient.generateExamFromPrompt(prompt);
+                    liveExamState.generatedExam = result;
+                    liveExamState.latestResult = null;
+                    setStatus(`Successfully generated "${result.exam.name}" with ${result.questions.length} questions!`);
+                  } catch (e: any) {
+                    setStatus(`AI error: ${e.message}`);
+                  }
+                }}
+              >
+                ✨ Generate Exam with AI
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        {/* Background decorative blob */}
+        <div style={{ 
+          position: "absolute", 
+          top: "-50px", 
+          right: "-50px", 
+          width: "200px", 
+          height: "200px", 
+          background: "rgba(255,255,255,0.1)", 
+          borderRadius: "50%",
+          zIndex: 1 
+        }} />
+      </article>
+
+      <div style={{ margin: "40px 0", textAlign: "center", position: "relative" }}>
+        <hr style={{ border: "none", borderTop: "1px solid var(--color-border)" }} />
+        <span style={{ 
+          position: "absolute", 
+          top: "50%", 
+          left: "50%", 
+          transform: "translate(-50%, -50%)", 
+          background: "var(--color-bg)", 
+          padding: "0 20px", 
+          color: "var(--color-text-muted)",
+          fontSize: "0.9rem",
+          fontWeight: "bold"
+        }}>
+          OR USE TRADITIONAL BUILDER
+        </span>
+      </div>
+
       <article className="panel">
         <div className="row-between adaptive-header">
           <div>

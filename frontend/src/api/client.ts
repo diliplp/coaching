@@ -141,6 +141,11 @@ export const apiClient = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
+  generateExamFromPrompt: (prompt: string) =>
+    request<ExamPayload>("/exams/generate-from-prompt", {
+      method: "POST",
+      body: JSON.stringify({ prompt })
+    }),
   generateQuestionsFromBook: (bookId: string, payload: { chapterId?: string; topicId?: string; topicIds?: string[]; questionCount: number }) =>
     request<{ message: string; questions: any[] }>(`/subject-books/${bookId}/generate-questions`, {
       method: "POST",

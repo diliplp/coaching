@@ -14,7 +14,7 @@ import {
   listBatchAdaptivePlans
 } from "../utils/exam-engine.js";
 import { extractPdfText } from "../utils/pdf.js";
-import { generateQuestionsFromText } from "../utils/ai-generator.js";
+import { generateQuestionsFromText, parseExamPrompt } from "../utils/ai-generator.js";
 import { listReferencePapers } from "../utils/reference-papers.js";
 import { findUserByEmail, requireAuth, requireRole, signAuthToken, verifyPassword } from "../utils/auth.js";
 import type { AuthenticatedRequest, SubjectBook } from "../types.js";
@@ -628,6 +628,76 @@ apiRouter.post("/students/me/adaptive-generate", requireRole(["student"]), async
     plan: generated.plan,
     questions: await getExamQuestions(generated.exam.id)
   });
+});
+
+apiRouter.post("/exams/generate-from-prompt", requireRole(["super_admin", "teacher"]), async (req, res) => {
+  const { prompt } = req.body as { prompt?: string };
+  if (!prompt) {
+    return res.status(400).json({ message: "Prompt is required" });
+  }
+
+  try {
+    const parsed = await parseExamPrompt(prompt);
+    const state = await getAppState();
+
+    // 1. Find Batch
+    const batch = state.batches.find(b => 
+      b.name.toLowerCase().includes(parsed.batchName.toLowerCase()) || 
+      parsed.batchName.toLowerCase().includes(b.name.toLowerCase())
+    ) || state.batches[0];
+
+    // 2. Find Subject
+    const subject = state.subjects.find(s => 
+      s.name.toLowerCase().includes(parsed.subjectName.toLowerCase()) ||
+      parsed.subjectName.toLowerCase().includes(s.name.toLowerCase())
+    ) || state.subjects.find(s => s.classId === batch.classId) || state.subjects[0];
+
+    // 3. Find Topics
+    const matchedTopics = state.topics.filter(t => 
+      t.subjectId === subject.id && 
+      parsed.topicKeywords.some(k => t.name.toLowerCase().includes(k.toLowerCase()))
+    );
+
+    const targetTopicIds = matchedTopics.length > 0 
+      ? matchedTopics.map(t => t.id)
+      : state.topics.filter(t => t.subjectId === subject.id).slice(0, 5).map(t => t.id);
+
+    if (targetTopicIds.length === 0) {
+      return res.status(404).json({ message: `Could not find any topics for subject: ${subject.name}` });
+    }
+
+    // 4. Create Exam
+    const totalQuestions = Math.min(parsed.questionCount, 50);
+    const weightagePerTopic = 100 / targetTopicIds.length;
+
+    const generated = await generateCustomExam({
+      name: parsed.examName,
+      batchId: batch.id,
+      subjectId: subject.id,
+      durationMinutes: parsed.durationMinutes,
+      totalQuestions,
+      selectionMode: "topic",
+      rules: targetTopicIds.map(id => ({
+        entityId: id,
+        weightagePercent: weightagePerTopic
+      })),
+      allowedSourceTypes: ["pyq", "reference", "ai_generated", "custom"]
+    });
+
+    if (!generated || "error" in generated) {
+      return res.status(400).json({ message: "Unable to generate exam from prompt" });
+    }
+
+    res.status(201).json({
+      exam: generated,
+      questions: await getExamQuestions(generated.id),
+      analysis: parsed
+    });
+
+  } catch (error: any) {
+    console.error("Prompt generation failed:", error);
+    res.status(500).json({ message: error.message || "Failed to generate exam from prompt" });
+  }
 });
 
 apiRouter.get("/exams", requireRole(["super_admin", "teacher"]), async (_req: Request, res: Response) => {
