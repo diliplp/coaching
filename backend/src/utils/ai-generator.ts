@@ -19,8 +19,24 @@ export async function generateQuestionsFromText(params: {
   const chemKeywords = ["chemistry", "molecule", "reaction", "bond", "acid", "organic", "compound", "structure", "formula", "chemical"];
   const isChemistry = subject?.toLowerCase().includes("chemistry") || chemKeywords.some(k => text.toLowerCase().includes(k));
 
-  const prompt = `
-You are an expert educator. Generate exactly ${questionCount} multiple-choice questions from the text below.
+  const allQuestions: Question[] = [];
+  const batchSize = 10;
+  const numBatches = Math.ceil(questionCount / batchSize);
+
+  console.log(`Starting AI generation for topic ${topicId}. Total requested: ${questionCount}. Batches: ${numBatches}`);
+
+  for (let b = 0; b < numBatches; b++) {
+    const currentBatchCount = Math.min(batchSize, questionCount - allQuestions.length);
+    if (currentBatchCount <= 0) break;
+
+    const previousPrompts = allQuestions.slice(-20).map(q => q.prompt).join("\n- ");
+    const avoidanceInstruction = b > 0 
+      ? `\nIMPORTANT: Do NOT repeat these questions or topics which were already generated:\n- ${previousPrompts}\n` 
+      : "";
+
+    const prompt = `
+You are an expert educator. Generate exactly ${currentBatchCount} multiple-choice questions from the text below.
+${avoidanceInstruction}
 
 STRICT STEM RULES:
 1. LaTeX: Use $...$ for inline and $$...$$ for blocks.
@@ -37,17 +53,17 @@ JSON STRUCTURE:
 {
   "questions": [
     {
-      "prompt": "Which of the following is the structure of Ethanol? [SMILES: CCO]",
+      "prompt": "Question text here",
       "difficulty": "medium",
       "marks": 2,
       "negativeMarks": 0,
       "options": [
-        { "label": "A", "value": "Ethanol", "isCorrect": true },
-        { "label": "B", "value": "Methanol", "isCorrect": false },
-        { "label": "C", "value": "Propanol", "isCorrect": false },
-        { "label": "D", "value": "Butanol", "isCorrect": false }
+        { "label": "A", "value": "Option 1", "isCorrect": true },
+        { "label": "B", "value": "Option 2", "isCorrect": false },
+        { "label": "C", "value": "Option 3", "isCorrect": false },
+        { "label": "D", "value": "Option 4", "isCorrect": false }
       ],
-      "explanation": "Ethanol has the formula C2H5OH, represented as CCO in SMILES."
+      "explanation": "Explanation text here"
     }
   ]
 }
@@ -56,107 +72,76 @@ TEXT CONTENT:
 ---
 ${text.substring(0, 30000)}
 ---
-  `;
+    `;
 
-  try {
-    console.log(`Starting AI generation for topic ${topicId} in subject ${subjectId}...`);
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://railway.app", 
-        "X-Title": "Coaching Portal Exam Gen"
-      },
-      body: JSON.stringify({
-        model: "openai/gpt-4o-mini", 
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" }
-      })
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error(`OpenRouter API error (Status ${response.status}):`, errText);
-      throw new Error(`OpenRouter API error (Status ${response.status}): ${errText}`);
-    }
-
-    const data = await response.json();
-    console.log("AI generation response received successfully.");
-    
-    let rawResponse = data.choices?.[0]?.message?.content || '{"questions": []}';
-    
-    // Simple extraction: find the first { and last }
-    const startIdx = rawResponse.indexOf("{");
-    const endIdx = rawResponse.lastIndexOf("}");
-    if (startIdx !== -1 && endIdx !== -1) {
-      rawResponse = rawResponse.substring(startIdx, endIdx + 1);
-    }
-
-    let parsedObj: any;
     try {
-      parsedObj = JSON.parse(rawResponse);
-    } catch (parseError: any) {
-      console.error("JSON PARSE ERROR. Raw Response:", rawResponse);
-      // Try to remove potential markdown leftovers if any
-      try {
-        const cleaned = rawResponse.replace(/```json/g, "").replace(/```/g, "").trim();
-        parsedObj = JSON.parse(cleaned);
-      } catch (e) {
-        throw new Error(`AI returned invalid JSON: ${parseError.message}. Content: ${rawResponse.substring(0, 100)}...`);
+      console.log(`Generating batch ${b + 1}/${numBatches} (${currentBatchCount} questions)...`);
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://railway.app", 
+          "X-Title": "Coaching Portal Exam Gen"
+        },
+        body: JSON.stringify({
+          model: "openai/gpt-4o-mini", 
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" }
+        })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`OpenRouter API error: ${errText}`);
       }
-    }
 
-    let parsed = parsedObj.questions;
-    if (!Array.isArray(parsed)) {
-      if (Array.isArray(parsedObj)) {
-        parsed = parsedObj;
-      } else {
-        console.error("Unexpected AI Response Structure:", parsedObj);
-        throw new Error("AI output does not contain a valid 'questions' array.");
+      const data = await response.json();
+      let rawResponse = data.choices?.[0]?.message?.content || '{"questions": []}';
+      
+      const startIdx = rawResponse.indexOf("{");
+      const endIdx = rawResponse.lastIndexOf("}");
+      if (startIdx !== -1 && endIdx !== -1) {
+        rawResponse = rawResponse.substring(startIdx, endIdx + 1);
       }
-    }
 
-    console.log(`Successfully parsed ${parsed.length} questions.`);
+      let parsedObj = JSON.parse(rawResponse);
+      let parsedArr = parsedObj.questions || (Array.isArray(parsedObj) ? parsedObj : []);
 
-    return parsed.map((item: any, index: number) => {
-      const qId = `q-ai-${Date.now()}-${index}`;
-      const correctOptionIds: string[] = [];
-      const options: QuestionOption[] = (item.options || []).map((opt: any, optIndex: number) => {
-        const oId = `opt-${Date.now()}-${index}-${optIndex}`;
-        if (opt.isCorrect) {
-          correctOptionIds.push(oId);
-        }
+      const mappedQuestions = parsedArr.map((item: any, index: number) => {
+        const qId = `q-ai-${Date.now()}-${allQuestions.length + index}`;
+        const correctOptionIds: string[] = [];
+        const options: QuestionOption[] = (item.options || []).map((opt: any, optIndex: number) => {
+          const oId = `opt-${Date.now()}-${allQuestions.length + index}-${optIndex}`;
+          if (opt.isCorrect) correctOptionIds.push(oId);
+          return { id: oId, label: opt.label || String.fromCharCode(65 + optIndex), value: opt.value };
+        });
+
         return {
-          id: oId,
-          label: opt.label || String.fromCharCode(65 + optIndex),
-          value: opt.value,
+          id: qId,
+          subjectId,
+          topicId,
+          type: correctOptionIds.length > 1 ? "multi_correct" : "single_correct",
+          prompt: item.prompt,
+          difficulty: item.difficulty,
+          marks: item.marks || 2,
+          negativeMarks: item.negativeMarks || 0,
+          options,
+          correctOptionIds,
+          explanation: item.explanation,
         };
       });
 
-      const type: QuestionType = correctOptionIds.length > 1 ? "multi_correct" : "single_correct";
+      allQuestions.push(...mappedQuestions);
+      console.log(`Batch ${b + 1} complete. Total now: ${allQuestions.length}`);
 
-      return {
-        id: qId,
-        subjectId,
-        topicId,
-        type,
-        prompt: item.prompt,
-        difficulty: item.difficulty,
-        marks: item.marks || 2,
-        negativeMarks: item.negativeMarks || 0,
-        options,
-        correctOptionIds,
-        explanation: item.explanation,
-      };
-    });
-  } catch (error: any) {
-    console.error("AI Generation failed detailed log:", {
-      message: error.message,
-      stack: error.stack,
-      topicId,
-      subjectId
-    });
-    throw new Error(`AI Generation failed: ${error.message}`);
+    } catch (error: any) {
+      console.error(`Batch ${b + 1} failed:`, error.message);
+      // If one batch fails, we still return the ones we have so far
+      if (allQuestions.length === 0) throw error;
+      break;
+    }
   }
+
+  return allQuestions;
 }
