@@ -229,3 +229,53 @@ export async function parseExamPrompt(promptText: string): Promise<{
   const rawResponse = data.choices?.[0]?.message?.content || "{}";
   return JSON.parse(rawResponse);
 }
+
+export async function ensureEnoughQuestions(params: {
+  topicIds: string[];
+  subjectId: string;
+  targetCount: number;
+  state: any;
+}): Promise<number> {
+  const { topicIds, subjectId, targetCount, state } = params;
+  
+  const existingQuestions = state.questions.filter((q: any) => topicIds.includes(q.topicId));
+  if (existingQuestions.length >= targetCount) {
+    return existingQuestions.length;
+  }
+
+  const needed = targetCount - existingQuestions.length;
+  const book = state.subjectBooks.find((b: any) => b.subjectId === subjectId && b.parsedText);
+  
+  if (!book) {
+    return existingQuestions.length;
+  }
+
+  console.log(`Auto-generating ${needed} missing questions for subject ${subjectId}...`);
+  try {
+    const subject = state.subjects.find((s: any) => s.id === subjectId);
+    const generated = await generateQuestionsFromText({
+      text: book.parsedText!,
+      topicId: topicIds[0],
+      subjectId: subjectId,
+      subject: subject?.name,
+      questionCount: needed,
+    });
+
+    const finalizedQuestions = generated.map((q, i) => ({
+      ...q,
+      topicId: topicIds[i % topicIds.length],
+      sourceType: "ai_generated" as any
+    }));
+
+    const { upsertRecord } = await import("../data/database.js");
+    for (const q of finalizedQuestions) {
+      await upsertRecord("questions", q);
+      state.questions.push(q); 
+    }
+    
+    return existingQuestions.length + finalizedQuestions.length;
+  } catch (err) {
+    console.error("Auto-generation failed:", err);
+    return existingQuestions.length;
+  }
+}

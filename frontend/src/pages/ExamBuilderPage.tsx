@@ -21,6 +21,8 @@ export function ExamBuilderPage() {
   const [scheduledEndTime, setScheduledEndTime] = useState("");
   const [weightages, setWeightages] = useState<Record<string, string>>({});
   const [allowedSources, setAllowedSources] = useState<string[]>(["pyq", "reference", "ai_generated", "custom"]);
+  const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
     Promise.all([apiClient.getBlueprints(), apiClient.getQuestionBank(), apiClient.getOverview()])
@@ -73,7 +75,45 @@ export function ExamBuilderPage() {
 
   useEffect(() => {
     setWeightages({});
+    setSelectedEntityIds([]);
   }, [selectedSubjectId, selectionMode]);
+
+  const distributeEvenly = () => {
+    setSelectedEntityIds(curr => {
+      const unique = Array.from(new Set(curr));
+      if (unique.length === 0) {
+        setStatus("Please select at least one item first.");
+        return unique;
+      }
+      
+      const count = unique.length;
+      const baseWeight = Math.floor(100 / count);
+      const remainder = 100 % count;
+      
+      const nextWeightages: Record<string, string> = {};
+      unique.forEach((id, idx) => {
+        nextWeightages[id] = String(idx === 0 ? baseWeight + remainder : baseWeight);
+      });
+      setWeightages(nextWeightages);
+      setStatus(`Auto-balanced 100% weightage across ${count} selected items.`);
+      return unique;
+    });
+  };
+
+  const selectAll = () => {
+    const allIds = weightedEntities.map(e => e.id);
+    setSelectedEntityIds(allIds);
+    setWeightages({}); // Clear weights when selecting all to start fresh
+    setStatus(`Selected all ${allIds.length} ${selectionMode === "chapter" ? "chapters" : "topics"}.`);
+  };
+
+  const selectLastN = (n: number) => {
+    const allIds = weightedEntities.map(e => e.id);
+    const selection = allIds.slice(-n);
+    setSelectedEntityIds(selection);
+    setWeightages({});
+    setStatus(`Selected the last ${selection.length} ${selectionMode === "chapter" ? "chapters" : "topics"}.`);
+  };
 
   const availableChapters = useMemo(
     () => questionBank?.chapters.filter((chapter) => chapter.subjectId === selectedSubjectId) ?? [],
@@ -280,7 +320,12 @@ export function ExamBuilderPage() {
             <p className="eyebrow">Teacher Weighted Paper Builder</p>
             <h3>Create papers by chapter or topic with percentage weightage</h3>
           </div>
-          <span className={weightageTotal === 100 ? "tag" : "tag muted"}>{weightageTotal}% allocated</span>
+          <div style={{ textAlign: "right" }}>
+            <span className={weightageTotal === 100 ? "tag" : "tag muted"}>{weightageTotal}% allocated</span>
+            <div style={{ width: "200px", height: "8px", background: "var(--color-bg-secondary)", borderRadius: "4px", marginTop: "8px", overflow: "hidden" }}>
+              <div style={{ width: `${Math.min(weightageTotal, 100)}%`, height: "100%", background: weightageTotal === 100 ? "var(--color-primary)" : (weightageTotal > 100 ? "#ef4444" : "#f59e0b"), transition: "width 0.3s ease" }}></div>
+            </div>
+          </div>
         </div>
 
         <div className="adaptive-form-grid">
@@ -351,51 +396,120 @@ export function ExamBuilderPage() {
           </label>
         </div>
 
-        <div className="field" style={{ marginTop: "20px" }}>
-          <span>Allowed Question Sources</span>
-          <div style={{ display: "flex", gap: "15px", marginTop: "8px", flexWrap: "wrap" }}>
-            {["pyq", "reference", "ai_generated", "custom"].map(source => (
-              <label key={source} style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", background: "var(--color-bg-secondary)", padding: "5px 12px", borderRadius: "20px", fontSize: "0.9rem" }}>
-                <input 
-                  type="checkbox" 
-                  checked={allowedSources.includes(source)}
-                  onChange={(e) => {
-                    if (e.target.checked) setAllowedSources([...allowedSources, source]);
-                    else if (allowedSources.length > 1) setAllowedSources(allowedSources.filter(s => s !== source));
-                  }}
-                />
-                {source === "pyq" ? "PYQs" : (source === "reference" ? "Ref Books" : source.replace("_", " ").toUpperCase())}
-              </label>
-            ))}
+        <div style={{ marginBottom: "24px" }}>
+          <button 
+            className="text-link" 
+            style={{ fontSize: "0.9rem", display: "flex", alignItems: "center", gap: "6px", background: "none", border: "none", padding: 0 }}
+            onClick={() => setShowAdvanced(!showAdvanced)}
+          >
+            {showAdvanced ? "− Hide Advanced Options" : "+ Show Advanced Options (Sources, etc.)"}
+          </button>
+          
+          {showAdvanced && (
+            <div className="panel" style={{ marginTop: "12px", background: "var(--color-bg-secondary)", border: "1px dashed var(--color-border)" }}>
+              <div className="field">
+                <span style={{ fontWeight: "bold", fontSize: "0.85rem" }}>Allowed Question Sources</span>
+                <div style={{ display: "flex", gap: "12px", marginTop: "10px", flexWrap: "wrap" }}>
+                  {["pyq", "reference", "ai_generated", "custom"].map(source => (
+                    <label key={source} style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", background: "white", padding: "6px 14px", border: "1px solid var(--color-border)", borderRadius: "20px", fontSize: "0.85rem" }}>
+                      <input 
+                        type="checkbox" 
+                        checked={allowedSources.includes(source)}
+                        onChange={(e) => {
+                          if (e.target.checked) setAllowedSources([...allowedSources, source]);
+                          else if (allowedSources.length > 1) setAllowedSources(allowedSources.filter(s => s !== source));
+                        }}
+                      />
+                      {source === "pyq" ? "Previous Year Questions" : (source === "reference" ? "Reference Books" : source.replace("_", " ").toUpperCase())}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="row-between" style={{ marginBottom: "16px" }}>
+          <div>
+            <h4 style={{ margin: 0 }}>Select {selectionMode === "chapter" ? "Chapters" : "Topics"}</h4>
+            <p className="muted-copy" style={{ fontSize: "0.85rem" }}>Select items to include, then distribute weightage.</p>
+          </div>
+          <div className="action-row" style={{ margin: 0 }}>
+            <button className="secondary-button" style={{ padding: "6px 12px", fontSize: "0.85rem" }} onClick={distributeEvenly} disabled={selectedEntityIds.length === 0}>
+              Distribute Evenly
+            </button>
+            <button className="secondary-button" style={{ padding: "6px 12px", fontSize: "0.85rem" }} onClick={selectAll}>
+              Select All
+            </button>
+            <button className="secondary-button" style={{ padding: "6px 12px", fontSize: "0.85rem" }} onClick={() => selectLastN(3)}>
+              Recent 3
+            </button>
+            <button className="secondary-button" style={{ padding: "6px 12px", fontSize: "0.85rem", color: "var(--color-error, #ef4444)" }} onClick={() => setSelectedEntityIds([])}>
+              Clear
+            </button>
           </div>
         </div>
 
         <div className="weightage-grid">
-          {weightedEntities.map((entity) => (
-            <label key={entity.id} className="weightage-card">
-              <div>
-                <strong>{entity.name}</strong>
-                {selectionMode === "topic" && "chapterId" in entity ? (
-                  <p className="muted-copy">Chapter: {chapterNameById.get(String(entity.chapterId)) ?? "Unknown"}</p>
-                ) : null}
+          {weightedEntities.map((entity) => {
+            const isSelected = selectedEntityIds.includes(entity.id);
+            return (
+              <div key={entity.id} className={`weightage-card ${isSelected ? "selected" : ""}`} style={{ 
+                transition: "all 0.2s ease",
+                borderColor: isSelected ? "var(--color-primary)" : "",
+                background: isSelected ? "rgba(15, 118, 110, 0.05)" : "",
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "16px",
+                borderRadius: "16px",
+                border: "1px solid var(--color-border)"
+              }}>
+                <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
+                  <input 
+                    type="checkbox" 
+                    id={`check-${entity.id}`}
+                    checked={isSelected}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedEntityIds(prev => Array.from(new Set([...prev, entity.id])));
+                      } else {
+                        setSelectedEntityIds(prev => prev.filter(id => id !== entity.id));
+                        setWeightages(curr => {
+                          const next = { ...curr };
+                          delete next[entity.id];
+                          return next;
+                        });
+                      }
+                    }}
+                    style={{ marginTop: "4px", cursor: "pointer" }}
+                  />
+                  <label htmlFor={`check-${entity.id}`} style={{ cursor: "pointer" }}>
+                    <strong style={{ display: "block", fontSize: "0.95rem" }}>{entity.name}</strong>
+                    {selectionMode === "topic" && "chapterId" in entity ? (
+                      <p className="muted-copy" style={{ fontSize: "0.75rem", margin: 0 }}>{chapterNameById.get(String(entity.chapterId)) ?? "Unknown"}</p>
+                    ) : null}
+                  </label>
+                </div>
+                <div className="weightage-input" style={{ opacity: isSelected ? 1 : 0.4, pointerEvents: isSelected ? "auto" : "none" }}>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={weightages[entity.id] ?? ""}
+                    onChange={(event) =>
+                      setWeightages((current) => ({
+                        ...current,
+                        [entity.id]: event.target.value
+                      }))
+                    }
+                    placeholder="0"
+                    style={{ width: "60px", padding: "8px", borderRadius: "8px", border: "1px solid #cbd5e1" }}
+                  />
+                  <span style={{ marginLeft: "4px" }}>%</span>
+                </div>
               </div>
-              <div className="weightage-input">
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={weightages[entity.id] ?? ""}
-                  onChange={(event) =>
-                    setWeightages((current) => ({
-                      ...current,
-                      [entity.id]: event.target.value
-                    }))
-                  }
-                />
-                <span>%</span>
-              </div>
-            </label>
-          ))}
+            );
+          })}
         </div>
 
         <div className="action-row">
@@ -459,10 +573,10 @@ export function ExamBuilderPage() {
             <div>
               <h3>{blueprint.name}</h3>
               <p className="muted-copy">
-                {blueprint.className} • {blueprint.streamName} • {blueprint.subjectName}
+                {blueprint.className || "Class"} • {blueprint.streamName || "Stream"} • {blueprint.subjectName || "Subject"}
               </p>
               <p className="muted-copy">
-                {blueprint.batchName} • {blueprint.durationMinutes} minute timed exam
+                {blueprint.batchName || "Batch"} • {blueprint.durationMinutes} minute timed exam
               </p>
             </div>
             <button className="primary-button" onClick={() => void createExam(blueprint.id)}>

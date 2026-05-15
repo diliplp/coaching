@@ -27,7 +27,7 @@ button {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: auto 1fr;
   min-height: 100vh;
 }
 
@@ -56,10 +56,64 @@ button {
 .sidebar {
   background: #0f172a;
   color: white;
-  padding: 32px 24px;
+  padding: 64px 18px 32px;
   display: flex;
   flex-direction: column;
   gap: 32px;
+  width: 260px;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.sidebar.collapsed {
+  width: 80px;
+  padding: 32px 14px;
+}
+
+.sidebar-toggle {
+  position: absolute;
+  top: 20px;
+  right: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: 0.2s;
+  z-index: 10;
+}
+
+.sidebar-toggle:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.sidebar h1 {
+  font-size: 1.5rem;
+  transition: opacity 0.2s;
+  white-space: nowrap;
+}
+
+.sidebar.collapsed h1,
+.sidebar.collapsed .eyebrow,
+.sidebar.collapsed .session-card span,
+.sidebar.collapsed .session-card strong,
+.sidebar.collapsed .nav-link span {
+  display: none;
+}
+
+.sidebar.collapsed .session-card {
+  align-items: center;
+  padding: 10px 5px;
+}
+
+.sidebar.collapsed .session-card button {
+  padding: 8px;
+  font-size: 10px;
 }
 
 .session-card {
@@ -357,8 +411,8 @@ button {
 
 .exam-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) 340px;
-  gap: 20px;
+  grid-template-columns: 1fr 280px;
+  gap: 24px;
 }
 
 .exam-main,
@@ -413,15 +467,22 @@ button {
 
 .palette-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .palette-button {
-  aspect-ratio: 1;
-  border-radius: 14px;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
   border: 1px solid #cbd5e1;
   background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.2s;
 }
 
 .palette-button.answered {

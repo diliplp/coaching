@@ -49,6 +49,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      // Clear session on unauthorized and force redirect
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("coaching-auth-session");
+        window.location.href = "/login";
+      }
+    }
     let errorMessage = `Request failed: ${response.status}`;
     try {
       const errorData = await response.json();

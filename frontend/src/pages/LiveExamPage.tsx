@@ -84,11 +84,14 @@ export function LiveExamPage() {
     });
   };
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const submitExam = async () => {
-    if (!liveExamState.generatedExam) {
+    if (!liveExamState.generatedExam || isSubmitting) {
       return;
     }
 
+    setIsSubmitting(true);
     const payload = {
       studentId: session?.user.studentId ?? undefined,
       answers: liveExamState.generatedExam.questions.map((question) => ({
@@ -103,8 +106,11 @@ export function LiveExamPage() {
       setResultVersion((value) => value + 1);
       setIsReviewMode(true);
       setCurrentIndex(0);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      alert(error.message || "Failed to submit exam. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -268,8 +274,12 @@ export function LiveExamPage() {
                 })}
               </div>
 
-              <button className="primary-button full-width" onClick={() => void submitExam()}>
-                Submit Exam
+              <button 
+                className="primary-button full-width" 
+                onClick={() => void submitExam()} 
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? "Submitting Results..." : "Submit Exam"}
               </button>
             </>
           )}

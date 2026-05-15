@@ -14,7 +14,7 @@ import {
   listBatchAdaptivePlans
 } from "../utils/exam-engine.js";
 import { extractPdfText } from "../utils/pdf.js";
-import { generateQuestionsFromText, parseExamPrompt } from "../utils/ai-generator.js";
+import { generateQuestionsFromText, ensureEnoughQuestions, parseExamPrompt } from "../utils/ai-generator.js";
 import { listReferencePapers } from "../utils/reference-papers.js";
 import { findUserByEmail, requireAuth, requireRole, signAuthToken, verifyPassword } from "../utils/auth.js";
 import type { AuthenticatedRequest, Question, QuestionSource, SubjectBook } from "../types.js";
@@ -182,8 +182,19 @@ apiRouter.post("/exams/self-generate", requireRole(["student", "super_admin", "t
       return res.status(400).json({ message: "No questions available for selected topics and source filters" });
     }
 
-    const count = Math.min(questions.length, Number(questionCount) || 10);
-    const selectedQuestions = questions.sort(() => 0.5 - Math.random()).slice(0, count);
+    const targetCount = Number(questionCount) || 10;
+    
+    // Auto-generate if needed
+    await ensureEnoughQuestions({
+      topicIds: targetTopicIds,
+      subjectId,
+      targetCount,
+      state
+    });
+
+    const refreshedQuestions = state.questions.filter(q => targetTopicIds.includes(q.topicId));
+    const count = Math.min(refreshedQuestions.length, targetCount);
+    const selectedQuestions = refreshedQuestions.sort(() => 0.5 - Math.random()).slice(0, count);
 
     const auth = (req as AuthenticatedRequest).auth;
     const user = state.users.find(u => u.id === auth?.sub);
@@ -571,6 +582,22 @@ apiRouter.post("/exams/generate/:blueprintId", requireRole(["super_admin", "teac
 });
 
 apiRouter.post("/exams/generate-custom", requireRole(["super_admin", "teacher"]), async (req, res) => {
+  const state = await getAppState();
+  const { subjectId, rules, selectionMode, totalQuestions } = req.body;
+
+  if (subjectId && Array.isArray(rules) && totalQuestions) {
+    const topicIds = selectionMode === "topic" 
+      ? rules.map(r => r.entityId)
+      : state.topics.filter(t => rules.some(r => r.entityId === t.chapterId)).map(t => t.id);
+    
+    await ensureEnoughQuestions({
+      topicIds,
+      subjectId,
+      targetCount: Number(totalQuestions),
+      state
+    });
+  }
+
   const generated = await generateCustomExam(req.body);
   if (!generated) {
     res.status(404).json({ message: "Unable to generate custom exam" });
@@ -770,7 +797,7 @@ apiRouter.post("/exams/:examId/submit", async (req, res) => {
   const authUserId = (req as AuthenticatedRequest).auth?.sub;
   const state = await getAppState();
   const authUser = state.users.find((item) => item.id === authUserId);
-  const effectiveStudentId = authUser?.studentId ?? studentId;
+  const effectiveStudentId = authUser?.studentId ?? authUserId;
 
   if (!effectiveStudentId || !answers) {
     res.status(400).json({ message: "studentId and answers are required" });

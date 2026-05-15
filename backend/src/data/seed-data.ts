@@ -478,6 +478,42 @@ export const seedData: AppStore = {
         { id: "q-bio1o4", label: "D", value: "Vas deferens" }
       ],
       explanation: "The testes are the primary sex organs in males as they produce sperm and testosterone."
+    },
+    {
+      id: "q-chem-1",
+      subjectId: "subject-class9-science",
+      topicId: "topic-matter",
+      type: "single_correct",
+      prompt: "Identify the structure of Benzene, a common aromatic hydrocarbon.",
+      difficulty: "medium",
+      marks: 4,
+      negativeMarks: 1,
+      correctOptionIds: ["q-chem-1o1"],
+      options: [
+        { id: "q-chem-1o1", label: "A", value: "[SMILES: c1ccccc1]" },
+        { id: "q-chem-1o2", label: "B", value: "[SMILES: CCO]" },
+        { id: "q-chem-1o3", label: "C", value: "[SMILES: CC(=O)O]" },
+        { id: "q-chem-1o4", label: "D", value: "[SMILES: C]" }
+      ],
+      explanation: "Benzene has a hexagonal ring structure with delocalized pi electrons, represented as c1ccccc1 in SMILES."
+    },
+    {
+      id: "q-chem-2",
+      subjectId: "subject-class9-science",
+      topicId: "topic-matter",
+      type: "single_correct",
+      prompt: "Which of the following represents the molecular structure of Ethanol (Alcohol)?",
+      difficulty: "easy",
+      marks: 4,
+      negativeMarks: 1,
+      correctOptionIds: ["q-chem-2o2"],
+      options: [
+        { id: "q-chem-2o1", label: "A", value: "[SMILES: C]" },
+        { id: "q-chem-2o2", label: "B", value: "[SMILES: CCO]" },
+        { id: "q-chem-2o3", label: "C", value: "[SMILES: O]" },
+        { id: "q-chem-2o4", label: "D", value: "[SMILES: CC(=O)O]" }
+      ],
+      explanation: "Ethanol (CH3CH2OH) is represented as CCO in SMILES notation."
     }
   ],
   blueprints: [
