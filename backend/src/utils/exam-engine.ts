@@ -207,7 +207,9 @@ function buildCustomSourceSignature(request: TeacherCustomExamRequest) {
     .sort((left, right) => left.entityId.localeCompare(right.entityId))
     .map((rule) => `${rule.entityId}:${rule.weightagePercent}`)
     .join("|");
-  return `custom:${request.batchId}:${request.subjectId}:${request.selectionMode}:${request.totalQuestions}:${rulesSignature}`;
+  const subjectIds = request.subjectIds || (request.subjectId ? [request.subjectId] : []);
+  const subjectsStr = subjectIds.sort().join(",");
+  return `custom:${request.batchId}:${subjectsStr}:${request.selectionMode}:${request.totalQuestions}:${rulesSignature}`;
 }
 
 export async function generateExamFromBlueprint(blueprintId: string): Promise<Exam | null> {
@@ -250,14 +252,18 @@ export async function generateExamFromBlueprint(blueprintId: string): Promise<Ex
 export async function generateCustomExam(request: TeacherCustomExamRequest): Promise<Exam | { error: string } | null> {
   const state = await getAppState();
   const batch = state.batches.find((item) => item.id === request.batchId);
-  const subject = state.subjects.find((item) => item.id === request.subjectId);
+  const targetSubjectIds = request.subjectIds || (request.subjectId ? [request.subjectId] : []);
+  const subjects = state.subjects.filter((item) => targetSubjectIds.includes(item.id));
 
-  if (!batch || !subject) {
-    return { error: "Batch or subject not found" };
+  if (!batch || subjects.length === 0) {
+    return { error: "Batch or subjects not found" };
   }
 
-  if (batch.classId !== subject.classId || batch.streamId !== subject.streamId) {
-    return { error: "Selected batch does not match the selected subject" };
+  // Verify all subjects match the batch class/stream
+  for (const subject of subjects) {
+    if (batch.classId !== subject.classId || batch.streamId !== subject.streamId) {
+      return { error: `Subject ${subject.name} does not match the selected batch class/stream` };
+    }
   }
 
   const normalizedRules = request.rules.filter((rule) => rule.weightagePercent > 0);
@@ -270,8 +276,8 @@ export async function generateCustomExam(request: TeacherCustomExamRequest): Pro
     return { error: "Selected weightages must total 100%" };
   }
 
-  const subjectTopics = state.topics.filter((topic) => topic.subjectId === request.subjectId);
-  let subjectQuestions = state.questions.filter((question) => question.subjectId === request.subjectId);
+  const subjectTopics = state.topics.filter((topic) => targetSubjectIds.includes(topic.subjectId));
+  let subjectQuestions = state.questions.filter((question) => targetSubjectIds.includes(question.subjectId));
   
   // Apply Source Filtering
   if (Array.isArray(request.allowedSourceTypes) && request.allowedSourceTypes.length > 0) {
@@ -347,12 +353,27 @@ export async function generateCustomExam(request: TeacherCustomExamRequest): Pro
 
   const exam = createExamFromQuestions({
     exam: {
-      blueprintId: `custom-${request.subjectId}`,
+      blueprintId: `custom-${targetSubjectIds.join("-")}`,
       name: request.name,
       classId: batch.classId,
       streamId: batch.streamId,
       batchId: batch.id,
-      subjectId: request.subjectId,
+      subjectId: (() => {
+        // Find which subject has the most questions in the final selection
+        const subjectCounts = new Map<string, number>();
+        selectedQuestions.forEach(q => {
+          subjectCounts.set(q.subjectId, (subjectCounts.get(q.subjectId) || 0) + 1);
+        });
+        let maxSubject = targetSubjectIds[0] || "";
+        let maxCount = -1;
+        subjectCounts.forEach((count, subId) => {
+          if (count > maxCount) {
+            maxCount = count;
+            maxSubject = subId;
+          }
+        });
+        return maxSubject;
+      })(),
       durationMinutes: request.durationMinutes,
       generationMode: "custom",
       adaptiveSummary: `${request.selectionMode === "chapter" ? "Chapter-wise" : "Topic-wise"} weighted paper: ${coverageText}`,

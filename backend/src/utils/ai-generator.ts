@@ -47,17 +47,21 @@ export async function generateQuestionsFromText(params: {
 
   console.log(`Starting AI generation for topic ${topicId}. Total requested: ${questionCount}. Batches: ${numBatches}`);
 
-  for (let b = 0; b < numBatches; b++) {
+  let attempts = 0;
+  const maxAttempts = numBatches + 5; // Allow a few extra attempts if batches return fewer questions
+
+  while (allQuestions.length < questionCount && attempts < maxAttempts) {
+    attempts++;
     const currentBatchCount = Math.min(batchSize, questionCount - allQuestions.length);
     if (currentBatchCount <= 0) break;
 
     const previousPrompts = allQuestions.slice(-20).map(q => q.prompt).join("\n- ");
-    const avoidanceInstruction = b > 0 
-      ? `\nIMPORTANT: Do NOT repeat these questions or topics which were already generated:\n- ${previousPrompts}\n` 
+    const avoidanceInstruction = allQuestions.length > 0 
+      ? `\nIMPORTANT: Do NOT repeat these questions which were already generated:\n- ${previousPrompts}\n` 
       : "";
 
     const prompt = `
-You are an expert educator. Generate exactly ${currentBatchCount} multiple-choice questions from the text below.
+You are an expert educator. Generate exactly ${currentBatchCount} NEW multiple-choice questions from the text below.
 ${exampleInstruction}
 ${avoidanceInstruction}
 
@@ -108,7 +112,7 @@ ${text.substring(0, 30000)}
     `;
 
     try {
-      console.log(`Generating batch ${b + 1}/${numBatches} (${currentBatchCount} questions)...`);
+      console.log(`Generating batch ${attempts} (need ${currentBatchCount} more)...`);
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -166,13 +170,12 @@ ${text.substring(0, 30000)}
       });
 
       allQuestions.push(...mappedQuestions);
-      console.log(`Batch ${b + 1} complete. Total now: ${allQuestions.length}`);
+      console.log(`Batch ${attempts} complete. Total now: ${allQuestions.length}/${questionCount}`);
 
     } catch (error: any) {
-      console.error(`Batch ${b + 1} failed:`, error.message);
-      // If one batch fails, we still return the ones we have so far
-      if (allQuestions.length === 0) throw error;
-      break;
+      console.error(`Batch ${attempts} failed:`, error.message);
+      if (allQuestions.length === 0 && attempts >= maxAttempts) throw error;
+      // Continue to next attempt if we have some questions or still have attempts left
     }
   }
 

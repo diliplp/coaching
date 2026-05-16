@@ -12,7 +12,7 @@ export function ExamBuilderPage() {
   const [adaptiveStudentId, setAdaptiveStudentId] = useState("student-9-1");
   const [adaptiveSubjectId, setAdaptiveSubjectId] = useState("subject-class9-math");
   const [selectedBatchId, setSelectedBatchId] = useState("");
-  const [selectedSubjectId, setSelectedSubjectId] = useState("");
+  const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
   const [customExamName, setCustomExamName] = useState("Class 9 Weighted Practice Test");
   const [selectionMode, setSelectionMode] = useState<"chapter" | "topic">("chapter");
   const [durationMinutes, setDurationMinutes] = useState(30);
@@ -58,25 +58,30 @@ export function ExamBuilderPage() {
   }, [questionBank, selectedBatch]);
 
   useEffect(() => {
-    if (availableSubjects.length === 0) {
-      return;
-    }
+    setSelectedSubjectIds((current) => {
+      // Keep only subjects that are available in the current batch/class
+      const stillValid = current.filter(id => availableSubjects.some(s => s.id === id));
+      return stillValid;
+    });
+  }, [availableSubjects]);
 
-    const stillValid = availableSubjects.some((subject) => subject.id === selectedSubjectId);
-    const nextSubjectId = stillValid ? selectedSubjectId : availableSubjects[0].id;
-    setSelectedSubjectId(nextSubjectId);
-
-    const nextSubject = availableSubjects.find((subject) => subject.id === nextSubjectId);
-    if (nextSubject) {
-      setAdaptiveSubjectId(nextSubject.id);
-      setCustomExamName(`${selectedBatch?.name ?? "Batch"} ${nextSubject.name} Weighted Test`);
+  useEffect(() => {
+    if (selectedSubjectIds.length > 0) {
+      setAdaptiveSubjectId(selectedSubjectIds[0]);
+      const subjectsText = selectedSubjectIds
+        .map(id => availableSubjects.find(s => s.id === id)?.name)
+        .filter(Boolean)
+        .join(", ");
+      setCustomExamName(`${selectedBatch?.name ?? "Batch"} ${subjectsText} Weighted Test`);
+    } else {
+      setCustomExamName(`${selectedBatch?.name ?? "Batch"} New Custom Test`);
     }
-  }, [availableSubjects, selectedSubjectId, selectedBatch]);
+  }, [selectedSubjectIds, availableSubjects, selectedBatch]);
 
   useEffect(() => {
     setWeightages({});
     setSelectedEntityIds([]);
-  }, [selectedSubjectId, selectionMode]);
+  }, [selectedSubjectIds, selectionMode]);
 
   const distributeEvenly = () => {
     setSelectedEntityIds(curr => {
@@ -116,8 +121,8 @@ export function ExamBuilderPage() {
   };
 
   const availableChapters = useMemo(
-    () => questionBank?.chapters.filter((chapter) => chapter.subjectId === selectedSubjectId) ?? [],
-    [questionBank, selectedSubjectId]
+    () => questionBank?.chapters.filter((chapter) => selectedSubjectIds.includes(chapter.subjectId)) ?? [],
+    [questionBank, selectedSubjectIds]
   );
 
   const chapterNameById = useMemo(
@@ -126,8 +131,8 @@ export function ExamBuilderPage() {
   );
 
   const availableTopics = useMemo(
-    () => questionBank?.topics.filter((topic) => topic.subjectId === selectedSubjectId) ?? [],
-    [questionBank, selectedSubjectId]
+    () => questionBank?.topics.filter((topic) => selectedSubjectIds.includes(topic.subjectId)) ?? [],
+    [questionBank, selectedSubjectIds]
   );
 
   const weightedEntities = selectionMode === "chapter" ? availableChapters : availableTopics;
@@ -147,8 +152,8 @@ export function ExamBuilderPage() {
   };
 
   const createCustomExam = async () => {
-    if (!selectedBatchId || !selectedSubjectId) {
-      setStatus("Select a batch and subject first.");
+    if (!selectedBatchId || selectedSubjectIds.length === 0) {
+      setStatus("Select a batch and at least one subject first.");
       return;
     }
 
@@ -157,7 +162,7 @@ export function ExamBuilderPage() {
       const payload = await apiClient.generateCustomExam({
         name: customExamName,
         batchId: selectedBatchId,
-        subjectId: selectedSubjectId,
+        subjectIds: selectedSubjectIds,
         durationMinutes,
         totalQuestions,
         selectionMode,
@@ -174,9 +179,9 @@ export function ExamBuilderPage() {
       liveExamState.generatedExam = payload;
       liveExamState.latestResult = null;
       setStatus(`Weighted exam created: ${payload.exam.name}. Fresh questions and shuffled options are ready.`);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setStatus("Unable to generate weighted exam. Make sure the selected weightages total 100%.");
+      setStatus(error.message || "Unable to generate weighted exam. Make sure the selected weightages total 100%.");
     }
   };
 
@@ -339,16 +344,39 @@ export function ExamBuilderPage() {
               ))}
             </select>
           </label>
-          <label className="field">
-            <span>Subject</span>
-            <select value={selectedSubjectId} onChange={(event) => setSelectedSubjectId(event.target.value)}>
+          <div className="field">
+            <span>Subjects</span>
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "8px" }}>
               {availableSubjects.map((subject) => (
-                <option key={subject.id} value={subject.id}>
+                <label key={subject.id} style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  gap: "8px", 
+                  padding: "8px 12px", 
+                  background: selectedSubjectIds.includes(subject.id) ? "var(--color-primary-light, #e0f2f1)" : "white",
+                  border: "1px solid",
+                  borderColor: selectedSubjectIds.includes(subject.id) ? "var(--color-primary)" : "var(--color-border)",
+                  borderRadius: "20px",
+                  cursor: "pointer",
+                  fontSize: "0.9rem",
+                  transition: "all 0.2s"
+                }}>
+                  <input 
+                    type="checkbox" 
+                    checked={selectedSubjectIds.includes(subject.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedSubjectIds([...selectedSubjectIds, subject.id]);
+                      } else {
+                        setSelectedSubjectIds(selectedSubjectIds.filter(id => id !== subject.id));
+                      }
+                    }}
+                  />
                   {subject.name}
-                </option>
+                </label>
               ))}
-            </select>
-          </label>
+            </div>
+          </div>
           <label className="field">
             <span>Exam Name</span>
             <input value={customExamName} onChange={(event) => setCustomExamName(event.target.value)} />

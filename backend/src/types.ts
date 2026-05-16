@@ -160,7 +160,8 @@ export interface Exam {
 export interface TeacherCustomExamRequest {
   name: string;
   batchId: string;
-  subjectId: string;
+  subjectId?: string;
+  subjectIds?: string[];
   durationMinutes: number;
   totalQuestions: number;
   selectionMode: TeacherExamSelectionMode;

@@ -63,7 +63,8 @@ export interface BlueprintSummary {
 export interface TeacherCustomExamRequest {
   name: string;
   batchId: string;
-  subjectId: string;
+  subjectId?: string;
+  subjectIds?: string[];
   durationMinutes: number;
   totalQuestions: number;
   selectionMode: "chapter" | "topic";

@@ -583,19 +583,35 @@ apiRouter.post("/exams/generate/:blueprintId", requireRole(["super_admin", "teac
 
 apiRouter.post("/exams/generate-custom", requireRole(["super_admin", "teacher"]), async (req, res) => {
   const state = await getAppState();
-  const { subjectId, rules, selectionMode, totalQuestions } = req.body;
+  const { subjectId, subjectIds: rawSubjectIds, rules, selectionMode, totalQuestions } = req.body;
+  const targetSubjectIds = Array.isArray(rawSubjectIds) ? rawSubjectIds : (subjectId ? [subjectId] : []);
 
-  if (subjectId && Array.isArray(rules) && totalQuestions) {
-    const topicIds = selectionMode === "topic" 
-      ? rules.map(r => r.entityId)
-      : state.topics.filter(t => rules.some(r => r.entityId === t.chapterId)).map(t => t.id);
+  if (targetSubjectIds.length > 0 && Array.isArray(rules) && totalQuestions) {
+    // Group topics by subject to call ensureEnoughQuestions correctly
+    const entityIds = rules.map(r => r.entityId);
+    let topicIds: string[] = [];
     
-    await ensureEnoughQuestions({
-      topicIds,
-      subjectId,
-      targetCount: Number(totalQuestions),
-      state
+    if (selectionMode === "topic") {
+      topicIds = entityIds;
+    } else {
+      topicIds = state.topics.filter(t => entityIds.includes(t.chapterId)).map(t => t.id);
+    }
+
+    const topicsBySubject = new Map<string, string[]>();
+    state.topics.filter(t => topicIds.includes(t.id)).forEach(t => {
+      const list = topicsBySubject.get(t.subjectId) || [];
+      list.push(t.id);
+      topicsBySubject.set(t.subjectId, list);
     });
+
+    for (const [subId, tIds] of topicsBySubject.entries()) {
+      await ensureEnoughQuestions({
+        topicIds: tIds,
+        subjectId: subId,
+        targetCount: Math.ceil(Number(totalQuestions) / topicsBySubject.size), // Approximate target for each subject
+        state
+      });
+    }
   }
 
   const generated = await generateCustomExam(req.body);

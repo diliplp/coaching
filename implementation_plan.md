@@ -312,17 +312,17 @@ Based on the existing stack direction, the following is a practical implementati
 - Implement answer autosave and auto-submit
 - Implement instant evaluation and result summary
 
-### Phase 3: Analytics MVP [IN PROGRESS]
+### Phase 3: Analytics MVP [DONE]
 - Student topic-wise analysis
 - Weak-topic detection
 - Teacher batch dashboard
 - Ranking and trend views
 
-### Phase 4: Business Differentiators
-- Weak-topic practice tests
-- Test templates
-- Gujarati language support
-- PDF reports for student/parent sharing
+### Phase 4: Business Differentiators [IN PROGRESS]
+- STEM Rendering (KaTeX and SMILES for images)
+- AI-Powered Auto-fulfillment (Ensures requested question count by auto-generating from books)
+- Collapsible Navigation UI
+- Personalized follow-up practice tests
 
 ## 11. Reporting and Analytics Logic
 
@@ -369,16 +369,25 @@ When pitching this to the tuition class, describe the MVP as:
 
 This message is more compelling than calling it only an online test portal.
 
-## 15. Immediate Next Build Steps
+## 17. Recent Accomplishments (Latest Sprint)
 
-1. Finalize MVP scope and roles
-2. Freeze the core database schema
-3. Build authentication and academic hierarchy management
-4. Build the question bank
-5. Build blueprint-based exam generation
-6. Build the live exam runner
-7. Build evaluation and analytics
-8. Add dashboards and reports
+### 17.1 Advanced AI Question Generation
+- Implemented **Ensured Capacity Logic**: The system now checks if enough questions exist for a selected weightage.
+- **Auto-Fulfillment**: Automatically triggers AI generation from subject books if the current bank is insufficient for a teacher or student request.
+
+### 17.2 Premium STEM Support
+- **LaTeX Integration**: Full support for complex math and physics formulas using KaTeX.
+- **SMILES Chemical Rendering**: Automated 2D chemical structure drawing (Benzene rings, etc.) using `smiles-drawer`.
+
+### 17.3 UI/UX Refinement
+- **Collapsible Sidebar**: Maximized workspace with a minimized icon-only navigation mode.
+- **Compact Exam Palette**: Optimized live exam layout for better question readability.
+- **Security Hardening**: Session verification on boot and automatic 401 redirect to login.
+
+## 18. Immediate Next Build Steps
+1. Finalize PDF report generation for parents.
+2. Implement Gujarati language toggle for instructions.
+3. Build the "One-Click Weak Topic Practice" generation button on results page.
 
 ## 16. Nice-to-Have Future Enhancements
 
