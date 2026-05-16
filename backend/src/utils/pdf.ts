@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import pdf from "pdf-parse";
+import * as pdf from "pdf-parse";
 
 export async function extractPdfText(filePath: string) {
   try {
