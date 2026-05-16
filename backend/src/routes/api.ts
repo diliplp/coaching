@@ -834,10 +834,36 @@ apiRouter.post("/exams/:examId/submit", async (req, res) => {
 
 apiRouter.post("/subject-books/:bookId/detect-curriculum", requireRole(["super_admin", "teacher"]), async (req, res) => {
   const state = await getAppState();
-  const book = state.subjectBooks.find(b => b.id === req.params.bookId);
+  let book = state.subjectBooks.find(b => b.id === req.params.bookId);
   
-  if (!book || !book.parsedText) {
-    return res.status(404).json({ message: "Book or parsed text not found" });
+  if (!book) {
+    return res.status(404).json({ message: "Book not found" });
+  }
+
+  // If parsedText is missing (e.g. for older uploads), try to re-extract it
+  if (!book.parsedText) {
+    try {
+      const path = await import("path");
+      const { booksUploadsRoot } = await import("../utils/paths.js");
+      const fileName = book.fileUrl.split("/").pop();
+      if (fileName) {
+        const filePath = path.join(booksUploadsRoot, fileName);
+        const { extractPdfText } = await import("../utils/pdf.js");
+        const parsed = await extractPdfText(filePath);
+        
+        book.parsedText = parsed.extractedText;
+        book.previewText = parsed.previewText;
+        book.pageCount = parsed.pageCount;
+        
+        await upsertRecord("subjectBooks", book);
+      }
+    } catch (err) {
+      console.error("Re-extraction failed during detection:", err);
+    }
+  }
+
+  if (!book.parsedText) {
+    return res.status(400).json({ message: "Could not extract text from this PDF. Please ensure it is a valid, readable PDF file." });
   }
 
   try {
