@@ -182,7 +182,7 @@ apiRouter.post("/exams/self-generate", requireRole(["student", "super_admin", "t
     });
 
     // Re-fetch questions after potential generation
-    questions = state.questions.filter(q => targetTopicIds.includes(q.topicId));
+    let questions = state.questions.filter(q => targetTopicIds.includes(q.topicId));
     
     // Filter by source if specified
     if (Array.isArray(allowedSourceTypes) && allowedSourceTypes.length > 0) {
@@ -193,9 +193,8 @@ apiRouter.post("/exams/self-generate", requireRole(["student", "super_admin", "t
       return res.status(400).json({ message: "No questions available for selected topics and source filters. Make sure a textbook is uploaded for this subject if you want AI generation." });
     }
 
-    const refreshedQuestions = state.questions.filter(q => targetTopicIds.includes(q.topicId));
-    const count = Math.min(refreshedQuestions.length, targetCount);
-    const selectedQuestions = refreshedQuestions.sort(() => 0.5 - Math.random()).slice(0, count);
+    const count = Math.min(questions.length, targetCount);
+    const selectedQuestions = questions.sort(() => 0.5 - Math.random()).slice(0, count);
 
     const auth = (req as AuthenticatedRequest).auth;
     const user = state.users.find(u => u.id === auth?.sub);
