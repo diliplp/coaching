@@ -171,7 +171,18 @@ apiRouter.post("/exams/self-generate", requireRole(["student", "super_admin", "t
     if (validTopics.length === 0) return res.status(404).json({ message: "Topics not found" });
 
     const subjectId = validTopics[0].subjectId;
-    let questions = state.questions.filter(q => targetTopicIds.includes(q.topicId));
+    const targetCount = Number(questionCount) || 10;
+    
+    // Auto-generate if needed - MOVE THIS UP
+    await ensureEnoughQuestions({
+      topicIds: targetTopicIds,
+      subjectId,
+      targetCount,
+      state
+    });
+
+    // Re-fetch questions after potential generation
+    questions = state.questions.filter(q => targetTopicIds.includes(q.topicId));
     
     // Filter by source if specified
     if (Array.isArray(allowedSourceTypes) && allowedSourceTypes.length > 0) {
@@ -179,18 +190,8 @@ apiRouter.post("/exams/self-generate", requireRole(["student", "super_admin", "t
     }
     
     if (questions.length === 0) {
-      return res.status(400).json({ message: "No questions available for selected topics and source filters" });
+      return res.status(400).json({ message: "No questions available for selected topics and source filters. Make sure a textbook is uploaded for this subject if you want AI generation." });
     }
-
-    const targetCount = Number(questionCount) || 10;
-    
-    // Auto-generate if needed
-    await ensureEnoughQuestions({
-      topicIds: targetTopicIds,
-      subjectId,
-      targetCount,
-      state
-    });
 
     const refreshedQuestions = state.questions.filter(q => targetTopicIds.includes(q.topicId));
     const count = Math.min(refreshedQuestions.length, targetCount);

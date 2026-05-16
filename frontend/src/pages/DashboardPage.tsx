@@ -226,28 +226,33 @@ export function DashboardPage() {
               <div className="field">
                 <span style={{ fontWeight: "600", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>QUESTION SOURCES</span>
                 <div style={{ display: "flex", gap: "15px", marginTop: "10px" }}>
-                  {["pyq", "reference"].map(source => (
-                    <label key={source} style={{ 
+                  {[
+                    { id: "pyq", label: "PYQs" },
+                    { id: "reference", label: "Reference Books" },
+                    { id: "ai_generated", label: "AI Generated" },
+                    { id: "custom", label: "Custom Bank" }
+                  ].map(source => (
+                    <label key={source.id} style={{ 
                       display: "flex", 
                       alignItems: "center", 
                       gap: "8px", 
                       cursor: "pointer", 
                       fontSize: "0.9rem", 
-                      background: allowedSources.includes(source) ? "rgba(0,112,243,0.05)" : "var(--color-bg-secondary)", 
+                      background: allowedSources.includes(source.id) ? "rgba(0,112,243,0.05)" : "var(--color-bg-secondary)", 
                       padding: "10px 16px", 
                       borderRadius: "12px",
-                      border: allowedSources.includes(source) ? "1px solid var(--color-primary)" : "1px solid var(--color-border)",
+                      border: allowedSources.includes(source.id) ? "1px solid var(--color-primary)" : "1px solid var(--color-border)",
                       transition: "all 0.2s"
                     }}>
                       <input 
                         type="checkbox" 
-                        checked={allowedSources.includes(source)}
+                        checked={allowedSources.includes(source.id)}
                         onChange={(e) => {
-                          if (e.target.checked) setAllowedSources([...allowedSources, source]);
-                          else if (allowedSources.length > 1) setAllowedSources(allowedSources.filter(s => s !== source));
+                          if (e.target.checked) setAllowedSources([...allowedSources, source.id]);
+                          else if (allowedSources.length > 1) setAllowedSources(allowedSources.filter(s => s !== source.id));
                         }}
                       />
-                      <span style={{ fontWeight: "500" }}>{source === "pyq" ? "PYQs" : "Reference Books"}</span>
+                      <span style={{ fontWeight: "500" }}>{source.label}</span>
                     </label>
                   ))}
                 </div>
