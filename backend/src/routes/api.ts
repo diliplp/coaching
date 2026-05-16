@@ -117,15 +117,18 @@ apiRouter.get("/overview", async (req, res) => {
   const user = state.users.find(u => u.id === auth?.sub);
   
   let scheduledExams = state.exams;
+
   if (user?.role === "student" && user.studentId) {
     const student = state.students.find(s => s.id === user.studentId);
     if (student) {
-      const now = new Date().toISOString();
+      // Return all exams for the student's batch.
+      // We will handle the "Start" button logic on the frontend to avoid server-side timezone mismatches.
       scheduledExams = state.exams.filter(exam => 
-        exam.batchId === student.batchId &&
-        (!exam.scheduledStartTime || exam.scheduledStartTime <= now) &&
-        (!exam.scheduledEndTime || exam.scheduledEndTime >= now)
+        String(exam.batchId) === String(student.batchId)
       );
+    } else {
+      // Fallback if student record not found: show nothing to be safe, or show all if that's desired
+      scheduledExams = [];
     }
   }
 

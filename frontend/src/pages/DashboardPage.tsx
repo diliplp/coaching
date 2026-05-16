@@ -140,18 +140,57 @@ export function DashboardPage() {
               </div>
             ) : (
               <div className="stack" style={{ gap: "12px" }}>
-                {data.scheduledExams.map(exam => (
-                  <article key={exam.id} className="row-between" style={{ padding: "16px", background: "white", borderRadius: "12px", border: "1px solid var(--color-border)", transition: "all 0.2s", cursor: "default" }}>
-                    <div style={{ display: "flex", gap: "15px", alignItems: "center" }}>
-                      <div style={{ width: "40px", height: "40px", borderRadius: "8px", background: "var(--color-bg-secondary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.2rem" }}>📝</div>
-                      <div>
-                        <strong style={{ fontSize: "1.1rem" }}>{exam.name}</strong>
-                        <div className="muted-copy" style={{ fontSize: "0.85rem" }}>⏱️ {exam.durationMinutes} minutes</div>
+                {data.scheduledExams.map(exam => {
+                  const now = new Date();
+                  const startTime = exam.scheduledStartTime ? new Date(exam.scheduledStartTime) : null;
+                  const endTime = exam.scheduledEndTime ? new Date(exam.scheduledEndTime) : null;
+                  
+                  const hasStarted = !startTime || startTime <= now;
+                  const hasEnded = endTime && endTime < now;
+                  const isAvailable = hasStarted && !hasEnded;
+
+                  return (
+                    <article key={exam.id} className="row-between" style={{ 
+                      padding: "16px", 
+                      background: "white", 
+                      borderRadius: "12px", 
+                      border: "1px solid var(--color-border)", 
+                      opacity: isAvailable ? 1 : 0.7,
+                      transition: "all 0.2s" 
+                    }}>
+                      <div style={{ display: "flex", gap: "15px", alignItems: "center" }}>
+                        <div style={{ 
+                          width: "40px", 
+                          height: "40px", 
+                          borderRadius: "8px", 
+                          background: isAvailable ? "var(--color-bg-secondary)" : "#f0f0f0", 
+                          display: "flex", 
+                          alignItems: "center", 
+                          justifyContent: "center", 
+                          fontSize: "1.2rem" 
+                        }}>
+                          {hasEnded ? "🏁" : hasStarted ? "📝" : "⏳"}
+                        </div>
+                        <div>
+                          <strong style={{ fontSize: "1.1rem" }}>{exam.name}</strong>
+                          <div className="muted-copy" style={{ fontSize: "0.85rem" }}>
+                            ⏱️ {exam.durationMinutes} minutes 
+                            {!hasStarted && startTime && ` • Starts: ${startTime.toLocaleString()}`}
+                            {hasEnded && ` • Ended`}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <button className="primary-button" onClick={() => startExam(exam.id)} style={{ padding: "8px 20px" }}>Start Exam</button>
-                  </article>
-                ))}
+                      <button 
+                        className={isAvailable ? "primary-button" : "secondary-button"} 
+                        onClick={() => isAvailable && startExam(exam.id)} 
+                        disabled={!isAvailable}
+                        style={{ padding: "8px 20px" }}
+                      >
+                        {hasEnded ? "Completed" : hasStarted ? "Start Exam" : "Upcoming"}
+                      </button>
+                    </article>
+                  );
+                })}
               </div>
             )}
           </section>
