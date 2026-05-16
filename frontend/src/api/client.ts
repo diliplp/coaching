@@ -158,6 +158,10 @@ export const apiClient = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
+  detectCurriculumFromBook: (bookId: string) =>
+    request<{ chapters: { name: string; topics: string[] }[] }>(`/subject-books/${bookId}/detect-curriculum`, {
+      method: "POST"
+    }),
   // Admin Methods
   admin: {
     getClasses: () => request<any[]>("/admin/classes"),

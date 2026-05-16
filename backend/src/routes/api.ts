@@ -14,7 +14,7 @@ import {
   listBatchAdaptivePlans
 } from "../utils/exam-engine.js";
 import { extractPdfText } from "../utils/pdf.js";
-import { generateQuestionsFromText, ensureEnoughQuestions, parseExamPrompt } from "../utils/ai-generator.js";
+import { generateQuestionsFromText, ensureEnoughQuestions, parseExamPrompt, detectCurriculumFromText } from "../utils/ai-generator.js";
 import { listReferencePapers } from "../utils/reference-papers.js";
 import { findUserByEmail, requireAuth, requireRole, signAuthToken, verifyPassword } from "../utils/auth.js";
 import type { AuthenticatedRequest, Question, QuestionSource, SubjectBook } from "../types.js";
@@ -831,6 +831,23 @@ apiRouter.post("/exams/:examId/submit", async (req, res) => {
 
   res.json(result);
 });
+
+apiRouter.post("/subject-books/:bookId/detect-curriculum", requireRole(["super_admin", "teacher"]), async (req, res) => {
+  const state = await getAppState();
+  const book = state.subjectBooks.find(b => b.id === req.params.bookId);
+  
+  if (!book || !book.parsedText) {
+    return res.status(404).json({ message: "Book or parsed text not found" });
+  }
+
+  try {
+    const curriculum = await detectCurriculumFromText(book.parsedText);
+    res.json(curriculum);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message || "Failed to detect curriculum" });
+  }
+});
+
 function getSingleFormValue(value: unknown) {
   return Array.isArray(value) ? value[0] : value;
 }

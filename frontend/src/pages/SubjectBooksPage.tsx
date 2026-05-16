@@ -22,6 +22,10 @@ export function SubjectBooksPage() {
   const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
   const [questionCount, setQuestionCount] = useState(5);
 
+  // Curriculum Detection State
+  const [detectingForBook, setDetectingForBook] = useState<string | null>(null);
+  const [detectedCurriculum, setDetectedCurriculum] = useState<{ bookId: string; chapters: { name: string; topics: string[] }[] } | null>(null);
+
   const loadData = async () => {
     const [response, qbResponse] = await Promise.all([
       apiClient.getSubjectBooks(),
@@ -71,6 +75,48 @@ export function SubjectBooksPage() {
       console.error(error);
       setStatus(`Failed to generate AI questions: ${error.message || "Unknown error"}`);
       setGeneratingForBook(null);
+    }
+  };
+
+  const handleDetectCurriculum = async (bookId: string) => {
+    setDetectingForBook(bookId);
+    setStatus("AI is analyzing the PDF to identify chapters and topics... Please wait.");
+    try {
+      const result = await apiClient.detectCurriculumFromBook(bookId);
+      setDetectedCurriculum({ bookId, chapters: result.chapters });
+      setStatus(`AI detected ${result.chapters.length} chapters in this book.`);
+      setDetectingForBook(null);
+    } catch (error: any) {
+      console.error(error);
+      setStatus(`Curriculum detection failed: ${error.message || "Unknown error"}`);
+      setDetectingForBook(null);
+    }
+  };
+
+  const handleImportCurriculum = async (book: any) => {
+    if (!detectedCurriculum) return;
+    setStatus("Importing detected chapters and topics into your subject structure...");
+    try {
+      // Find the subject node to get classId and streamId
+      const subjectNode = data.subjects.find(s => s.id === book.subjectId);
+      if (!subjectNode) throw new Error("Subject context not found");
+
+      await apiClient.admin.saveBulkCurriculum({
+        classId: subjectNode.classId,
+        streamId: subjectNode.streamId,
+        subjects: [
+          {
+            name: subjectNode.name,
+            chapters: detectedCurriculum.chapters
+          }
+        ]
+      });
+      setStatus("Curriculum successfully imported and saved.");
+      setDetectedCurriculum(null);
+      await loadData();
+    } catch (error: any) {
+      console.error(error);
+      setStatus(`Import failed: ${error.message || "Unknown error"}`);
     }
   };
 
@@ -201,6 +247,14 @@ export function SubjectBooksPage() {
                       </a>
                       <button 
                         className="secondary-button" 
+                        disabled={detectingForBook === book.id}
+                        onClick={() => handleDetectCurriculum(book.id)}
+                        style={{ fontSize: "0.85rem", padding: "6px 16px" }}
+                      >
+                        {detectingForBook === book.id ? "Analyzing..." : "Analyze Curriculum"}
+                      </button>
+                      <button 
+                        className="secondary-button" 
                         style={{ color: "var(--color-error)", borderColor: "var(--color-error)", fontSize: "0.85rem", padding: "6px 16px" }}
                         onClick={async () => {
                           if (confirm(`Delete "${book.title}"?`)) {
@@ -217,6 +271,43 @@ export function SubjectBooksPage() {
                       </button>
                     </div>
                   </div>
+
+                  {/* Detected Curriculum Section */}
+                  {detectedCurriculum?.bookId === book.id && (
+                    <div style={{ 
+                      background: "rgba(0, 112, 243, 0.05)", 
+                      padding: "1.25rem", 
+                      borderRadius: "10px", 
+                      border: "1px solid var(--color-primary-light)",
+                      marginTop: "1.5rem",
+                      marginBottom: "1.5rem"
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                        <strong style={{ fontSize: "0.95rem" }}>Detected Structure</strong>
+                        <button className="primary-button" style={{ padding: "4px 12px", fontSize: "0.8rem" }} onClick={() => handleImportCurriculum(book)}>
+                          Import to Subject
+                        </button>
+                      </div>
+                      <div style={{ maxHeight: "200px", overflowY: "auto", fontSize: "0.85rem" }}>
+                        {detectedCurriculum.chapters.map((ch, idx) => (
+                          <div key={idx} style={{ marginBottom: "10px", borderBottom: "1px solid rgba(0,0,0,0.05)", paddingBottom: "5px" }}>
+                            <div style={{ fontWeight: "bold" }}>{ch.name}</div>
+                            <div className="muted-copy" style={{ fontSize: "0.8rem", paddingLeft: "10px" }}>
+                              {ch.topics.join(", ")}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <button 
+                        className="text-link" 
+                        style={{ marginTop: "10px", fontSize: "0.8rem" }} 
+                        onClick={() => setDetectedCurriculum(null)}
+                      >
+                        Close Preview
+                      </button>
+                    </div>
+                  )}
+
 
                   {/* AI Tool Section - Vertical Stack */}
                   <div style={{ 

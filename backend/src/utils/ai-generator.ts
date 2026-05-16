@@ -282,3 +282,63 @@ export async function ensureEnoughQuestions(params: {
     return existingQuestions.length;
   }
 }
+
+export async function detectCurriculumFromText(text: string): Promise<{
+  chapters: { name: string; topics: string[] }[];
+}> {
+  if (!process.env.OPENROUTER_API_KEY) {
+    throw new Error("OPENROUTER_API_KEY is missing.");
+  }
+
+  const prompt = `
+    Analyze the educational text provided below and extract the academic structure (Chapters and their respective Topics).
+    Return the result in JSON format.
+
+    JSON STRUCTURE:
+    {
+      "chapters": [
+        {
+          "name": "Chapter Title",
+          "topics": ["Topic A", "Topic B", "Topic C"]
+        }
+      ]
+    }
+
+    Rules:
+    1. Focus on educational/curriculum structure.
+    2. Be concise but accurate.
+    3. Output ONLY the JSON.
+
+    TEXT CONTENT:
+    ---
+    ${text.substring(0, 20000)}
+    ---
+  `;
+
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "openai/gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" }
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error("AI extraction failed");
+    }
+
+    const data = await response.json();
+    const rawResponse = data.choices?.[0]?.message?.content || '{"chapters": []}';
+    return JSON.parse(rawResponse);
+  } catch (error) {
+    console.error("Curriculum detection failed:", error);
+    return { chapters: [] };
+  }
+}
+
