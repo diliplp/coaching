@@ -3,6 +3,7 @@ import { apiClient } from "../api/client";
 
 export function AnalyticsPage() {
   const [data, setData] = useState<any>(null);
+  const [selectedStudentId, setSelectedStudentId] = useState<string>("");
 
   useEffect(() => {
     apiClient.getAnalytics().then(setData).catch(console.error);
@@ -13,6 +14,7 @@ export function AnalyticsPage() {
   }
 
   const { submissions, exams, students, batches } = data;
+  const studentsWithSubmissions = students.filter((s: any) => submissions.some((sub: any) => sub.studentId === s.id));
 
   // Compute basic stats
   const totalSubmissions = submissions.length;
@@ -101,9 +103,26 @@ export function AnalyticsPage() {
 
       <section className="panel" style={{ marginTop: "20px" }}>
         <h3>Detailed Student Analysis</h3>
-        <p className="muted-copy">Topic-level performance strengths and weaknesses for each student.</p>
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px", marginTop: "15px" }}>
-          {students.map((student: any) => {
+        <p className="muted-copy">Select a student to view their topic-level performance strengths and weaknesses.</p>
+        
+        <div style={{ marginTop: "15px", marginBottom: "20px" }}>
+          <label className="field" style={{ maxWidth: "400px" }}>
+            <span style={{ fontWeight: "600", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>STUDENT</span>
+            <select 
+              value={selectedStudentId} 
+              onChange={(e) => setSelectedStudentId(e.target.value)}
+              style={{ borderRadius: "10px", padding: "12px", border: "1px solid var(--color-border)", background: "var(--color-bg-secondary)" }}
+            >
+              <option value="">-- Select a Student --</option>
+              {studentsWithSubmissions.map((s: any) => (
+                <option key={s.id} value={s.id}>{s.name} ({s.email})</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          {selectedStudentId ? studentsWithSubmissions.filter((s: any) => s.id === selectedStudentId).map((student: any) => {
             const studentSubmissions = submissions.filter((sub: any) => sub.studentId === student.id);
             if (studentSubmissions.length === 0) return null;
 
@@ -176,9 +195,10 @@ export function AnalyticsPage() {
                 </div>
               </div>
             );
-          })}
-          {students.filter((s: any) => submissions.some((sub: any) => sub.studentId === s.id)).length === 0 && (
-            <p className="muted-copy">No student data available yet.</p>
+          }) : (
+            <div style={{ padding: "30px", textAlign: "center", border: "1px dashed var(--color-border)", borderRadius: "8px", background: "var(--color-bg-secondary)" }}>
+              {studentsWithSubmissions.length === 0 ? "No student data available yet." : "Please select a student from the dropdown above to view their details."}
+            </div>
           )}
         </div>
       </section>
