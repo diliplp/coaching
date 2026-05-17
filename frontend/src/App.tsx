@@ -28,7 +28,7 @@ export default function App() {
           if (error.status === 401) {
             // Clear session on unauthorized and force reload to trigger login redirect
             if (typeof window !== "undefined") {
-              localStorage.removeItem("coaching-auth-session");
+              sessionStorage.removeItem("coaching-auth-session");
               window.location.href = "/login";
             }
           }

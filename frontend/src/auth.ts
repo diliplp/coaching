@@ -3,7 +3,7 @@ import type { AuthResponse } from "./types";
 const storageKey = "coaching-auth-session";
 
 export function getStoredSession() {
-  const raw = window.localStorage.getItem(storageKey);
+  const raw = window.sessionStorage.getItem(storageKey);
   if (!raw) {
     return null;
   }
@@ -11,15 +11,15 @@ export function getStoredSession() {
   try {
     return JSON.parse(raw) as AuthResponse;
   } catch {
-    window.localStorage.removeItem(storageKey);
+    window.sessionStorage.removeItem(storageKey);
     return null;
   }
 }
 
 export function storeSession(session: AuthResponse) {
-  window.localStorage.setItem(storageKey, JSON.stringify(session));
+  window.sessionStorage.setItem(storageKey, JSON.stringify(session));
 }
 
 export function clearSession() {
-  window.localStorage.removeItem(storageKey);
+  window.sessionStorage.removeItem(storageKey);
 }

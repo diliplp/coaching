@@ -52,7 +52,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (response.status === 401) {
       // Clear session on unauthorized and force redirect
       if (typeof window !== "undefined") {
-        localStorage.removeItem("coaching-auth-session");
+        sessionStorage.removeItem("coaching-auth-session");
         window.location.href = "/login";
       }
     }
