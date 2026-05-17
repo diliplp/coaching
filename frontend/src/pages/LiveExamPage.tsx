@@ -206,9 +206,18 @@ export function LiveExamPage() {
               </button>
               <button
                 className="primary-button"
-                onClick={() => setCurrentIndex((index) => Math.min(generatedExam.questions.length - 1, index + 1))}
+                disabled={isSubmitting || (isReviewMode && currentIndex === generatedExam.questions.length - 1)}
+                onClick={() => {
+                  if (!isReviewMode && currentIndex === generatedExam.questions.length - 1) {
+                    void submitExam();
+                  } else {
+                    setCurrentIndex((index) => Math.min(generatedExam.questions.length - 1, index + 1));
+                  }
+                }}
               >
-                {currentIndex === generatedExam.questions.length - 1 ? "Finish" : "Next"}
+                {currentIndex === generatedExam.questions.length - 1 
+                  ? (isReviewMode ? "End of Review" : (isSubmitting ? "Submitting..." : "Submit Exam")) 
+                  : "Next"}
               </button>
             </div>
           </div>
