@@ -4,6 +4,8 @@ import { apiClient } from "../api/client";
 export function AnalyticsPage() {
   const [data, setData] = useState<any>(null);
   const [selectedStudentId, setSelectedStudentId] = useState<string>("");
+  const [selectedBatchId, setSelectedBatchId] = useState<string>("");
+  const [studentSearchQuery, setStudentSearchQuery] = useState<string>("");
 
   useEffect(() => {
     apiClient.getAnalytics().then(setData).catch(console.error);
@@ -15,6 +17,14 @@ export function AnalyticsPage() {
 
   const { submissions, exams, students, batches } = data;
   const studentsWithSubmissions = students.filter((s: any) => submissions.some((sub: any) => sub.studentId === s.id));
+
+  const filteredStudents = studentsWithSubmissions.filter((s: any) => {
+    const matchesBatch = selectedBatchId ? s.batchId === selectedBatchId : true;
+    const matchesSearch = studentSearchQuery 
+      ? s.name.toLowerCase().includes(studentSearchQuery.toLowerCase()) || s.email.toLowerCase().includes(studentSearchQuery.toLowerCase())
+      : true;
+    return matchesBatch && matchesSearch;
+  });
 
   // Compute basic stats
   const totalSubmissions = submissions.length;
@@ -105,16 +115,47 @@ export function AnalyticsPage() {
         <h3>Detailed Student Analysis</h3>
         <p className="muted-copy">Select a student to view their topic-level performance strengths and weaknesses.</p>
         
-        <div style={{ marginTop: "15px", marginBottom: "20px" }}>
-          <label className="field" style={{ maxWidth: "400px" }}>
-            <span style={{ fontWeight: "600", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>STUDENT</span>
+        <div style={{ display: "flex", gap: "15px", marginTop: "15px", marginBottom: "20px", flexWrap: "wrap" }}>
+          <label className="field" style={{ flex: 1, minWidth: "200px" }}>
+            <span style={{ fontWeight: "600", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>FILTER BY BATCH</span>
+            <select 
+              value={selectedBatchId} 
+              onChange={(e) => {
+                setSelectedBatchId(e.target.value);
+                setSelectedStudentId("");
+              }}
+              style={{ borderRadius: "10px", padding: "12px", border: "1px solid var(--color-border)", background: "var(--color-bg-secondary)" }}
+            >
+              <option value="">All Batches</option>
+              {batches.map((b: any) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field" style={{ flex: 1, minWidth: "200px" }}>
+            <span style={{ fontWeight: "600", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>SEARCH NAME</span>
+            <input 
+              type="text" 
+              placeholder="Type to filter..."
+              value={studentSearchQuery}
+              onChange={(e) => {
+                setStudentSearchQuery(e.target.value);
+                setSelectedStudentId("");
+              }}
+              style={{ borderRadius: "10px", padding: "12px", border: "1px solid var(--color-border)", background: "var(--color-bg-secondary)" }}
+            />
+          </label>
+
+          <label className="field" style={{ flex: 2, minWidth: "250px" }}>
+            <span style={{ fontWeight: "600", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>SELECT STUDENT</span>
             <select 
               value={selectedStudentId} 
               onChange={(e) => setSelectedStudentId(e.target.value)}
               style={{ borderRadius: "10px", padding: "12px", border: "1px solid var(--color-border)", background: "var(--color-bg-secondary)" }}
             >
               <option value="">-- Select a Student --</option>
-              {studentsWithSubmissions.map((s: any) => (
+              {filteredStudents.map((s: any) => (
                 <option key={s.id} value={s.id}>{s.name} ({s.email})</option>
               ))}
             </select>
