@@ -36,20 +36,25 @@ export function LoginPage() {
         <h1>Coaching Exam Portal</h1>
         <p>{status}</p>
 
-        <div className="preset-row">
-          {presets.map((preset) => (
-            <button
-              key={preset.email}
-              type="button"
-              className="secondary-button"
-              onClick={() => {
-                setEmail(preset.email);
-                setPassword(preset.password);
+        <div style={{ marginBottom: "20px" }}>
+          <label className="field">
+            <span>Quick Login Role (Demo)</span>
+            <select
+              onChange={(e) => {
+                const preset = presets.find(p => p.email === e.target.value);
+                if (preset) {
+                  setEmail(preset.email);
+                  setPassword(preset.password);
+                }
               }}
+              value={email}
+              style={{ background: "var(--color-bg-secondary)", border: "1px solid var(--color-border)" }}
             >
-              {preset.label}
-            </button>
-          ))}
+              {presets.map(preset => (
+                <option key={preset.email} value={preset.email}>{preset.label} Account</option>
+              ))}
+            </select>
+          </label>
         </div>
 
         <form className="book-form" onSubmit={(event) => void handleLogin(event)}>

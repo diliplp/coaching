@@ -436,7 +436,25 @@ export function AdminPage() {
                       <span className="tag" style={{ marginLeft: "10px" }}>{u.role}</span>
                     </div>
                   )}
-                  {actionButtons(u.id, u, () => handleUpdateUser(u.id), () => handleDeleteUser(u.id))}
+                  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                    {actionButtons(u.id, u, () => handleUpdateUser(u.id), () => handleDeleteUser(u.id))}
+                    {editingId !== u.id && (
+                      <button 
+                        className="secondary-button" 
+                        style={{ padding: "4px 8px", fontSize: "0.85rem" }} 
+                        onClick={() => {
+                          const newPass = prompt(`Enter new password for ${u.name}:`);
+                          if (newPass) {
+                            apiClient.admin.updateUser(u.id, { password: newPass })
+                              .then(() => alert("Password updated successfully!"))
+                              .catch(e => alert(e.message || "Failed to update password"));
+                          }
+                        }}
+                      >
+                        Reset Password
+                      </button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>

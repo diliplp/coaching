@@ -264,7 +264,7 @@ export function DashboardPage() {
 
               <div className="field">
                 <span style={{ fontWeight: "600", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>QUESTION SOURCES</span>
-                <div style={{ display: "flex", gap: "15px", marginTop: "10px" }}>
+                <div style={{ display: "flex", gap: "15px", marginTop: "10px", flexWrap: "wrap" }}>
                   {[
                     { id: "pyq", label: "PYQs" },
                     { id: "reference", label: "Reference Books" },
