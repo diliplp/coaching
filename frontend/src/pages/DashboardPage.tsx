@@ -14,7 +14,7 @@ export function DashboardPage() {
   const [batchPlans, setBatchPlans] = useState<BatchAdaptivePlan[]>([]);
   const [adaptiveStatus, setAdaptiveStatus] = useState("");
   const [teacherAdaptiveStatus, setTeacherAdaptiveStatus] = useState("");
-  
+
   // Self-generation state
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
   const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
@@ -97,8 +97,8 @@ export function DashboardPage() {
   const handleSelfGenerate = async () => {
     if (selectedTopicIds.length === 0) return;
     try {
-      const payload = await apiClient.selfGenerateExam({ 
-        topicIds: selectedTopicIds, 
+      const payload = await apiClient.selfGenerateExam({
+        topicIds: selectedTopicIds,
         questionCount: qCount,
         allowedSourceTypes: allowedSources as any
       });
@@ -115,9 +115,9 @@ export function DashboardPage() {
       <section className="hero-card">
         <div>
           <p className="eyebrow">{session?.user.role === "student" ? "Student Dashboard" : "Institute Control Panel"}</p>
-          <h2>{session?.user.role === "student" ? `Welcome back, ${session.user.name}` : "Smart exam operations for Gujarat tuition classes"}</h2>
+          <h2>{session?.user.role === "student" ? `Welcome back, ${session.user.name}` : "Smart exam operations for tuition classes"}</h2>
           <p className="hero-copy">
-            {session?.user.role === "student" 
+            {session?.user.role === "student"
               ? "Access your scheduled exams, create custom practice tests, and review your performance insights."
               : "This MVP already models classes, streams, batches, question banks, dynamic exam creation, and automated weak-topic analytics."}
           </p>
@@ -133,7 +133,7 @@ export function DashboardPage() {
               <h3 style={{ marginTop: "10px", fontSize: "1.5rem" }}>Scheduled Exams</h3>
               <p className="muted-copy">Official tests assigned to your batch</p>
             </div>
-            
+
             {data.scheduledExams.length === 0 ? (
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "40px", background: "rgba(0,0,0,0.02)", borderRadius: "12px", border: "1px dashed var(--color-border)" }}>
                 <p className="muted-copy">No active scheduled exams right now.</p>
@@ -144,45 +144,45 @@ export function DashboardPage() {
                   const now = new Date();
                   const startTime = exam.scheduledStartTime ? new Date(exam.scheduledStartTime) : null;
                   const endTime = exam.scheduledEndTime ? new Date(exam.scheduledEndTime) : null;
-                  
+
                   const hasStarted = !startTime || startTime <= now;
                   const hasEnded = endTime && endTime < now;
                   const isAvailable = hasStarted && !hasEnded;
 
                   return (
-                    <article key={exam.id} className="row-between" style={{ 
-                      padding: "16px", 
-                      background: "white", 
-                      borderRadius: "12px", 
-                      border: "1px solid var(--color-border)", 
+                    <article key={exam.id} className="row-between" style={{
+                      padding: "16px",
+                      background: "white",
+                      borderRadius: "12px",
+                      border: "1px solid var(--color-border)",
                       opacity: isAvailable ? 1 : 0.7,
-                      transition: "all 0.2s" 
+                      transition: "all 0.2s"
                     }}>
                       <div style={{ display: "flex", gap: "15px", alignItems: "center" }}>
-                        <div style={{ 
-                          width: "40px", 
-                          height: "40px", 
-                          borderRadius: "8px", 
-                          background: isAvailable ? "var(--color-bg-secondary)" : "#f0f0f0", 
-                          display: "flex", 
-                          alignItems: "center", 
-                          justifyContent: "center", 
-                          fontSize: "1.2rem" 
+                        <div style={{
+                          width: "40px",
+                          height: "40px",
+                          borderRadius: "8px",
+                          background: isAvailable ? "var(--color-bg-secondary)" : "#f0f0f0",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "1.2rem"
                         }}>
                           {hasEnded ? "🏁" : hasStarted ? "📝" : "⏳"}
                         </div>
                         <div>
                           <strong style={{ fontSize: "1.1rem" }}>{exam.name}</strong>
                           <div className="muted-copy" style={{ fontSize: "0.85rem" }}>
-                            ⏱️ {exam.durationMinutes} minutes 
+                            ⏱️ {exam.durationMinutes} minutes
                             {!hasStarted && startTime && ` • Starts: ${startTime.toLocaleString()}`}
                             {hasEnded && ` • Ended`}
                           </div>
                         </div>
                       </div>
-                      <button 
-                        className={isAvailable ? "primary-button" : "secondary-button"} 
-                        onClick={() => isAvailable && startExam(exam.id)} 
+                      <button
+                        className={isAvailable ? "primary-button" : "secondary-button"}
+                        onClick={() => isAvailable && startExam(exam.id)}
                         disabled={!isAvailable}
                         style={{ padding: "8px 20px" }}
                       >
@@ -206,8 +206,8 @@ export function DashboardPage() {
             <div className="stack" style={{ gap: "20px" }}>
               <label className="field">
                 <span style={{ fontWeight: "600", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>SUBJECT</span>
-                <select 
-                  value={selectedSubjectId} 
+                <select
+                  value={selectedSubjectId}
                   onChange={e => { setSelectedSubjectId(e.target.value); setSelectedTopicIds([]); }}
                   style={{ borderRadius: "10px", padding: "12px", border: "1px solid var(--color-border)", background: "var(--color-bg-secondary)" }}
                 >
@@ -215,25 +215,25 @@ export function DashboardPage() {
                   {questionBank?.subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </label>
-              
+
               <div className="field">
                 <span style={{ fontWeight: "600", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>SELECT TOPICS</span>
-                <div style={{ 
-                  background: "var(--color-bg-secondary)", 
-                  border: "1px solid var(--color-border)", 
-                  borderRadius: "10px", 
+                <div style={{
+                  background: "var(--color-bg-secondary)",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: "10px",
                   padding: "8px",
                   maxHeight: "180px",
                   overflowY: "auto",
                   marginTop: "8px"
                 }}>
                   {questionBank?.topics.filter(t => t.subjectId === selectedSubjectId).map(t => (
-                    <label key={t.id} style={{ 
-                      display: "flex", 
-                      alignItems: "center", 
-                      gap: "12px", 
-                      padding: "10px 12px", 
-                      marginBottom: "4px", 
+                    <label key={t.id} style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                      padding: "10px 12px",
+                      marginBottom: "4px",
                       fontSize: "0.95rem",
                       borderRadius: "8px",
                       cursor: "pointer",
@@ -242,8 +242,8 @@ export function DashboardPage() {
                       boxShadow: selectedTopicIds.includes(t.id) ? "0 2px 4px rgba(0,0,0,0.05)" : "none",
                       border: selectedTopicIds.includes(t.id) ? "1px solid var(--color-primary-light)" : "1px solid transparent"
                     }}>
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         checked={selectedTopicIds.includes(t.id)}
                         onChange={(e) => {
                           if (e.target.checked) setSelectedTopicIds([...selectedTopicIds, t.id]);
@@ -271,20 +271,20 @@ export function DashboardPage() {
                     { id: "ai_generated", label: "AI Generated" },
                     { id: "custom", label: "Custom Bank" }
                   ].map(source => (
-                    <label key={source.id} style={{ 
-                      display: "flex", 
-                      alignItems: "center", 
-                      gap: "8px", 
-                      cursor: "pointer", 
-                      fontSize: "0.9rem", 
-                      background: allowedSources.includes(source.id) ? "rgba(0,112,243,0.05)" : "var(--color-bg-secondary)", 
-                      padding: "10px 16px", 
+                    <label key={source.id} style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      cursor: "pointer",
+                      fontSize: "0.9rem",
+                      background: allowedSources.includes(source.id) ? "rgba(0,112,243,0.05)" : "var(--color-bg-secondary)",
+                      padding: "10px 16px",
                       borderRadius: "12px",
                       border: allowedSources.includes(source.id) ? "1px solid var(--color-primary)" : "1px solid var(--color-border)",
                       transition: "all 0.2s"
                     }}>
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         checked={allowedSources.includes(source.id)}
                         onChange={(e) => {
                           if (e.target.checked) setAllowedSources([...allowedSources, source.id]);
@@ -296,21 +296,21 @@ export function DashboardPage() {
                   ))}
                 </div>
               </div>
-              
+
               <div className="grid-two" style={{ alignItems: "flex-end", gap: "20px" }}>
                 <label className="field" style={{ flex: 1 }}>
                   <span style={{ fontWeight: "600", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>QUESTIONS</span>
-                  <input 
-                    type="number" 
-                    value={qCount} 
-                    onChange={e => setQCount(Number(e.target.value))} 
-                    min={1} max={50} 
+                  <input
+                    type="number"
+                    value={qCount}
+                    onChange={e => setQCount(Number(e.target.value))}
+                    min={1} max={50}
                     style={{ borderRadius: "10px", padding: "12px", border: "1px solid var(--color-border)", background: "var(--color-bg-secondary)" }}
                   />
                 </label>
-                <button 
-                  className="primary-button" 
-                  disabled={selectedTopicIds.length === 0} 
+                <button
+                  className="primary-button"
+                  disabled={selectedTopicIds.length === 0}
                   onClick={handleSelfGenerate}
                   style={{ height: "48px", borderRadius: "10px", flex: 1, fontSize: "1rem", fontWeight: "600" }}
                 >
@@ -351,12 +351,35 @@ export function DashboardPage() {
 
       {(session?.user.role === "teacher" || session?.user.role === "super_admin") && (
         <section className="stats-grid">
-          {Object.entries(data.stats).map(([label, value]) => (
-            <article className="stat-card" key={label}>
-              <span>{label.replace(/([A-Z])/g, " $1")}</span>
-              <strong>{value}</strong>
-            </article>
-          ))}
+          {Object.entries(data.stats).map(([label, value]) => {
+            const statConfig: Record<string, { label: string, icon: string, route: string, color: string }> = {
+              classes: { label: "Classes", icon: "🏫", route: "/curriculum", color: "#eef2ff" },
+              streams: { label: "Streams", icon: "🛤️", route: "/curriculum", color: "#f0fdf4" },
+              batches: { label: "Batches", icon: "👥", route: "/curriculum", color: "#fdf4ff" },
+              students: { label: "Students", icon: "🎓", route: "/analytics", color: "#fffbeb" },
+              subjects: { label: "Subjects", icon: "📘", route: "/subject-books", color: "#f0f9ff" },
+              questions: { label: "Questions", icon: "📝", route: "/question-bank", color: "#fef2f2" },
+              liveExams: { label: "Active Exams", icon: "⚡", route: "/exams", color: "#fff1f2" },
+              submissions: { label: "Submissions", icon: "✅", route: "/analytics", color: "#ecfdf5" },
+              subjectBooks: { label: "Books", icon: "📚", route: "/subject-books", color: "#f8fafc" }
+            };
+            
+            const config = statConfig[label] || { label: label.replace(/([A-Z])/g, " $1"), icon: "📈", route: "/", color: "#f3f4f6" };
+            
+            return (
+              <div 
+                key={label} 
+                className="stat-card-interactive" 
+                onClick={() => navigate(config.route)}
+              >
+                <div className="stat-icon-wrapper" style={{ background: config.color }}>
+                  {config.icon}
+                </div>
+                <span className="muted-copy" style={{ textTransform: "capitalize", fontSize: "0.9rem", fontWeight: "600" }}>{config.label}</span>
+                <strong style={{ fontSize: "2rem", lineHeight: "1", color: "var(--color-primary-dark)" }}>{value as React.ReactNode}</strong>
+              </div>
+            );
+          })}
         </section>
       )}
 
