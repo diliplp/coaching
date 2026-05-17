@@ -21,7 +21,7 @@ export function AnalyticsPage() {
   const filteredStudents = studentsWithSubmissions.filter((s: any) => {
     const matchesBatch = selectedBatchId ? s.batchId === selectedBatchId : true;
     const matchesSearch = studentSearchQuery 
-      ? s.name.toLowerCase().includes(studentSearchQuery.toLowerCase()) || s.email.toLowerCase().includes(studentSearchQuery.toLowerCase())
+      ? (s.name?.toLowerCase() || "").includes(studentSearchQuery.toLowerCase()) || (s.email?.toLowerCase() || "").includes(studentSearchQuery.toLowerCase())
       : true;
     return matchesBatch && matchesSearch;
   });
