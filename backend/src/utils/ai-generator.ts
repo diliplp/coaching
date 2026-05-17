@@ -20,10 +20,12 @@ export async function generateQuestionsFromText(params: {
   const chemKeywords = ["chemistry", "molecule", "reaction", "bond", "acid", "organic", "compound", "structure", "formula", "chemical"];
   const isChemistry = subject?.toLowerCase().includes("chemistry") || chemKeywords.some(k => text.toLowerCase().includes(k));
 
-  // Fetch verified questions to use as examples
+  // Fetch existing questions for this topic to avoid duplication
   const allQuestionsInDb = await listRecords<Question>("questions");
-  const verifiedExamples = allQuestionsInDb
-    .filter(q => q.isVerified && q.topicId === topicId)
+  const existingTopicQuestions = allQuestionsInDb.filter(q => q.topicId === topicId);
+  
+  const verifiedExamples = existingTopicQuestions
+    .filter(q => q.isVerified)
     .slice(0, 3)
     .map(q => ({
       prompt: q.prompt,
@@ -55,10 +57,23 @@ export async function generateQuestionsFromText(params: {
     const currentBatchCount = Math.min(batchSize, questionCount - allQuestions.length);
     if (currentBatchCount <= 0) break;
 
-    const previousPrompts = allQuestions.slice(-20).map(q => q.prompt).join("\n- ");
-    const avoidanceInstruction = allQuestions.length > 0 
-      ? `\nIMPORTANT: Do NOT repeat these questions which were already generated:\n- ${previousPrompts}\n` 
+    const allKnownPrompts = [...existingTopicQuestions.map(q => q.prompt), ...allQuestions.map(q => q.prompt)];
+    // Randomly shuffle to provide different avoidance context if there are many questions
+    const shuffledPrompts = allKnownPrompts.sort(() => 0.5 - Math.random());
+    const previousPrompts = shuffledPrompts.slice(0, 40).join("\n- ");
+    
+    const avoidanceInstruction = allKnownPrompts.length > 0 
+      ? `\nIMPORTANT: Do NOT repeat, rephrase, or generate questions similar to these existing ones:\n- ${previousPrompts}\n\nGenerate COMPLETELY NEW and UNIQUE questions that cover different concepts or use different values.` 
       : "";
+
+    const maxChunkSize = 25000;
+    let textChunk = text;
+    if (text.length > maxChunkSize) {
+       // Pick a random starting point to explore different parts of the document
+       const maxStart = text.length - maxChunkSize;
+       const startIdx = Math.floor(Math.random() * maxStart);
+       textChunk = text.substring(startIdx, startIdx + maxChunkSize);
+    }
 
     const prompt = `
 You are an expert educator. Generate exactly ${currentBatchCount} NEW multiple-choice questions from the text below.
@@ -107,7 +122,7 @@ JSON STRUCTURE:
 
 TEXT CONTENT:
 ---
-${text.substring(0, 30000)}
+${textChunk}
 ---
     `;
 
@@ -307,7 +322,8 @@ export async function detectCurriculumFromText(text: string): Promise<{
     Rules:
     1. Focus on educational/curriculum structure.
     2. Be concise but accurate.
-    3. Output ONLY the JSON.
+    3. EXCLUDE non-academic structural elements like "Exercise", "Summary", "Glossary", "Questions", "Answers", "Bibliography", "Index", etc. from both chapters and topics.
+    4. Output ONLY the JSON.
 
     TEXT CONTENT:
     ---

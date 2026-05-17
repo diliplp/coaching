@@ -94,7 +94,7 @@ export function SubjectBooksPage() {
   };
 
   const handleImportCurriculum = async (book: any) => {
-    if (!detectedCurriculum) return;
+    if (!detectedCurriculum || !data) return;
     setStatus("Importing detected chapters and topics into your subject structure...");
     try {
       // Find the subject node to get classId and streamId
@@ -215,7 +215,7 @@ export function SubjectBooksPage() {
           ) : (
             <ul className="plain-list">
               {data.books.map((book) => (
-                <li key={book.id} className="panel" style={{ marginBottom: "2rem", padding: "1.5rem", borderRadius: "12px", background: "white", border: "1px solid var(--color-border)" }}>
+                <li key={book.id} className="panel" style={{ display: "block", marginBottom: "2rem", padding: "1.5rem", borderRadius: "12px", background: "white", border: "1px solid var(--color-border)" }}>
                   {/* Book Info Section */}
                   <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
                     <div style={{ 
@@ -348,7 +348,7 @@ export function SubjectBooksPage() {
                           overflowY: "auto",
                           marginTop: "4px"
                         }}>
-                          <label style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", paddingBottom: "8px", borderBottom: "1px solid var(--color-bg-secondary)", fontWeight: "bold" }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px", paddingBottom: "10px", borderBottom: "1px solid var(--color-border)", fontWeight: "bold", fontSize: "0.9rem" }}>
                             <input 
                               type="checkbox" 
                               checked={selectedTopicIds.length === allTopics.filter(t => t.chapterId === selectedChapterId).length && selectedTopicIds.length > 0}
@@ -359,11 +359,12 @@ export function SubjectBooksPage() {
                                   setSelectedTopicIds([]);
                                 }
                               }}
+                              style={{ margin: 0, flexShrink: 0, width: "auto" }}
                             />
-                            Select All Topics
+                            <span>Select All Topics</span>
                           </label>
                           {allTopics.filter(t => t.chapterId === selectedChapterId).map(t => (
-                            <label key={t.id} style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px", fontSize: "0.9rem" }}>
+                            <label key={t.id} style={{ display: "flex", alignItems: "flex-start", gap: "6px", marginBottom: "8px", fontSize: "0.85rem", lineHeight: "1.4" }}>
                               <input 
                                 type="checkbox" 
                                 checked={selectedTopicIds.includes(t.id)}
@@ -374,8 +375,9 @@ export function SubjectBooksPage() {
                                     setSelectedTopicIds(selectedTopicIds.filter(id => id !== t.id));
                                   }
                                 }}
+                                style={{ margin: "3px 0 0 0", flexShrink: 0, width: "auto" }}
                               />
-                              {t.name}
+                              <span style={{ flex: 1, textAlign: "left" }}>{t.name}</span>
                             </label>
                           ))}
                           {allTopics.filter(t => t.chapterId === selectedChapterId).length === 0 && (
