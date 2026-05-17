@@ -529,18 +529,39 @@ button {
 }
 
 @media (max-width: 960px) {
-  .app-shell,
+  .app-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
   .exam-layout,
   .grid-two {
     grid-template-columns: 1fr;
   }
 
-  .sidebar {
-    padding-bottom: 12px;
+  .sidebar, .sidebar.collapsed {
+    width: 100%;
+    height: auto;
+    padding: 24px;
+  }
+
+  .sidebar-toggle {
+    top: 24px;
+    right: 24px;
+  }
+
+  .sidebar.collapsed h1,
+  .sidebar.collapsed .eyebrow {
+    display: block;
+  }
+
+  .sidebar.collapsed .session-card,
+  .sidebar.collapsed .nav-list {
+    display: none;
   }
 
   .content {
-    padding: 20px;
+    padding: 16px;
   }
 
   .options-grid {

@@ -18,7 +18,7 @@ const navItems = [
 export function Layout() {
   const navigate = useNavigate();
   const session = getStoredSession();
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => typeof window !== "undefined" && window.innerWidth <= 960);
   const visibleNavItems = navItems.filter((item) => session && item.roles.includes(session.user.role as AuthUser["role"]));
 
   return (

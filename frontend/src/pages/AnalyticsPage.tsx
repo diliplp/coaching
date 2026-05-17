@@ -98,6 +98,90 @@ export function AnalyticsPage() {
           </tbody>
         </table>
       </section>
+
+      <section className="panel" style={{ marginTop: "20px" }}>
+        <h3>Detailed Student Analysis</h3>
+        <p className="muted-copy">Topic-level performance strengths and weaknesses for each student.</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px", marginTop: "15px" }}>
+          {students.map((student: any) => {
+            const studentSubmissions = submissions.filter((sub: any) => sub.studentId === student.id);
+            if (studentSubmissions.length === 0) return null;
+
+            // Aggregate insights
+            const topicStats: Record<string, { name: string; correct: number; total: number }> = {};
+            let studentTotalScore = 0;
+            let studentMaxScore = 0;
+
+            studentSubmissions.forEach((sub: any) => {
+              studentTotalScore += sub.obtainedMarks;
+              studentMaxScore += sub.totalMarks;
+              if (sub.insights) {
+                sub.insights.forEach((insight: any) => {
+                  if (!topicStats[insight.topicId]) {
+                    topicStats[insight.topicId] = { name: insight.topicName, correct: 0, total: 0 };
+                  }
+                  topicStats[insight.topicId].correct += insight.correctAnswers;
+                  topicStats[insight.topicId].total += insight.totalQuestions;
+                });
+              }
+            });
+
+            const overallPercentage = studentMaxScore > 0 ? (studentTotalScore / studentMaxScore) * 100 : 0;
+            
+            const aggregatedInsights = Object.values(topicStats).map(stat => ({
+              ...stat,
+              accuracy: stat.total > 0 ? (stat.correct / stat.total) * 100 : 0
+            }));
+
+            const strongTopics = aggregatedInsights.filter(t => t.accuracy >= 70).sort((a, b) => b.accuracy - a.accuracy);
+            const weakTopics = aggregatedInsights.filter(t => t.accuracy < 70).sort((a, b) => a.accuracy - b.accuracy);
+
+            return (
+              <div key={student.id} style={{ border: "1px solid var(--color-border)", borderRadius: "8px", padding: "15px", background: "white" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px", borderBottom: "1px solid var(--color-bg-secondary)", paddingBottom: "10px" }}>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: "1.1rem" }}>{student.name}</h4>
+                    <span className="muted-copy" style={{ fontSize: "0.85rem" }}>{student.email} • {studentSubmissions.length} Exams</span>
+                  </div>
+                  <div style={{ fontSize: "1.2rem", fontWeight: "bold", color: overallPercentage >= 70 ? "green" : (overallPercentage >= 40 ? "orange" : "red") }}>
+                    {overallPercentage.toFixed(1)}% Overall
+                  </div>
+                </div>
+
+                <div className="grid-two" style={{ gap: "15px" }}>
+                  <div style={{ background: "#f0fdf4", padding: "12px", borderRadius: "8px", border: "1px solid #bbf7d0" }}>
+                    <strong style={{ color: "#166534", display: "block", marginBottom: "8px" }}>Strong Areas (≥70%)</strong>
+                    {strongTopics.length > 0 ? (
+                      <ul style={{ margin: 0, paddingLeft: "20px", fontSize: "0.85rem", color: "#166534" }}>
+                        {strongTopics.map((t, idx) => (
+                          <li key={idx}><strong>{t.name}</strong> - {t.accuracy.toFixed(0)}% ({t.correct}/{t.total})</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <span style={{ fontSize: "0.85rem", color: "#166534", opacity: 0.7 }}>No strong areas yet.</span>
+                    )}
+                  </div>
+                  <div style={{ background: "#fef2f2", padding: "12px", borderRadius: "8px", border: "1px solid #fecaca" }}>
+                    <strong style={{ color: "#991b1b", display: "block", marginBottom: "8px" }}>Needs Improvement (&lt;70%)</strong>
+                    {weakTopics.length > 0 ? (
+                      <ul style={{ margin: 0, paddingLeft: "20px", fontSize: "0.85rem", color: "#991b1b" }}>
+                        {weakTopics.map((t, idx) => (
+                          <li key={idx}><strong>{t.name}</strong> - {t.accuracy.toFixed(0)}% ({t.correct}/{t.total})</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <span style={{ fontSize: "0.85rem", color: "#991b1b", opacity: 0.7 }}>No weak areas!</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {students.filter((s: any) => submissions.some((sub: any) => sub.studentId === s.id)).length === 0 && (
+            <p className="muted-copy">No student data available yet.</p>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
