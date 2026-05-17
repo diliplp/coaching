@@ -383,6 +383,11 @@ This message is more compelling than calling it only an online test portal.
 - **Collapsible Sidebar**: Maximized workspace with a minimized icon-only navigation mode.
 - **Compact Exam Palette**: Optimized live exam layout for better question readability.
 - **Security Hardening**: Session verification on boot and automatic 401 redirect to login.
+- **Mobile Viewport Optimization**: Fixed horizontal scrolling/auto-zoom by wrapping flex containers and hiding x-overflow.
+- **Interactive Dashboards**: Transformed dashboard metrics into animated, color-coded routing cards.
+- **Admin Password Reset**: Implemented one-click password resets for teachers/students via the Admin Panel.
+- **Smart Analytics Selector**: Upgraded the Analytics page to use a 3-tier filtering system (Batch -> Text Search -> Student) to prevent UI clutter for large classes.
+- **Dropdown Demo Logins**: Refined the Login page UI by converting preset role buttons into a dropdown.
 
 ## 18. Immediate Next Build Steps
 1. Finalize PDF report generation for parents.
