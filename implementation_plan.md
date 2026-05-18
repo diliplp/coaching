@@ -394,10 +394,16 @@ This message is more compelling than calling it only an online test portal.
 - **Ready for Print**: Features a print-optimized stylesheet (`@media print`) that automatically hides navigation and controls, rendering a clean, perfectly formatted standard A4 exam sheet.
 - **Integrated STEM & RichText**: Automatically renders LaTeX math formulas and SMILES chemical compounds directly on the printable sheets.
 
+### 17.5 Academic Parent PDF Report Card
+- **Progress Report Generator**: Added a high-fidelity vector PDF progress analysis generator for parents in the Detailed Student Analysis section.
+- **Server-Side Puppeteer Render**: Employs headless Chromium to compile exam scores, correct vs. incorrect answers, and topic metrics securely on the backend.
+- **Dynamic SVGs & Comparative Charts**: Visualizes subject-wise percentages compared directly to the cohort batch averages via sharp, print-friendly SVG graphs.
+- **Teacher Recommendations**: Auto-compiles descriptive, actionable improvement guidance depending on the student's overall performance level.
+
 ## 18. Immediate Next Build Steps
-1. Finalize PDF report generation for parents.
-2. Implement Gujarati language toggle for instructions.
-3. Build the "One-Click Weak Topic Practice" generation button on results page.
+1. Implement Gujarati language toggle for instructions.
+2. Build the "One-Click Weak Topic Practice" generation button on results page.
+
 
 ## 16. Nice-to-Have Future Enhancements
 

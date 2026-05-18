@@ -1,15 +1,55 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../api/client";
+import { getStoredSession } from "../auth";
 
 export function AnalyticsPage() {
   const [data, setData] = useState<any>(null);
   const [selectedStudentId, setSelectedStudentId] = useState<string>("");
   const [selectedBatchId, setSelectedBatchId] = useState<string>("");
   const [studentSearchQuery, setStudentSearchQuery] = useState<string>("");
+  const [isDownloading, setIsDownloading] = useState(false);
 
   useEffect(() => {
     apiClient.getAnalytics().then(setData).catch(console.error);
   }, []);
+
+  const downloadParentReport = async (studentId: string, studentName: string) => {
+    try {
+      setIsDownloading(true);
+      const session = getStoredSession();
+      const headers: Record<string, string> = {};
+      if (session?.token) {
+        headers["Authorization"] = `Bearer ${session.token}`;
+      }
+      
+      const response = await fetch(`/api/students/${studentId}/report-pdf`, {
+        headers
+      });
+
+      if (!response.ok) {
+        let errText = "Failed to generate report";
+        try {
+          const errData = await response.json();
+          if (errData.message) errText = errData.message;
+        } catch { /* ignore */ }
+        throw new Error(errText);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${studentName.replace(/\s+/g, "_")}_Academic_Report.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      alert(error.message || "An error occurred while downloading the PDF");
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   if (!data) {
     return <p>Loading analytics...</p>;
@@ -203,10 +243,34 @@ export function AnalyticsPage() {
                     <h4 style={{ margin: 0, fontSize: "1.1rem" }}>{student.name}</h4>
                     <span className="muted-copy" style={{ fontSize: "0.85rem" }}>{student.email} • {studentSubmissions.length} Exams</span>
                   </div>
-                  <div style={{ fontSize: "1.2rem", fontWeight: "bold", color: overallPercentage >= 70 ? "green" : (overallPercentage >= 40 ? "orange" : "red") }}>
-                    {overallPercentage.toFixed(1)}% Overall
+                  <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
+                    <button 
+                      onClick={() => downloadParentReport(student.id, student.name)}
+                      disabled={isDownloading}
+                      style={{
+                        padding: "8px 16px",
+                        background: "#0f172a",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "8px",
+                        fontSize: "0.85rem",
+                        fontWeight: "600",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        opacity: isDownloading ? 0.7 : 1,
+                        transition: "background 0.2s"
+                      }}
+                    >
+                      {isDownloading ? "⏳ Compiling Report..." : "🖨️ Download Parent Report"}
+                    </button>
+                    <div style={{ fontSize: "1.2rem", fontWeight: "bold", color: overallPercentage >= 70 ? "green" : (overallPercentage >= 40 ? "orange" : "red") }}>
+                      {overallPercentage.toFixed(1)}% Overall
+                    </div>
                   </div>
                 </div>
+
 
                 <div className="grid-two" style={{ gap: "15px" }}>
                   <div style={{ background: "#f0fdf4", padding: "12px", borderRadius: "8px", border: "1px solid #bbf7d0" }}>

@@ -320,6 +320,22 @@ apiRouter.get("/analytics", requireRole(["super_admin", "teacher"]), async (_req
   });
 });
 
+apiRouter.get("/students/:studentId/report-pdf", requireRole(["super_admin", "teacher"]), async (req, res) => {
+  try {
+    const studentId = req.params.studentId as string;
+    const { generateStudentReportPDF } = await import("../utils/pdf-generator.js");
+    const pdfBuffer = await generateStudentReportPDF(studentId);
+    
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename=report_${studentId}.pdf`);
+    res.send(pdfBuffer);
+  } catch (error: any) {
+    console.error("PDF generation error:", error);
+    res.status(500).json({ message: error.message || "Failed to generate report PDF" });
+  }
+});
+
+
 apiRouter.get("/blueprints", async (_req: Request, res: Response) => {
   const state = await getAppState();
   res.json(
