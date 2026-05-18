@@ -389,6 +389,11 @@ This message is more compelling than calling it only an online test portal.
 - **Smart Analytics Selector**: Upgraded the Analytics page to use a 3-tier filtering system (Batch -> Text Search -> Student) to prevent UI clutter for large classes.
 - **Dropdown Demo Logins**: Refined the Login page UI by converting preset role buttons into a dropdown.
 
+### 17.4 CBSE Offline Board Paper Generator
+- **CBSE Blueprint Alignment**: Generates complete, realistic Board Examination papers (Class X and XII) with standard CBSE instructions, sections, typologies (MCQs, Assertion-Reasoning, Short/Long Answers), and OR choices.
+- **Ready for Print**: Features a print-optimized stylesheet (`@media print`) that automatically hides navigation and controls, rendering a clean, perfectly formatted standard A4 exam sheet.
+- **Integrated STEM & RichText**: Automatically renders LaTeX math formulas and SMILES chemical compounds directly on the printable sheets.
+
 ## 18. Immediate Next Build Steps
 1. Finalize PDF report generation for parents.
 2. Implement Gujarati language toggle for instructions.

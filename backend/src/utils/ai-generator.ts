@@ -139,7 +139,8 @@ ${textChunk}
         body: JSON.stringify({
           model: "openai/gpt-4o-mini", 
           messages: [{ role: "user", content: prompt }],
-          response_format: { type: "json_object" }
+          response_format: { type: "json_object" },
+          max_tokens: 8000
         })
       });
 
@@ -239,7 +240,8 @@ export async function parseExamPrompt(promptText: string): Promise<{
     body: JSON.stringify({
       model: "openai/gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" }
+      response_format: { type: "json_object" },
+      max_tokens: 8000
     })
   });
 
@@ -341,7 +343,8 @@ export async function detectCurriculumFromText(text: string): Promise<{
       body: JSON.stringify({
         model: "openai/gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" }
+        response_format: { type: "json_object" },
+        max_tokens: 8000
       })
     });
 
@@ -358,3 +361,98 @@ export async function detectCurriculumFromText(text: string): Promise<{
   }
 }
 
+export async function generateOfflineBoardPaper(params: {
+  className: string;
+  subjectName: string;
+  topics: string[];
+}): Promise<any> {
+  const { className, subjectName, topics } = params;
+
+  if (!process.env.OPENROUTER_API_KEY) {
+    throw new Error("OPENROUTER_API_KEY is missing.");
+  }
+
+  const prompt = `
+You are an expert CBSE examiner. Generate a complete, realistic Class ${className} ${subjectName} Board Question Paper.
+The paper should cover the following topics: ${topics.join(", ")}.
+
+STRICT FORMATTING RULES:
+1. LaTeX: Use $...$ for inline math/physics and $$...$$ for blocks. Use FOUR backslashes in JSON (e.g. \\\\frac).
+2. Chemistry: Use [SMILES: notation] for chemical structures (e.g., [SMILES: c1ccccc1]).
+3. Structure: Emulate exactly the standard CBSE blueprint for this subject (e.g., Sections A, B, C, D, E with appropriate typologies like MCQs, Assertion-Reason, Short Answer, Long Answer, and Case Study).
+4. Output ONLY valid JSON, no markdown wrappers.
+
+JSON STRUCTURE:
+{
+  "title": "Class ${className} ${subjectName} Pre-Board Examination",
+  "timeAllowed": "3 Hours",
+  "maximumMarks": 70,
+  "generalInstructions": [
+    "List of standard CBSE instructions (e.g., All questions are compulsory)"
+  ],
+  "sections": [
+    {
+      "sectionName": "SECTION A: MULTIPLE CHOICE QUESTIONS",
+      "instructions": "This section contains 16 multiple choice questions of 1 mark each.",
+      "questions": [
+        {
+          "qNumber": 1,
+          "text": "Question text here.",
+          "marks": 1,
+          "options": ["(a) First option", "(b) Second option", "(c) Third option", "(d) Fourth option"],
+          "hasOrChoice": false,
+          "orText": ""
+        }
+      ]
+    },
+    {
+      "sectionName": "SECTION B: ASSERTION-REASONING",
+      "instructions": "This section contains 4 Assertion-Reason questions of 1 mark each.",
+      "questions": [
+        {
+          "qNumber": 17,
+          "text": "Assertion (A): ... \\nReason (R): ...",
+          "marks": 1,
+          "options": ["(a) Both A and R are true and R is the correct explanation of A.", "(b) Both A and R are true but R is NOT the correct explanation of A.", "(c) A is true but R is false.", "(d) A is false but R is true."],
+          "hasOrChoice": false,
+          "orText": ""
+        }
+      ]
+    },
+    {
+      "sectionName": "SECTION C (And so on...)",
+      "instructions": "Ensure all sections are completely filled with questions. Do not leave any section empty.",
+      "questions": []
+    }
+  ]
+}
+  `;
+
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://railway.app",
+        "X-Title": "Coaching Portal Offline Exam Gen"
+      },
+      body: JSON.stringify({
+        model: "openai/gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        max_tokens: 8000
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenRouter API error: ${await response.text()}`);
+    }
+
+    const data = await response.json();
+    return JSON.parse(data.choices[0].message.content);
+  } catch (error) {
+    console.error("Offline Paper Generation failed:", error);
+    throw error;
+  }
+}

@@ -162,6 +162,11 @@ export const apiClient = {
     request<{ chapters: { name: string; topics: string[] }[] }>(`/subject-books/${bookId}/detect-curriculum`, {
       method: "POST"
     }),
+  generateOfflineBoardPaper: (payload: { className: string; subjectName: string; topics: string[] }) =>
+    request<any>("/offline-exams/generate", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
   // Admin Methods
   admin: {
     getClasses: () => request<any[]>("/admin/classes"),

@@ -12,6 +12,7 @@ import { AdminPage } from "./pages/AdminPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { ExamsListPage } from "./pages/ExamsListPage";
 import { CurriculumPage } from "./pages/CurriculumPage";
+import { OfflineExamBuilderPage } from "./pages/OfflineExamBuilderPage";
 import { getStoredSession, clearSession } from "./auth";
 import { apiClient } from "./api/client";
 
@@ -98,6 +99,10 @@ export default function App() {
           <Route 
             path="/analytics" 
             element={<ProtectedRoute roles={["super_admin", "teacher"]}><AnalyticsPage /></ProtectedRoute>} 
+          />
+          <Route 
+            path="/offline-board-paper" 
+            element={<ProtectedRoute roles={["super_admin", "teacher"]}><OfflineExamBuilderPage /></ProtectedRoute>} 
           />
           <Route 
             path="/exams" 

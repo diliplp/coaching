@@ -14,7 +14,7 @@ import {
   listBatchAdaptivePlans
 } from "../utils/exam-engine.js";
 import { extractPdfText } from "../utils/pdf.js";
-import { generateQuestionsFromText, ensureEnoughQuestions, parseExamPrompt, detectCurriculumFromText } from "../utils/ai-generator.js";
+import { generateQuestionsFromText, ensureEnoughQuestions, parseExamPrompt, detectCurriculumFromText, generateOfflineBoardPaper } from "../utils/ai-generator.js";
 import { listReferencePapers } from "../utils/reference-papers.js";
 import { findUserByEmail, requireAuth, requireRole, signAuthToken, verifyPassword } from "../utils/auth.js";
 import type { AuthenticatedRequest, Question, QuestionSource, SubjectBook } from "../types.js";
@@ -871,6 +871,19 @@ apiRouter.post("/subject-books/:bookId/detect-curriculum", requireRole(["super_a
     res.json(curriculum);
   } catch (error: any) {
     res.status(500).json({ message: error.message || "Failed to detect curriculum" });
+  }
+});
+
+apiRouter.post("/offline-exams/generate", requireAuth, requireRole(["teacher", "super_admin"]), async (req, res) => {
+  try {
+    const { className, subjectName, topics } = req.body;
+    if (!className || !subjectName || !topics || topics.length === 0) {
+      return res.status(400).json({ message: "Class name, subject name, and topics are required." });
+    }
+    const paper = await generateOfflineBoardPaper({ className, subjectName, topics });
+    res.json(paper);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message || "Failed to generate offline paper" });
   }
 });
 
