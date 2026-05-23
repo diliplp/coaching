@@ -176,15 +176,7 @@ apiRouter.post("/exams/self-generate", requireRole(["student", "super_admin", "t
     const subjectId = validTopics[0].subjectId;
     const targetCount = Number(questionCount) || 10;
     
-    // Auto-generate if needed - MOVE THIS UP
-    await ensureEnoughQuestions({
-      topicIds: targetTopicIds,
-      subjectId,
-      targetCount,
-      state
-    });
-
-    // Re-fetch questions after potential generation
+    // Re-fetch questions
     let questions = state.questions.filter(q => targetTopicIds.includes(q.topicId));
     
     // Filter by source if specified
@@ -425,7 +417,7 @@ apiRouter.get("/subject-books", async (_req: Request, res: Response) => {
   });
 });
 
-apiRouter.post("/subject-books", requireRole(["super_admin", "teacher"]), upload.single("pdf"), async (req, res) => {
+apiRouter.post("/subject-books", requireRole(["super_admin"]), upload.single("pdf"), async (req, res) => {
   const state = await getAppState();
   const subjectId = getSingleFormValue(req.body.subjectId) as string | undefined;
   const title = getSingleFormValue(req.body.title) as string | undefined;
@@ -470,7 +462,7 @@ apiRouter.post("/subject-books", requireRole(["super_admin", "teacher"]), upload
   res.status(201).json(newBook);
 });
 
-apiRouter.delete("/subject-books/:id", requireRole(["super_admin", "teacher"]), async (req, res) => {
+apiRouter.delete("/subject-books/:id", requireRole(["super_admin"]), async (req, res) => {
   try {
     const { id } = req.params;
     await deleteRecord("subjectBooks", id as string);
@@ -481,7 +473,7 @@ apiRouter.delete("/subject-books/:id", requireRole(["super_admin", "teacher"]), 
   }
 });
 
-apiRouter.post("/subject-books/:bookId/generate-questions", requireRole(["super_admin", "teacher"]), async (req, res) => {
+apiRouter.post("/subject-books/:bookId/generate-questions", requireRole(["super_admin"]), async (req, res) => {
   const state = await getAppState();
   const bookId = req.params.bookId;
   const chapterId = getSingleFormValue(req.body.chapterId) as string | undefined;
@@ -605,33 +597,7 @@ apiRouter.post("/exams/generate-custom", requireRole(["super_admin", "teacher"])
   const { subjectId, subjectIds: rawSubjectIds, rules, selectionMode, totalQuestions } = req.body;
   const targetSubjectIds = Array.isArray(rawSubjectIds) ? rawSubjectIds : (subjectId ? [subjectId] : []);
 
-  if (targetSubjectIds.length > 0 && Array.isArray(rules) && totalQuestions) {
-    // Group topics by subject to call ensureEnoughQuestions correctly
-    const entityIds = rules.map(r => r.entityId);
-    let topicIds: string[] = [];
-    
-    if (selectionMode === "topic") {
-      topicIds = entityIds;
-    } else {
-      topicIds = state.topics.filter(t => entityIds.includes(t.chapterId)).map(t => t.id);
-    }
-
-    const topicsBySubject = new Map<string, string[]>();
-    state.topics.filter(t => topicIds.includes(t.id)).forEach(t => {
-      const list = topicsBySubject.get(t.subjectId) || [];
-      list.push(t.id);
-      topicsBySubject.set(t.subjectId, list);
-    });
-
-    for (const [subId, tIds] of topicsBySubject.entries()) {
-      await ensureEnoughQuestions({
-        topicIds: tIds,
-        subjectId: subId,
-        targetCount: Math.ceil(Number(totalQuestions) / topicsBySubject.size), // Approximate target for each subject
-        state
-      });
-    }
-  }
+  // We no longer call ensureEnoughQuestions here as we want to generate exams purely from existing DB questions.
 
   const generated = await generateCustomExam(req.body);
   if (!generated) {
@@ -692,7 +658,7 @@ apiRouter.post("/students/me/adaptive-generate", requireRole(["student"]), async
   });
 });
 
-apiRouter.post("/exams/generate-from-prompt", requireRole(["super_admin", "teacher"]), async (req, res) => {
+apiRouter.post("/exams/generate-from-prompt", requireRole(["super_admin"]), async (req, res) => {
   const { prompt } = req.body as { prompt?: string };
   if (!prompt) {
     return res.status(400).json({ message: "Prompt is required" });
@@ -728,42 +694,8 @@ apiRouter.post("/exams/generate-from-prompt", requireRole(["super_admin", "teach
       return res.status(404).json({ message: `Could not find any topics for subject: ${subject.name}` });
     }
 
-    // 4. Check if we have enough questions, if not, generate on-the-fly
+    // 4. Set question count limit and calculate weights
     const totalQuestions = Math.min(parsed.questionCount, 50);
-    let existingQuestions = state.questions.filter(q => targetTopicIds.includes(q.topicId));
-    
-    if (existingQuestions.length < totalQuestions) {
-      const book = state.subjectBooks.find(b => b.subjectId === subject.id && b.parsedText);
-      if (book) {
-        const neededCount = totalQuestions - existingQuestions.length;
-        try {
-          const generated = await generateQuestionsFromText({
-            text: book.parsedText!,
-            topicId: targetTopicIds[0],
-            subjectId: subject.id,
-            subject: subject.name,
-            questionCount: neededCount,
-          });
-
-          const finalizedQuestions: Question[] = generated.map((q, i) => ({
-            ...q,
-            topicId: targetTopicIds[i % targetTopicIds.length],
-            sourceType: "ai_generated" as QuestionSource
-          }));
-
-          for (const q of finalizedQuestions) {
-            await upsertRecord("questions", q);
-            existingQuestions.push(q);
-          }
-          // Update state with newly added questions
-          state.questions.push(...finalizedQuestions);
-        } catch (genErr) {
-          console.error("On-the-fly generation failed:", genErr);
-          // Continue with what we have
-        }
-      }
-    }
-
     const weightagePerTopic = 100 / targetTopicIds.length;
 
     const generated = await generateCustomExam({
@@ -848,7 +780,7 @@ apiRouter.post("/exams/:examId/submit", async (req, res) => {
   res.json(result);
 });
 
-apiRouter.post("/subject-books/:bookId/detect-curriculum", requireRole(["super_admin", "teacher"]), async (req, res) => {
+apiRouter.post("/subject-books/:bookId/detect-curriculum", requireRole(["super_admin"]), async (req, res) => {
   const state = await getAppState();
   let book = state.subjectBooks.find(b => b.id === req.params.bookId);
   

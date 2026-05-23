@@ -400,6 +400,12 @@ This message is more compelling than calling it only an online test portal.
 - **Dynamic SVGs & Comparative Charts**: Visualizes subject-wise percentages compared directly to the cohort batch averages via sharp, print-friendly SVG graphs.
 - **Teacher Recommendations**: Auto-compiles descriptive, actionable improvement guidance depending on the student's overall performance level.
 
+### 17.6 Admin-Controlled "Content Factory" Ingestion Pivot
+- **Super-Admin Restrict**: Converted the PDF upload, syllabus extraction, and bulk question generators to `super_admin`-only routes, shielding them from general teacher or student access.
+- **Client-Side Menu Updates**: Updated the React router and side-navigation layouts to only show the "Subject Books" library interface to authenticated super-admins. Hided the "Books" metric card from teachers' dashboards and updated "Subjects" links to route safely to the Curriculum management module.
+- **Offline DB Engine Enforcement**: Stripped real-time OpenRouter generation triggers from the teacher Custom Exam builder and student Self-Practice exam builder, saving token usage and enforcing consistent question quality from the pre-populated local database.
+- **Graceful Fallback Mode**: Supported automatic exam construction downscaling to dynamically compile practice tests with whatever questions are currently available under selected topics, preventing error crashes.
+
 ## 18. Immediate Next Build Steps
 1. Implement Gujarati language toggle for instructions.
 2. Build the "One-Click Weak Topic Practice" generation button on results page.

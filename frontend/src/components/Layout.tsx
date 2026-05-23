@@ -7,7 +7,7 @@ const navItems = [
   { to: "/", label: "Dashboard", roles: ["super_admin", "teacher", "student"], icon: "🏠" },
   { to: "/question-bank", label: "Question Bank", roles: ["super_admin", "teacher"], icon: "📚" },
   { to: "/exam-builder", label: "Exam Builder", roles: ["super_admin", "teacher"], icon: "🛠️" },
-  { to: "/subject-books", label: "Subject Books", roles: ["super_admin", "teacher"], icon: "📖" },
+  { to: "/subject-books", label: "Subject Books", roles: ["super_admin"], icon: "📖" },
   { to: "/analytics", label: "Analytics", roles: ["super_admin", "teacher"], icon: "📊" },
   { to: "/exams", label: "Manage Exams", roles: ["super_admin", "teacher"], icon: "📝" },
   { to: "/curriculum", label: "Curriculum", roles: ["super_admin", "teacher"], icon: "🗓️" },

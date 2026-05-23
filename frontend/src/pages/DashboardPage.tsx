@@ -351,13 +351,15 @@ export function DashboardPage() {
 
       {(session?.user.role === "teacher" || session?.user.role === "super_admin") && (
         <section className="stats-grid">
-          {Object.entries(data.stats).map(([label, value]) => {
+          {Object.entries(data.stats)
+            .filter(([label]) => label !== "subjectBooks" || session?.user.role === "super_admin")
+            .map(([label, value]) => {
             const statConfig: Record<string, { label: string, icon: string, route: string, color: string }> = {
               classes: { label: "Classes", icon: "🏫", route: "/curriculum", color: "#eef2ff" },
               streams: { label: "Streams", icon: "🛤️", route: "/curriculum", color: "#f0fdf4" },
               batches: { label: "Batches", icon: "👥", route: "/curriculum", color: "#fdf4ff" },
               students: { label: "Students", icon: "🎓", route: "/analytics", color: "#fffbeb" },
-              subjects: { label: "Subjects", icon: "📘", route: "/subject-books", color: "#f0f9ff" },
+              subjects: { label: "Subjects", icon: "📘", route: "/curriculum", color: "#f0f9ff" },
               questions: { label: "Questions", icon: "📝", route: "/question-bank", color: "#fef2f2" },
               liveExams: { label: "Active Exams", icon: "⚡", route: "/exams", color: "#fff1f2" },
               submissions: { label: "Submissions", icon: "✅", route: "/analytics", color: "#ecfdf5" },
