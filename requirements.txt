@@ -1,2 +1,4 @@
 pypdf
 python-docx
+pytesseract
+pymupdf

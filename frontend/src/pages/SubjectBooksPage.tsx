@@ -14,6 +14,7 @@ export function SubjectBooksPage() {
   const [title, setTitle] = useState("");
   const [bookType, setBookType] = useState<"pyq" | "reference" | "textbook">("textbook");
   const [file, setFile] = useState<File | null>(null);
+  const [ocr, setOcr] = useState(false);
   const [status, setStatus] = useState("Teachers can upload PDF books subject-wise here.");
   
   // AI Generation State
@@ -49,10 +50,11 @@ export function SubjectBooksPage() {
 
     setStatus("Uploading PDF book...");
     try {
-      await apiClient.uploadSubjectBook({ subjectId, title, file, bookType });
+      await apiClient.uploadSubjectBook({ subjectId, title, file, bookType, ocr });
       setTitle("");
       setFile(null);
-      setStatus("PDF uploaded successfully.");
+      setOcr(false);
+      setStatus("PDF uploaded and processed successfully.");
       await loadData();
     } catch (error: any) {
       console.error(error);
@@ -202,6 +204,16 @@ export function SubjectBooksPage() {
                 accept="application/pdf"
                 onChange={(event) => setFile(event.target.files?.[0] ?? null)}
               />
+            </label>
+
+            <label className="field" style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: "10px", marginTop: "5px", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={ocr}
+                onChange={(event) => setOcr(event.target.checked)}
+                style={{ width: "18px", height: "18px", cursor: "pointer" }}
+              />
+              <span style={{ fontWeight: "normal", fontSize: "0.95rem" }}>OCR Scanned PDF (Make Searchable/Text-Enabled)</span>
             </label>
 
             <button className="primary-button" type="submit" disabled={!subjectId}>Upload PDF</button>

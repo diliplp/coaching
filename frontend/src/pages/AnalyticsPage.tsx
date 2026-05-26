@@ -3,14 +3,23 @@ import { apiClient } from "../api/client";
 import { getStoredSession } from "../auth";
 
 export function AnalyticsPage() {
+  const session = getStoredSession();
+  const isStudent = session?.user?.role === "student";
+  const initialStudentId = isStudent ? (session?.user?.studentId ?? session?.user?.id ?? "") : "";
+
   const [data, setData] = useState<any>(null);
-  const [selectedStudentId, setSelectedStudentId] = useState<string>("");
-  const [selectedBatchId, setSelectedBatchId] = useState<string>("");
+  const [selectedStudentId, setSelectedStudentId] = useState<string>(initialStudentId);
+  const [selectedBatchId, setSelectedBatchId] = useState<string>(isStudent && session?.user ? "student-batch" : "");
   const [studentSearchQuery, setStudentSearchQuery] = useState<string>("");
   const [isDownloading, setIsDownloading] = useState(false);
 
   useEffect(() => {
-    apiClient.getAnalytics().then(setData).catch(console.error);
+    apiClient.getAnalytics().then((res: any) => {
+      setData(res);
+      if (isStudent && res.students && res.students.length > 0) {
+        setSelectedStudentId(res.students[0].id);
+      }
+    }).catch(console.error);
   }, []);
 
   const downloadParentReport = async (studentId: string, studentName: string) => {
@@ -75,14 +84,14 @@ export function AnalyticsPage() {
   return (
     <div className="page">
       <section className="section-heading">
-        <p className="eyebrow">Teacher Analytics</p>
-        <h2>Review Result Analytics for Students and Batches</h2>
+        <p className="eyebrow">{isStudent ? "Student & Parent Analytics" : "Teacher Analytics"}</p>
+        <h2>{isStudent ? "Academic Progress and Report Cards" : "Review Result Analytics for Students and Batches"}</h2>
       </section>
 
       <section className="grid-two">
         <article className="panel">
           <h3>Overall Performance</h3>
-          <p className="muted-copy">Institute-wide metrics</p>
+          <p className="muted-copy">{isStudent ? "Your overall progress metrics" : "Institute-wide metrics"}</p>
           <div style={{ display: "flex", gap: "20px", marginTop: "15px" }}>
             <div style={{ flex: 1, padding: "20px", background: "var(--color-bg-secondary)", borderRadius: "8px", textAlign: "center" }}>
               <div style={{ fontSize: "2rem", fontWeight: "bold" }}>{totalSubmissions}</div>
@@ -106,9 +115,9 @@ export function AnalyticsPage() {
                 const exam = exams.find((e: any) => e.id === sub.examId);
                 return (
                   <li key={sub.id}>
-                    <strong>{student?.name || sub.studentId}</strong>
+                    <strong>{isStudent ? exam?.name : student?.name || sub.studentId}</strong>
                     <div className="muted-copy">
-                      {exam?.name || sub.examId} • {sub.percentage.toFixed(1)}% ({sub.obtainedMarks}/{sub.totalMarks})
+                      {isStudent ? "" : `${exam?.name || sub.examId} • `}{sub.percentage.toFixed(1)}% ({sub.obtainedMarks}/{sub.totalMarks})
                     </div>
                   </li>
                 );
@@ -118,89 +127,97 @@ export function AnalyticsPage() {
         </article>
       </section>
 
-      <section className="panel" style={{ marginTop: "20px" }}>
-        <h3>Batch Performance</h3>
-        <table style={{ width: "100%", textAlign: "left", marginTop: "15px", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid var(--color-border)" }}>
-              <th style={{ padding: "10px" }}>Batch</th>
-              <th style={{ padding: "10px" }}>Total Students</th>
-              <th style={{ padding: "10px" }}>Exams Taken</th>
-              <th style={{ padding: "10px" }}>Avg Score</th>
-            </tr>
-          </thead>
-          <tbody>
-            {batches.map((batch: any) => {
-              const batchStudents = students.filter((s: any) => s.batchId === batch.id);
-              const batchStudentIds = batchStudents.map((s: any) => s.id);
-              const batchSubmissions = submissions.filter((sub: any) => batchStudentIds.includes(sub.studentId));
-              const batchAvg = batchSubmissions.length > 0
-                ? batchSubmissions.reduce((acc: number, sub: any) => acc + sub.percentage, 0) / batchSubmissions.length
-                : 0;
+      {!isStudent && (
+        <section className="panel" style={{ marginTop: "20px" }}>
+          <h3>Batch Performance</h3>
+          <table style={{ width: "100%", textAlign: "left", marginTop: "15px", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid var(--color-border)" }}>
+                <th style={{ padding: "10px" }}>Batch</th>
+                <th style={{ padding: "10px" }}>Total Students</th>
+                <th style={{ padding: "10px" }}>Exams Taken</th>
+                <th style={{ padding: "10px" }}>Avg Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              {batches.map((batch: any) => {
+                const batchStudents = students.filter((s: any) => s.batchId === batch.id);
+                const batchStudentIds = batchStudents.map((s: any) => s.id);
+                const batchSubmissions = submissions.filter((sub: any) => batchStudentIds.includes(sub.studentId));
+                const batchAvg = batchSubmissions.length > 0
+                  ? batchSubmissions.reduce((acc: number, sub: any) => acc + sub.percentage, 0) / batchSubmissions.length
+                  : 0;
 
-              return (
-                <tr key={batch.id} style={{ borderBottom: "1px solid var(--color-border)" }}>
-                  <td style={{ padding: "10px" }}><strong>{batch.name}</strong></td>
-                  <td style={{ padding: "10px" }}>{batchStudents.length}</td>
-                  <td style={{ padding: "10px" }}>{batchSubmissions.length}</td>
-                  <td style={{ padding: "10px" }}>{batchAvg.toFixed(1)}%</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </section>
+                return (
+                  <tr key={batch.id} style={{ borderBottom: "1px solid var(--color-border)" }}>
+                    <td style={{ padding: "10px" }}><strong>{batch.name}</strong></td>
+                    <td style={{ padding: "10px" }}>{batchStudents.length}</td>
+                    <td style={{ padding: "10px" }}>{batchSubmissions.length}</td>
+                    <td style={{ padding: "10px" }}>{batchAvg.toFixed(1)}%</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       <section className="panel" style={{ marginTop: "20px" }}>
-        <h3>Detailed Student Analysis</h3>
-        <p className="muted-copy">Select a student to view their topic-level performance strengths and weaknesses.</p>
+        <h3>{isStudent ? "Detailed Progress & Academic Report" : "Detailed Student Analysis"}</h3>
+        {!isStudent ? (
+          <p className="muted-copy">Select a student to view their topic-level performance strengths and weaknesses.</p>
+        ) : (
+          <p className="muted-copy">Download your formal PDF Academic Report card or check your topic breakdowns below.</p>
+        )}
         
-        <div style={{ display: "flex", gap: "15px", marginTop: "15px", marginBottom: "20px", flexWrap: "wrap" }}>
-          <label className="field" style={{ flex: 1, minWidth: "200px" }}>
-            <span style={{ fontWeight: "600", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>FILTER BY BATCH</span>
-            <select 
-              value={selectedBatchId} 
-              onChange={(e) => {
-                setSelectedBatchId(e.target.value);
-                setSelectedStudentId("");
-              }}
-              style={{ borderRadius: "10px", padding: "12px", border: "1px solid var(--color-border)", background: "var(--color-bg-secondary)" }}
-            >
-              <option value="">All Batches</option>
-              {batches.map((b: any) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
-          </label>
+        {!isStudent && (
+          <div style={{ display: "flex", gap: "15px", marginTop: "15px", marginBottom: "20px", flexWrap: "wrap" }}>
+            <label className="field" style={{ flex: 1, minWidth: "200px" }}>
+              <span style={{ fontWeight: "600", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>FILTER BY BATCH</span>
+              <select 
+                value={selectedBatchId} 
+                onChange={(e) => {
+                  setSelectedBatchId(e.target.value);
+                  setSelectedStudentId("");
+                }}
+                style={{ borderRadius: "10px", padding: "12px", border: "1px solid var(--color-border)", background: "var(--color-bg-secondary)" }}
+              >
+                <option value="">All Batches</option>
+                {batches.map((b: any) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            </label>
 
-          <label className="field" style={{ flex: 1, minWidth: "200px" }}>
-            <span style={{ fontWeight: "600", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>SEARCH NAME</span>
-            <input 
-              type="text" 
-              placeholder="Type to filter..."
-              value={studentSearchQuery}
-              onChange={(e) => {
-                setStudentSearchQuery(e.target.value);
-                setSelectedStudentId("");
-              }}
-              style={{ borderRadius: "10px", padding: "12px", border: "1px solid var(--color-border)", background: "var(--color-bg-secondary)" }}
-            />
-          </label>
+            <label className="field" style={{ flex: 1, minWidth: "200px" }}>
+              <span style={{ fontWeight: "600", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>SEARCH NAME</span>
+              <input 
+                type="text" 
+                placeholder="Type to filter..."
+                value={studentSearchQuery}
+                onChange={(e) => {
+                  setStudentSearchQuery(e.target.value);
+                  setSelectedStudentId("");
+                }}
+                style={{ borderRadius: "10px", padding: "12px", border: "1px solid var(--color-border)", background: "var(--color-bg-secondary)" }}
+              />
+            </label>
 
-          <label className="field" style={{ flex: 2, minWidth: "250px" }}>
-            <span style={{ fontWeight: "600", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>SELECT STUDENT</span>
-            <select 
-              value={selectedStudentId} 
-              onChange={(e) => setSelectedStudentId(e.target.value)}
-              style={{ borderRadius: "10px", padding: "12px", border: "1px solid var(--color-border)", background: "var(--color-bg-secondary)" }}
-            >
-              <option value="">-- Select a Student --</option>
-              {filteredStudents.map((s: any) => (
-                <option key={s.id} value={s.id}>{s.name} ({s.email})</option>
-              ))}
-            </select>
-          </label>
-        </div>
+            <label className="field" style={{ flex: 2, minWidth: "250px" }}>
+              <span style={{ fontWeight: "600", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>SELECT STUDENT</span>
+              <select 
+                value={selectedStudentId} 
+                onChange={(e) => setSelectedStudentId(e.target.value)}
+                style={{ borderRadius: "10px", padding: "12px", border: "1px solid var(--color-border)", background: "var(--color-bg-secondary)" }}
+              >
+                <option value="">-- Select a Student --</option>
+                {filteredStudents.map((s: any) => (
+                  <option key={s.id} value={s.id}>{s.name} ({s.email})</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
 
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           {selectedStudentId ? studentsWithSubmissions.filter((s: any) => s.id === selectedStudentId).map((student: any) => {

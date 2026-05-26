@@ -301,20 +301,52 @@ apiRouter.delete("/questions/:id", requireRole(["super_admin", "teacher"]), asyn
   res.status(204).end();
 });
 
-apiRouter.get("/analytics", requireRole(["super_admin", "teacher"]), async (_req: Request, res: Response) => {
+apiRouter.get("/analytics", requireRole(["super_admin", "teacher", "student"]), async (req: Request, res: Response) => {
+  const authUserId = (req as AuthenticatedRequest).auth?.sub;
   const state = await getAppState();
-  res.json({
-    submissions: state.submissions,
-    exams: state.exams,
-    students: state.students,
-    batches: state.batches,
-    subjects: state.subjects
-  });
+  const authUser = state.users.find((item) => item.id === authUserId);
+  const isStudent = authUser?.role === "student";
+  const effectiveStudentId = authUser?.studentId ?? authUserId;
+
+  if (isStudent && effectiveStudentId) {
+    const student = state.students.find((s) => s.id === effectiveStudentId);
+    const studentSubmissions = state.submissions.filter((s) => s.studentId === effectiveStudentId);
+    const studentBatch = student ? state.batches.filter((b) => b.id === student.batchId) : [];
+    
+    const takenExamIds = new Set(studentSubmissions.map((s) => s.examId));
+    const studentExams = state.exams.filter((e) => takenExamIds.has(e.id));
+
+    res.json({
+      submissions: studentSubmissions,
+      exams: studentExams,
+      students: student ? [student] : [],
+      batches: studentBatch,
+      subjects: state.subjects
+    });
+  } else {
+    res.json({
+      submissions: state.submissions,
+      exams: state.exams,
+      students: state.students,
+      batches: state.batches,
+      subjects: state.subjects
+    });
+  }
 });
 
-apiRouter.get("/students/:studentId/report-pdf", requireRole(["super_admin", "teacher"]), async (req, res) => {
+apiRouter.get("/students/:studentId/report-pdf", requireRole(["super_admin", "teacher", "student"]), async (req, res) => {
   try {
     const studentId = req.params.studentId as string;
+    const authUserId = (req as AuthenticatedRequest).auth?.sub;
+    const state = await getAppState();
+    const authUser = state.users.find((item) => item.id === authUserId);
+    const effectiveStudentId = authUser?.studentId ?? authUserId;
+
+    if (authUser?.role === "student" && studentId !== effectiveStudentId) {
+      res.status(403).json({ message: "You are not authorized to view this student's report." });
+      return;
+    }
+
     const { generateStudentReportPDF } = await import("../utils/pdf-generator.js");
     const pdfBuffer = await generateStudentReportPDF(studentId);
     
@@ -435,12 +467,14 @@ apiRouter.post("/subject-books", requireRole(["super_admin"]), upload.single("pd
     return;
   }
 
+  const ocr = getSingleFormValue(req.body.ocr) === "true";
+
   let parsed;
   try {
-    parsed = await extractPdfText(file.path);
+    parsed = await extractPdfText(file.path, ocr);
   } catch (err: any) {
     console.error("PDF extraction failed:", err);
-    res.status(500).json({ message: "Failed to extract text from PDF. Please check the backend console." });
+    res.status(500).json({ message: err.message || "Failed to extract text from PDF. Please check the backend console." });
     return;
   }
 

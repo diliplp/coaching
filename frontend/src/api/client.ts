@@ -99,13 +99,14 @@ export const apiClient = {
     request<BatchAdaptivePlan[]>(`/adaptive-plan/batches${subjectId ? `?subjectId=${encodeURIComponent(subjectId)}` : ""}`),
   getMyAdaptiveSuggestion: () => request<AdaptivePlan>("/students/me/adaptive-suggestion"),
   getSubjectBooks: () => request<SubjectBooksResponse>("/subject-books"),
-  uploadSubjectBook: async (payload: { subjectId: string; title: string; file: File; bookType?: string }) => {
+  uploadSubjectBook: async (payload: { subjectId: string; title: string; file: File; bookType?: string; ocr?: boolean }) => {
     const session = getStoredSession();
     const formData = new FormData();
     formData.append("subjectId", payload.subjectId);
     formData.append("title", payload.title);
     formData.append("pdf", payload.file);
     if (payload.bookType) formData.append("bookType", payload.bookType);
+    if (payload.ocr) formData.append("ocr", "true");
 
     const response = await fetch(buildApiUrl("/subject-books"), {
       method: "POST",

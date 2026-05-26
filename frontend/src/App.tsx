@@ -98,7 +98,7 @@ export default function App() {
           <Route path="/live-exam" element={<LiveExamPage />} />
           <Route 
             path="/analytics" 
-            element={<ProtectedRoute roles={["super_admin", "teacher"]}><AnalyticsPage /></ProtectedRoute>} 
+            element={<ProtectedRoute roles={["super_admin", "teacher", "student"]}><AnalyticsPage /></ProtectedRoute>} 
           />
           <Route 
             path="/offline-board-paper" 
