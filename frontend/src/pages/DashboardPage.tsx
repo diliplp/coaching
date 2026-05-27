@@ -18,7 +18,7 @@ export function DashboardPage() {
   // Self-generation state
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
   const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
-  const [allowedSources, setAllowedSources] = useState<string[]>(["pyq", "reference", "ai_generated", "custom"]);
+  const [allowedSources, setAllowedSources] = useState<string[]>(["pyq", "reference", "textbook", "ai_generated", "custom"]);
   const [qCount, setQCount] = useState(10);
 
   useEffect(() => {
@@ -268,6 +268,7 @@ export function DashboardPage() {
                   {[
                     { id: "pyq", label: "PYQs" },
                     { id: "reference", label: "Reference Books" },
+                    { id: "textbook", label: "Textbooks" },
                     { id: "ai_generated", label: "AI Generated" },
                     { id: "custom", label: "Custom Bank" }
                   ].map(source => (

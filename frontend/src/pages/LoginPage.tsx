@@ -32,9 +32,12 @@ export function LoginPage() {
   return (
     <div className="login-shell">
       <div className="login-card">
-        <p className="eyebrow">Secure Access</p>
-        <h1>Coaching Exam Portal</h1>
-        <p>{status}</p>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: "24px", textAlign: "center" }}>
+          <img src="/logo.jpeg" alt="Logo" style={{ width: "120px", height: "120px", borderRadius: "50%", objectFit: "cover", marginBottom: "16px", border: "2.5px solid var(--color-primary-light)", boxShadow: "0 6px 16px rgba(0,0,0,0.08)" }} />
+          <p className="eyebrow" style={{ margin: 0, fontSize: "0.85rem", letterSpacing: "1px" }}>Brainwave Science Academy</p>
+          <h1 style={{ marginTop: "8px", fontSize: "2rem", fontWeight: "700", letterSpacing: "-0.5px" }}>Exam Portal</h1>
+        </div>
+        <p style={{ textAlign: "center", fontSize: "0.9rem", color: "var(--color-text-muted)", marginBottom: "20px" }}>{status}</p>
 
         <div style={{ marginBottom: "20px" }}>
           <label className="field">

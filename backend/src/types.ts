@@ -4,7 +4,7 @@ export type UserRole = "super_admin" | "teacher" | "student";
 
 export type QuestionType = "single_correct" | "multi_correct";
 
-export type QuestionSource = "pyq" | "reference" | "ai_generated" | "custom";
+export type QuestionSource = "pyq" | "reference" | "textbook" | "ai_generated" | "custom";
 
 export interface ClassNode {
   id: string;
@@ -37,6 +37,7 @@ export interface Topic {
   subjectId: string;
   chapterId: string;
   name: string;
+  bookId?: string;
 }
 
 export interface Subject {
@@ -50,6 +51,7 @@ export interface Chapter {
   id: string;
   subjectId: string;
   name: string;
+  bookId?: string;
 }
 
 export interface SubjectBook {

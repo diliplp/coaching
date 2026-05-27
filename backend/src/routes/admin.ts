@@ -350,7 +350,7 @@ adminRouter.post("/curriculum/parse-docx", upload.single("docx"), async (req: an
 
 adminRouter.post("/curriculum/save-bulk", async (req: Request, res: Response) => {
   try {
-    const { subjects, classId, streamId } = req.body; // Array of subjects with chapters and topics
+    const { subjects, classId, streamId, bookId } = req.body; // Array of subjects with chapters and topics
 
     for (const sub of subjects) {
       // Find or create subject
@@ -363,7 +363,12 @@ adminRouter.post("/curriculum/save-bulk", async (req: Request, res: Response) =>
       }
 
       for (const chap of sub.chapters) {
-        const chapter = { id: `ch-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`, name: chap.name, subjectId: subject.id };
+        const chapter = { 
+          id: `ch-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`, 
+          name: chap.name, 
+          subjectId: subject.id,
+          bookId: bookId || undefined
+        };
         await upsertRecord("chapters", chapter);
 
         for (const topName of chap.topics) {
@@ -371,7 +376,8 @@ adminRouter.post("/curriculum/save-bulk", async (req: Request, res: Response) =>
             id: `top-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`, 
             name: topName, 
             subjectId: subject.id, 
-            chapterId: chapter.id 
+            chapterId: chapter.id,
+            bookId: bookId || undefined
           };
           await upsertRecord("topics", topic);
         }

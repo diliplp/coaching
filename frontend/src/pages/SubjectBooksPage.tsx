@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { apiClient, buildPublicAssetUrl } from "../api/client";
 import type { SubjectBooksResponse } from "../types";
+import { StatusModal } from "../components/StatusModal";
 
 export function SubjectBooksPage() {
   const [data, setData] = useState<SubjectBooksResponse | null>(null);
@@ -19,8 +20,8 @@ export function SubjectBooksPage() {
   
   // AI Generation State
   const [generatingForBook, setGeneratingForBook] = useState<string | null>(null);
-  const [selectedChapterId, setSelectedChapterId] = useState("");
-  const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
+  const [selectedChapters, setSelectedChapters] = useState<Record<string, string>>({});
+  const [selectedTopicsMap, setSelectedTopicsMap] = useState<Record<string, string[]>>({});
   const [questionCount, setQuestionCount] = useState(5);
 
   // Curriculum Detection State
@@ -66,9 +67,11 @@ export function SubjectBooksPage() {
     setGeneratingForBook(bookId);
     setStatus("AI is reading the PDF and generating questions with STEM formatting... This may take up to a minute.");
     try {
+      const bookChapterId = selectedChapters[bookId] || "";
+      const bookTopicIds = selectedTopicsMap[bookId] || [];
       const result = await apiClient.generateQuestionsFromBook(bookId, {
-        chapterId: selectedChapterId,
-        topicIds: selectedTopicIds.length > 0 ? selectedTopicIds : undefined,
+        chapterId: bookChapterId || undefined,
+        topicIds: bookTopicIds.length > 0 ? bookTopicIds : undefined,
         questionCount
       });
       setStatus(`Success: ${result.message}`);
@@ -106,6 +109,7 @@ export function SubjectBooksPage() {
       await apiClient.admin.saveBulkCurriculum({
         classId: subjectNode.classId,
         streamId: subjectNode.streamId,
+        bookId: book.id,
         subjects: [
           {
             name: subjectNode.name,
@@ -140,6 +144,11 @@ export function SubjectBooksPage() {
 
   return (
     <div className="page">
+      <StatusModal 
+        status={status} 
+        defaultStatus="Teachers can upload PDF books subject-wise here." 
+        onClose={() => setStatus("Teachers can upload PDF books subject-wise here.")} 
+      />
       <section className="section-heading">
         <p className="eyebrow">Teacher Subject Library</p>
         <h2>Add PDF books for Maths, Science, or any subject</h2>
@@ -226,204 +235,214 @@ export function SubjectBooksPage() {
             <p>No books uploaded yet.</p>
           ) : (
             <ul className="plain-list">
-              {data.books.map((book) => (
-                <li key={book.id} className="panel" style={{ display: "block", marginBottom: "2rem", padding: "1.5rem", borderRadius: "12px", background: "white", border: "1px solid var(--color-border)" }}>
-                  {/* Book Info Section */}
-                  <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
-                    <div style={{ 
-                      background: "rgba(0, 128, 128, 0.1)", 
-                      color: "var(--color-primary)", 
-                      padding: "8px 16px", 
-                      borderRadius: "20px", 
-                      display: "inline-block", 
-                      fontSize: "0.75rem", 
-                      fontWeight: "bold",
-                      marginBottom: "0.5rem"
-                    }}>
-                      {book.bookType === "pyq" ? "PREVIOUS YEAR PAPER" : book.bookType === "textbook" ? "TEXT BOOK" : "REFERENCE BOOK"}
-                    </div>
-                    <h4 style={{ margin: "0.5rem 0", fontSize: "1.25rem" }}>{book.title}</h4>
-                    <p className="muted-copy" style={{ fontSize: "0.85rem" }}>
-                      {book.subjectName} • {new Date(book.uploadedAt).toLocaleDateString()}
-                    </p>
-                    
-                    <div style={{ display: "flex", gap: "10px", justifyContent: "center", marginTop: "1rem" }}>
-                      <a 
-                        className="secondary-button" 
-                        href={buildPublicAssetUrl(book.fileUrl)} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        style={{ fontSize: "0.85rem", padding: "6px 16px" }}
-                      >
-                        View PDF
-                      </a>
-                      <button 
-                        className="secondary-button" 
-                        disabled={detectingForBook === book.id}
-                        onClick={() => handleDetectCurriculum(book.id)}
-                        style={{ fontSize: "0.85rem", padding: "6px 16px" }}
-                      >
-                        {detectingForBook === book.id ? "Analyzing..." : "Analyze Curriculum"}
-                      </button>
-                      <button 
-                        className="secondary-button" 
-                        style={{ color: "var(--color-error)", borderColor: "var(--color-error)", fontSize: "0.85rem", padding: "6px 16px" }}
-                        onClick={async () => {
-                          if (confirm(`Delete "${book.title}"?`)) {
-                            try {
-                              await apiClient.deleteSubjectBook(book.id);
-                              loadData();
-                            } catch (e) {
-                              alert("Failed to delete book");
-                            }
-                          }
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
+              {data.books.map((book) => {
+                const bookChapterId = selectedChapters[book.id] || "";
+                const bookSelectedTopicIds = selectedTopicsMap[book.id] || [];
+                const bookChapters = allChapters.filter(c => c.subjectId === book.subjectId && c.bookId === book.id);
+                const bookTopics = allTopics.filter(t => t.chapterId === bookChapterId && t.bookId === book.id);
 
-                  {/* Detected Curriculum Section */}
-                  {detectedCurriculum?.bookId === book.id && (
+                return (
+                  <li key={book.id} className="panel" style={{ display: "block", marginBottom: "2rem", padding: "1.5rem", borderRadius: "12px", background: "white", border: "1px solid var(--color-border)" }}>
+                    {/* Book Info Section */}
+                    <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
+                      <div style={{ 
+                        background: "rgba(0, 128, 128, 0.1)", 
+                        color: "var(--color-primary)", 
+                        padding: "8px 16px", 
+                        borderRadius: "20px", 
+                        display: "inline-block", 
+                        fontSize: "0.75rem", 
+                        fontWeight: "bold",
+                        marginBottom: "0.5rem"
+                      }}>
+                        {book.bookType === "pyq" ? "PREVIOUS YEAR PAPER" : book.bookType === "textbook" ? "TEXT BOOK" : "REFERENCE BOOK"}
+                      </div>
+                      <h4 style={{ margin: "0.5rem 0", fontSize: "1.25rem" }}>{book.title}</h4>
+                      <p className="muted-copy" style={{ fontSize: "0.85rem" }}>
+                        {book.subjectName} • {new Date(book.uploadedAt).toLocaleDateString()}
+                      </p>
+                      
+                      <div style={{ display: "flex", gap: "10px", justifyContent: "center", marginTop: "1rem" }}>
+                        <a 
+                          className="secondary-button" 
+                          href={buildPublicAssetUrl(book.fileUrl)} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          style={{ fontSize: "0.85rem", padding: "6px 16px" }}
+                        >
+                          View PDF
+                        </a>
+                        <button 
+                          className="secondary-button" 
+                          disabled={detectingForBook === book.id}
+                          onClick={() => handleDetectCurriculum(book.id)}
+                          style={{ fontSize: "0.85rem", padding: "6px 16px" }}
+                        >
+                          {detectingForBook === book.id ? "Analyzing..." : "Analyze Curriculum"}
+                        </button>
+                        <button 
+                          className="secondary-button" 
+                          style={{ color: "var(--color-error)", borderColor: "var(--color-error)", fontSize: "0.85rem", padding: "6px 16px" }}
+                          onClick={async () => {
+                            if (confirm(`Delete "${book.title}"?`)) {
+                              try {
+                                await apiClient.deleteSubjectBook(book.id);
+                                loadData();
+                              } catch (e) {
+                                alert("Failed to delete book");
+                              }
+                            }
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Detected Curriculum Section */}
+                    {detectedCurriculum?.bookId === book.id && (
+                      <div style={{ 
+                        background: "rgba(0, 112, 243, 0.05)", 
+                        padding: "1.25rem", 
+                        borderRadius: "10px", 
+                        border: "1px solid var(--color-primary-light)",
+                        marginTop: "1.5rem",
+                        marginBottom: "1.5rem"
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                          <strong style={{ fontSize: "0.95rem" }}>Detected Structure</strong>
+                          <button className="primary-button" style={{ padding: "4px 12px", fontSize: "0.8rem" }} onClick={() => handleImportCurriculum(book)}>
+                            Import to Subject
+                          </button>
+                        </div>
+                        <div style={{ maxHeight: "200px", overflowY: "auto", fontSize: "0.85rem" }}>
+                          {detectedCurriculum.chapters.map((ch, idx) => (
+                            <div key={idx} style={{ marginBottom: "10px", borderBottom: "1px solid rgba(0,0,0,0.05)", paddingBottom: "5px" }}>
+                              <div style={{ fontWeight: "bold" }}>{ch.name}</div>
+                              <div className="muted-copy" style={{ fontSize: "0.8rem", paddingLeft: "10px" }}>
+                                {ch.topics.join(", ")}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <button 
+                          className="text-link" 
+                          style={{ marginTop: "10px", fontSize: "0.8rem" }} 
+                          onClick={() => setDetectedCurriculum(null)}
+                        >
+                          Close Preview
+                        </button>
+                      </div>
+                    )}
+
+
+                    {/* AI Tool Section - Vertical Stack */}
                     <div style={{ 
-                      background: "rgba(0, 112, 243, 0.05)", 
+                      background: "var(--color-bg-secondary)", 
                       padding: "1.25rem", 
                       borderRadius: "10px", 
-                      border: "1px solid var(--color-primary-light)",
-                      marginTop: "1.5rem",
-                      marginBottom: "1.5rem"
+                      border: "1px solid var(--color-border)",
+                      marginTop: "1.5rem"
                     }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-                        <strong style={{ fontSize: "0.95rem" }}>Detected Structure</strong>
-                        <button className="primary-button" style={{ padding: "4px 12px", fontSize: "0.8rem" }} onClick={() => handleImportCurriculum(book)}>
-                          Import to Subject
-                        </button>
+                      <div style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem", marginBottom: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <strong style={{ fontSize: "0.9rem" }}>AI Question Generator</strong>
+                        <span className="tag muted" style={{ fontSize: "0.7rem" }}>STEM-AI</span>
                       </div>
-                      <div style={{ maxHeight: "200px", overflowY: "auto", fontSize: "0.85rem" }}>
-                        {detectedCurriculum.chapters.map((ch, idx) => (
-                          <div key={idx} style={{ marginBottom: "10px", borderBottom: "1px solid rgba(0,0,0,0.05)", paddingBottom: "5px" }}>
-                            <div style={{ fontWeight: "bold" }}>{ch.name}</div>
-                            <div className="muted-copy" style={{ fontSize: "0.8rem", paddingLeft: "10px" }}>
-                              {ch.topics.join(", ")}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      <button 
-                        className="text-link" 
-                        style={{ marginTop: "10px", fontSize: "0.8rem" }} 
-                        onClick={() => setDetectedCurriculum(null)}
-                      >
-                        Close Preview
-                      </button>
-                    </div>
-                  )}
 
+                      <div className="stack" style={{ gap: "1rem" }}>
+                        <label className="field">
+                          <span>Select Chapter</span>
+                          <select 
+                            value={bookChapterId} 
+                            onChange={(e) => {
+                              setSelectedChapters(prev => ({ ...prev, [book.id]: e.target.value }));
+                              setSelectedTopicsMap(prev => ({ ...prev, [book.id]: [] }));
+                            }}
+                            style={{ background: "white" }}
+                          >
+                            <option value="">Choose...</option>
+                            {bookChapters.map(c => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </label>
 
-                  {/* AI Tool Section - Vertical Stack */}
-                  <div style={{ 
-                    background: "var(--color-bg-secondary)", 
-                    padding: "1.25rem", 
-                    borderRadius: "10px", 
-                    border: "1px solid var(--color-border)",
-                    marginTop: "1.5rem"
-                  }}>
-                    <div style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem", marginBottom: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <strong style={{ fontSize: "0.9rem" }}>AI Question Generator</strong>
-                      <span className="tag muted" style={{ fontSize: "0.7rem" }}>STEM-AI</span>
-                    </div>
-
-                    <div className="stack" style={{ gap: "1rem" }}>
-                      <label className="field">
-                        <span>Select Chapter</span>
-                        <select 
-                          value={selectedChapterId} 
-                          onChange={(e) => { setSelectedChapterId(e.target.value); setSelectedTopicIds([]); }}
-                          style={{ background: "white" }}
-                        >
-                          <option value="">Choose...</option>
-                          {allChapters.filter(c => c.subjectId === book.subjectId).map(c => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <div className="field">
-                        <span>Select Topics</span>
-                        <div style={{ 
-                          background: "white", 
-                          border: "1px solid var(--color-border)", 
-                          borderRadius: "8px", 
-                          padding: "10px",
-                          maxHeight: "150px",
-                          overflowY: "auto",
-                          marginTop: "4px"
-                        }}>
-                          <label style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px", paddingBottom: "10px", borderBottom: "1px solid var(--color-border)", fontWeight: "bold", fontSize: "0.9rem" }}>
-                            <input 
-                              type="checkbox" 
-                              checked={selectedTopicIds.length === allTopics.filter(t => t.chapterId === selectedChapterId).length && selectedTopicIds.length > 0}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setSelectedTopicIds(allTopics.filter(t => t.chapterId === selectedChapterId).map(t => t.id));
-                                } else {
-                                  setSelectedTopicIds([]);
-                                }
-                              }}
-                              style={{ margin: 0, flexShrink: 0, width: "auto" }}
-                            />
-                            <span>Select All Topics</span>
-                          </label>
-                          {allTopics.filter(t => t.chapterId === selectedChapterId).map(t => (
-                            <label key={t.id} style={{ display: "flex", alignItems: "flex-start", gap: "6px", marginBottom: "8px", fontSize: "0.85rem", lineHeight: "1.4" }}>
+                        <div className="field">
+                          <span>Select Topics</span>
+                          <div style={{ 
+                            background: "white", 
+                            border: "1px solid var(--color-border)", 
+                            borderRadius: "8px", 
+                            padding: "10px",
+                            maxHeight: "150px",
+                            overflowY: "auto",
+                            marginTop: "4px"
+                          }}>
+                            <label style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px", paddingBottom: "10px", borderBottom: "1px solid var(--color-border)", fontWeight: "bold", fontSize: "0.9rem" }}>
                               <input 
                                 type="checkbox" 
-                                checked={selectedTopicIds.includes(t.id)}
+                                checked={bookTopics.length > 0 && bookSelectedTopicIds.length === bookTopics.length}
                                 onChange={(e) => {
                                   if (e.target.checked) {
-                                    setSelectedTopicIds([...selectedTopicIds, t.id]);
+                                    setSelectedTopicsMap(prev => ({ ...prev, [book.id]: bookTopics.map(t => t.id) }));
                                   } else {
-                                    setSelectedTopicIds(selectedTopicIds.filter(id => id !== t.id));
+                                    setSelectedTopicsMap(prev => ({ ...prev, [book.id]: [] }));
                                   }
                                 }}
-                                style={{ margin: "3px 0 0 0", flexShrink: 0, width: "auto" }}
+                                style={{ margin: 0, flexShrink: 0, width: "auto" }}
                               />
-                              <span style={{ flex: 1, textAlign: "left" }}>{t.name}</span>
+                              <span>Select All Topics</span>
                             </label>
-                          ))}
-                          {allTopics.filter(t => t.chapterId === selectedChapterId).length === 0 && (
-                            <p className="muted-copy" style={{ fontSize: "0.8rem", margin: 0 }}>No topics found in this chapter.</p>
-                          )}
+                            {bookTopics.map(t => (
+                              <label key={t.id} style={{ display: "flex", alignItems: "flex-start", gap: "6px", marginBottom: "8px", fontSize: "0.85rem", lineHeight: "1.4" }}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={bookSelectedTopicIds.includes(t.id)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedTopicsMap(prev => ({ ...prev, [book.id]: [...bookSelectedTopicIds, t.id] }));
+                                    } else {
+                                      setSelectedTopicsMap(prev => ({ ...prev, [book.id]: bookSelectedTopicIds.filter(id => id !== t.id) }));
+                                    }
+                                  }}
+                                  style={{ margin: "3px 0 0 0", flexShrink: 0, width: "auto" }}
+                                />
+                                <span style={{ flex: 1, textAlign: "left" }}>{t.name}</span>
+                              </label>
+                            ))}
+                            {bookTopics.length === 0 && (
+                              <p className="muted-copy" style={{ fontSize: "0.8rem", margin: 0 }}>No topics found in this chapter.</p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", gap: "10px", alignItems: "flex-end" }}>
+                          <label className="field" style={{ flex: 1 }}>
+                            <span>Count</span>
+                            <input 
+                              type="number" 
+                              min="1" 
+                              max="20" 
+                              value={questionCount} 
+                              onChange={(e) => setQuestionCount(Number(e.target.value))} 
+                              style={{ background: "white" }}
+                            />
+                          </label>
+                          <button 
+                            className="primary-button" 
+                            disabled={generatingForBook === book.id} 
+                            onClick={() => void handleGenerateQuestions(book.id)}
+                            style={{ flex: 2, height: "42px" }}
+                          >
+                            {generatingForBook === book.id ? "Working..." : "Generate AI Questions"}
+                          </button>
                         </div>
                       </div>
-
-                      <div style={{ display: "flex", gap: "10px", alignItems: "flex-end" }}>
-                        <label className="field" style={{ flex: 1 }}>
-                          <span>Count</span>
-                          <input 
-                            type="number" 
-                            min="1" 
-                            max="20" 
-                            value={questionCount} 
-                            onChange={(e) => setQuestionCount(Number(e.target.value))} 
-                            style={{ background: "white" }}
-                          />
-                        </label>
-                        <button 
-                          className="primary-button" 
-                          disabled={generatingForBook === book.id} 
-                          onClick={() => void handleGenerateQuestions(book.id)}
-                          style={{ flex: 2, height: "42px" }}
-                        >
-                          {generatingForBook === book.id ? "Working..." : "Generate AI Questions"}
-                        </button>
-                      </div>
                     </div>
-                  </div>
 
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </article>

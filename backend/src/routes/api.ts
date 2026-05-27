@@ -536,7 +536,8 @@ apiRouter.post("/subject-books/:bookId/generate-questions", requireRole(["super_
           id: `top-gen-${Date.now()}`, 
           name: generalTopicName, 
           subjectId: book.subjectId, 
-          chapterId: chapterId 
+          chapterId: chapterId,
+          bookId: book.id
         };
         await upsertRecord("topics", generalTopic);
         // Refresh state locally for immediate use
@@ -550,9 +551,9 @@ apiRouter.post("/subject-books/:bookId/generate-questions", requireRole(["super_
       let generalTopic = state.topics.find(t => t.subjectId === book.subjectId && t.name === generalTopicName);
       if (!generalTopic) {
         // We need a chapter to create a topic. Let's find or create a "General" chapter.
-        let generalChapter = state.chapters.find(c => c.subjectId === book.subjectId && c.name === "General Content");
+        let generalChapter = state.chapters.find(c => c.subjectId === book.subjectId && c.name === "General Content" && c.bookId === book.id);
         if (!generalChapter) {
-          generalChapter = { id: `ch-gen-${Date.now()}`, name: "General Content", subjectId: book.subjectId };
+          generalChapter = { id: `ch-gen-${Date.now()}`, name: "General Content", subjectId: book.subjectId, bookId: book.id };
           await upsertRecord("chapters", generalChapter);
           state.chapters.push(generalChapter);
         }
@@ -560,7 +561,8 @@ apiRouter.post("/subject-books/:bookId/generate-questions", requireRole(["super_
           id: `top-gen-${Date.now()}`, 
           name: generalTopicName, 
           subjectId: book.subjectId, 
-          chapterId: generalChapter.id 
+          chapterId: generalChapter.id,
+          bookId: book.id
         };
         await upsertRecord("topics", generalTopic);
         state.topics.push(generalTopic);
@@ -743,7 +745,7 @@ apiRouter.post("/exams/generate-from-prompt", requireRole(["super_admin"]), asyn
         entityId: id,
         weightagePercent: weightagePerTopic
       })),
-      allowedSourceTypes: ["pyq", "reference", "ai_generated", "custom"]
+      allowedSourceTypes: ["pyq", "reference", "textbook", "ai_generated", "custom"]
     });
 
     if (!generated) {

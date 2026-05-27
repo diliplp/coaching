@@ -13,8 +13,8 @@ export async function generateQuestionsFromText(params: {
 }): Promise<Question[]> {
   const { text, topicId, subjectId, subject, questionCount = 5 } = params;
 
-  if (!process.env.OPENROUTER_API_KEY) {
-    throw new Error("OPENROUTER_API_KEY is missing. Please set it in your .env file.");
+  if (!process.env.GEMINI_API_KEY && !process.env.OPENROUTER_API_KEY) {
+    throw new Error("Neither GEMINI_API_KEY nor OPENROUTER_API_KEY is configured.");
   }
 
   const chemKeywords = ["chemistry", "molecule", "reaction", "bond", "acid", "organic", "compound", "structure", "formula", "chemical"];
@@ -128,29 +128,58 @@ ${textChunk}
 
     try {
       console.log(`Generating batch ${attempts} (need ${currentBatchCount} more)...`);
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://railway.app", 
-          "X-Title": "Coaching Portal Exam Gen"
-        },
-        body: JSON.stringify({
-          model: "openai/gpt-4o-mini", 
-          messages: [{ role: "user", content: prompt }],
-          response_format: { type: "json_object" },
-          max_tokens: 8000
-        })
-      });
+      let rawResponse = "";
+      
+      if (process.env.GEMINI_API_KEY) {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseMimeType: "application/json"
+            }
+          })
+        });
 
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`OpenRouter API error: ${errText}`);
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Gemini API error: ${errText}`);
+        }
+
+        const data = await response.json();
+        rawResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || '{"questions": []}';
+      } else {
+        // FAILOVER TO OPENROUTER
+        /*
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://railway.app", 
+            "X-Title": "Coaching Portal Exam Gen"
+          },
+          body: JSON.stringify({
+            model: "openai/gpt-4o-mini", 
+            messages: [{ role: "user", content: prompt }],
+            response_format: { type: "json_object" },
+            max_tokens: 8000
+          })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`OpenRouter API error: ${errText}`);
+        }
+
+        const data = await response.json();
+        rawResponse = data.choices?.[0]?.message?.content || '{"questions": []}';
+        */
+        throw new Error("GEMINI_API_KEY is not defined and OpenRouter is in failover mode.");
       }
-
-      const data = await response.json();
-      let rawResponse = data.choices?.[0]?.message?.content || '{"questions": []}';
       
       const startIdx = rawResponse.indexOf("{");
       const endIdx = rawResponse.lastIndexOf("}");
@@ -207,8 +236,8 @@ export async function parseExamPrompt(promptText: string): Promise<{
   difficulty: string;
   durationMinutes: number;
 }> {
-  if (!process.env.OPENROUTER_API_KEY) {
-    throw new Error("OPENROUTER_API_KEY is missing.");
+  if (!process.env.GEMINI_API_KEY && !process.env.OPENROUTER_API_KEY) {
+    throw new Error("Neither GEMINI_API_KEY nor OPENROUTER_API_KEY is configured.");
   }
 
   const prompt = `
@@ -231,22 +260,51 @@ export async function parseExamPrompt(promptText: string): Promise<{
     2. Output ONLY the JSON.
   `;
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: "openai/gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      max_tokens: 8000
-    })
-  });
+  let rawResponse = "";
 
-  const data = await response.json();
-  const rawResponse = data.choices?.[0]?.message?.content || "{}";
+  if (process.env.GEMINI_API_KEY) {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: "application/json"
+        }
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Gemini API error: ${await response.text()}`);
+    }
+
+    const data = await response.json();
+    rawResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+  } else {
+    // FAILOVER TO OPENROUTER
+    /*
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "openai/gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        max_tokens: 8000
+      })
+    });
+
+    const data = await response.json();
+    rawResponse = data.choices?.[0]?.message?.content || "{}";
+    */
+    throw new Error("GEMINI_API_KEY is not defined and OpenRouter is in failover mode.");
+  }
+
   return JSON.parse(rawResponse);
 }
 
@@ -303,8 +361,8 @@ export async function ensureEnoughQuestions(params: {
 export async function detectCurriculumFromText(text: string): Promise<{
   chapters: { name: string; topics: string[] }[];
 }> {
-  if (!process.env.OPENROUTER_API_KEY) {
-    throw new Error("OPENROUTER_API_KEY is missing.");
+  if (!process.env.GEMINI_API_KEY && !process.env.OPENROUTER_API_KEY) {
+    throw new Error("Neither GEMINI_API_KEY nor OPENROUTER_API_KEY is configured.");
   }
 
   const prompt = `
@@ -323,7 +381,7 @@ export async function detectCurriculumFromText(text: string): Promise<{
 
     Rules:
     1. Focus on educational/curriculum structure.
-    2. Be concise but accurate.
+    2. Be concise but academic.
     3. EXCLUDE non-academic structural elements like "Exercise", "Summary", "Glossary", "Questions", "Answers", "Bibliography", "Index", etc. from both chapters and topics.
     4. Output ONLY the JSON.
 
@@ -334,26 +392,55 @@ export async function detectCurriculumFromText(text: string): Promise<{
   `;
 
   try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "openai/gpt-4o-mini",
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        max_tokens: 8000
-      })
-    });
+    let rawResponse = "";
 
-    if (!response.ok) {
-      throw new Error("AI extraction failed");
+    if (process.env.GEMINI_API_KEY) {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: "application/json"
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error("Gemini curriculum extraction failed");
+      }
+
+      const data = await response.json();
+      rawResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || '{"chapters": []}';
+    } else {
+      // FAILOVER TO OPENROUTER
+      /*
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "openai/gpt-4o-mini",
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+          max_tokens: 8000
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error("AI extraction failed");
+      }
+
+      const data = await response.json();
+      rawResponse = data.choices?.[0]?.message?.content || '{"chapters": []}';
+      */
+      throw new Error("GEMINI_API_KEY is not defined and OpenRouter is in failover mode.");
     }
 
-    const data = await response.json();
-    const rawResponse = data.choices?.[0]?.message?.content || '{"chapters": []}';
     return JSON.parse(rawResponse);
   } catch (error) {
     console.error("Curriculum detection failed:", error);
@@ -368,8 +455,8 @@ export async function generateOfflineBoardPaper(params: {
 }): Promise<any> {
   const { className, subjectName, topics } = params;
 
-  if (!process.env.OPENROUTER_API_KEY) {
-    throw new Error("OPENROUTER_API_KEY is missing.");
+  if (!process.env.GEMINI_API_KEY && !process.env.OPENROUTER_API_KEY) {
+    throw new Error("Neither GEMINI_API_KEY nor OPENROUTER_API_KEY is configured.");
   }
 
   const prompt = `
@@ -429,28 +516,58 @@ JSON STRUCTURE:
   `;
 
   try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://railway.app",
-        "X-Title": "Coaching Portal Offline Exam Gen"
-      },
-      body: JSON.stringify({
-        model: "openai/gpt-4o-mini",
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        max_tokens: 8000
-      })
-    });
+    let rawResponse = "";
 
-    if (!response.ok) {
-      throw new Error(`OpenRouter API error: ${await response.text()}`);
+    if (process.env.GEMINI_API_KEY) {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: "application/json"
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Gemini offline paper API error: ${await response.text()}`);
+      }
+
+      const data = await response.json();
+      rawResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+    } else {
+      // FAILOVER TO OPENROUTER
+      /*
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://railway.app",
+          "X-Title": "Coaching Portal Offline Exam Gen"
+        },
+        body: JSON.stringify({
+          model: "openai/gpt-4o-mini",
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+          max_tokens: 8000
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenRouter API error: ${await response.text()}`);
+      }
+
+      const data = await response.json();
+      rawResponse = data.choices[0].message.content;
+      */
+      throw new Error("GEMINI_API_KEY is not defined and OpenRouter is in failover mode.");
     }
 
-    const data = await response.json();
-    return JSON.parse(data.choices[0].message.content);
+    return JSON.parse(rawResponse);
   } catch (error) {
     console.error("Offline Paper Generation failed:", error);
     throw error;

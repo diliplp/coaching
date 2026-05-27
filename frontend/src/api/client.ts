@@ -221,7 +221,7 @@ export const apiClient = {
       if (!response.ok) throw new Error("Failed to parse Word document");
       return response.json();
     },
-    saveBulkCurriculum: (payload: { classId: string; streamId: string; subjects: any[] }) => 
+    saveBulkCurriculum: (payload: { classId: string; streamId: string; subjects: any[]; bookId?: string }) => 
       request<any>("/admin/curriculum/save-bulk", { method: "POST", body: JSON.stringify(payload) }),
   }
 };

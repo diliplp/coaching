@@ -3,6 +3,7 @@ import { apiClient } from "../api/client";
 import { liveExamState } from "../data/mockExamContext";
 import type { AdaptivePlan, BlueprintSummary, OverviewResponse, QuestionBankResponse } from "../types";
 import { getStoredSession } from "../auth";
+import { StatusModal } from "../components/StatusModal";
 
 export function ExamBuilderPage() {
   const [blueprints, setBlueprints] = useState<BlueprintSummary[]>([]);
@@ -22,7 +23,7 @@ export function ExamBuilderPage() {
   const [scheduledStartTime, setScheduledStartTime] = useState("");
   const [scheduledEndTime, setScheduledEndTime] = useState("");
   const [weightages, setWeightages] = useState<Record<string, string>>({});
-  const [allowedSources, setAllowedSources] = useState<string[]>(["pyq", "reference", "ai_generated", "custom"]);
+  const [allowedSources, setAllowedSources] = useState<string[]>(["pyq", "reference", "textbook", "ai_generated", "custom"]);
   const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -219,6 +220,11 @@ export function ExamBuilderPage() {
 
   return (
     <div className="page">
+      <StatusModal 
+        status={status} 
+        defaultStatus="Select a blueprint or build a weighted paper." 
+        onClose={() => setStatus("Select a blueprint or build a weighted paper.")} 
+      />
       <section className="section-heading">
         <p className="eyebrow">Exam Builder</p>
         <h2>Create chapter-wise, topic-wise, and adaptive papers</h2>
@@ -444,7 +450,7 @@ export function ExamBuilderPage() {
               <div className="field">
                 <span style={{ fontWeight: "bold", fontSize: "0.85rem" }}>Allowed Question Sources</span>
                 <div style={{ display: "flex", gap: "12px", marginTop: "10px", flexWrap: "wrap" }}>
-                  {["pyq", "reference", "ai_generated", "custom"].map(source => (
+                  {["pyq", "reference", "textbook", "ai_generated", "custom"].map(source => (
                     <label key={source} style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", background: "white", padding: "6px 14px", border: "1px solid var(--color-border)", borderRadius: "20px", fontSize: "0.85rem" }}>
                       <input 
                         type="checkbox" 
@@ -454,7 +460,7 @@ export function ExamBuilderPage() {
                           else if (allowedSources.length > 1) setAllowedSources(allowedSources.filter(s => s !== source));
                         }}
                       />
-                      {source === "pyq" ? "Previous Year Questions" : (source === "reference" ? "Reference Books" : source.replace("_", " ").toUpperCase())}
+                      {source === "pyq" ? "Previous Year Questions" : (source === "reference" ? "Reference Books" : (source === "textbook" ? "Textbooks" : source.replace("_", " ").toUpperCase()))}
                     </label>
                   ))}
                 </div>

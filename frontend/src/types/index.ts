@@ -9,12 +9,12 @@ export interface OverviewResponse {
   recentSubmissions: ExamResult[];
 }
 
-export type QuestionSource = "pyq" | "reference" | "ai_generated" | "custom";
+export type QuestionSource = "pyq" | "reference" | "textbook" | "ai_generated" | "custom";
 
 export interface QuestionBankResponse {
   subjects: Array<{ id: string; name: string; classId: string; streamId: string }>;
-  chapters: Array<{ id: string; name: string; subjectId: string }>;
-  topics: Array<{ id: string; name: string; subjectId: string; chapterId: string }>;
+  chapters: Array<{ id: string; name: string; subjectId: string; bookId?: string }>;
+  topics: Array<{ id: string; name: string; subjectId: string; chapterId: string; bookId?: string }>;
   questions: Question[];
 }
 
