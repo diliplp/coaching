@@ -27,6 +27,11 @@ export function QuestionBankPage() {
     sourceType: "custom" as any
   });
 
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
+  const [selectedTopicId, setSelectedTopicId] = useState<string>("");
+  const [selectedDifficulty, setSelectedDifficulty] = useState<string>("");
+  const [selectedSourceType, setSelectedSourceType] = useState<string>("");
+
   const session = getStoredSession();
   const isTeacher = session?.user.role === "super_admin" || session?.user.role === "teacher";
 
@@ -41,6 +46,14 @@ export function QuestionBankPage() {
   if (!data) {
     return <p>Loading question bank...</p>;
   }
+
+  const filteredQuestions = data.questions.filter((question: any) => {
+    if (selectedSubjectId && question.subjectId !== selectedSubjectId) return false;
+    if (selectedTopicId && question.topicId !== selectedTopicId) return false;
+    if (selectedDifficulty && question.difficulty !== selectedDifficulty) return false;
+    if (selectedSourceType && question.sourceType !== selectedSourceType) return false;
+    return true;
+  });
 
   const handleOpenForm = (question?: any) => {
     if (question) {
@@ -296,8 +309,96 @@ export function QuestionBankPage() {
         </article>
       )}
 
+      {/* Filters Section */}
+      <article className="panel" style={{ marginBottom: "20px", padding: "15px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "15px", alignItems: "end" }}>
+          <label className="field" style={{ margin: 0 }}>
+            <span>Filter by Subject</span>
+            <select
+              value={selectedSubjectId}
+              onChange={(e) => {
+                setSelectedSubjectId(e.target.value);
+                setSelectedTopicId("");
+              }}
+            >
+              <option value="">All Subjects</option>
+              {data.subjects.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field" style={{ margin: 0 }}>
+            <span>Filter by Topic</span>
+            <select
+              value={selectedTopicId}
+              onChange={(e) => setSelectedTopicId(e.target.value)}
+            >
+              <option value="">All Topics</option>
+              {data.topics
+                .filter((t) => !selectedSubjectId || t.subjectId === selectedSubjectId)
+                .map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+
+          <label className="field" style={{ margin: 0 }}>
+            <span>Filter by Difficulty</span>
+            <select
+              value={selectedDifficulty}
+              onChange={(e) => setSelectedDifficulty(e.target.value)}
+            >
+              <option value="">All Difficulties</option>
+              <option value="easy">Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+          </label>
+
+          <label className="field" style={{ margin: 0 }}>
+            <span>Filter by Source</span>
+            <select
+              value={selectedSourceType}
+              onChange={(e) => setSelectedSourceType(e.target.value)}
+            >
+              <option value="">All Sources</option>
+              <option value="pyq">PYQ</option>
+              <option value="reference">Reference</option>
+              <option value="ai_generated">AI Generated</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+
+          {(selectedSubjectId || selectedTopicId || selectedDifficulty || selectedSourceType) && (
+            <button
+              className="secondary-button"
+              style={{ height: "38px" }}
+              onClick={() => {
+                setSelectedSubjectId("");
+                setSelectedTopicId("");
+                setSelectedDifficulty("");
+                setSelectedSourceType("");
+              }}
+            >
+              Clear Filters
+            </button>
+          )}
+        </div>
+      </article>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" }}>
+        <p className="muted-copy" style={{ margin: 0 }}>
+          Showing <strong>{filteredQuestions.length}</strong> of {data.questions.length} questions
+        </p>
+      </div>
+
       <div className="question-grid">
-        {data.questions.map((question: any) => (
+        {filteredQuestions.map((question: any) => (
           <article className="panel question-card" key={question.id}>
             <div className="row-between">
               <div>
