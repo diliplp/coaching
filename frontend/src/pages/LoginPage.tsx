@@ -33,7 +33,7 @@ export function LoginPage() {
     <div className="login-shell">
       <div className="login-card">
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: "24px", textAlign: "center" }}>
-          <img src="/logo.jpeg" alt="Logo" style={{ width: "120px", height: "120px", borderRadius: "50%", objectFit: "cover", marginBottom: "16px", border: "2.5px solid var(--color-primary-light)", boxShadow: "0 6px 16px rgba(0,0,0,0.08)" }} />
+          <img src="/logo.jpeg" alt="Logo" style={{ width: "120px", height: "120px", borderRadius: "50%", objectFit: "contain", padding: "6px", background: "#fff", marginBottom: "16px", border: "2.5px solid var(--color-primary-light)", boxShadow: "0 7px 16px rgba(0,0,0,0.08)" }} />
           <p className="eyebrow" style={{ margin: 0, fontSize: "0.85rem", letterSpacing: "1px" }}>Brainwave Science Academy</p>
           <h1 style={{ marginTop: "8px", fontSize: "2rem", fontWeight: "700", letterSpacing: "-0.5px" }}>Exam Portal</h1>
         </div>

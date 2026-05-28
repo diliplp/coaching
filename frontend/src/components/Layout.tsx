@@ -34,10 +34,10 @@ export function Layout() {
         </button>
         <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "15px" }}>
           {isCollapsed ? (
-            <img src="/logo.jpeg" alt="BSA Logo" style={{ width: "42px", height: "42px", borderRadius: "50%", objectFit: "cover" }} />
+            <img src="/logo.jpeg" alt="BSA Logo" style={{ width: "42px", height: "42px", borderRadius: "50%", objectFit: "contain", padding: "2px", background: "#fff", border: "1.5px solid var(--color-primary-light)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }} />
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <img src="/logo.jpeg" alt="BSA Logo" style={{ width: "56px", height: "56px", borderRadius: "50%", objectFit: "cover", border: "2px solid var(--color-primary-light)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }} />
+              <img src="/logo.jpeg" alt="BSA Logo" style={{ width: "56px", height: "56px", borderRadius: "50%", objectFit: "contain", padding: "3px", background: "#fff", border: "2px solid var(--color-primary-light)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }} />
               <div>
                 <p className="eyebrow" style={{ margin: 0, fontSize: "0.72rem", letterSpacing: "0.5px", lineHeight: "1.2" }}>Brainwave Science Academy</p>
                 <h1 style={{ margin: "2px 0 0", fontSize: "1.25rem", fontWeight: "700", color: "var(--color-text)" }}>Exam Portal</h1>
