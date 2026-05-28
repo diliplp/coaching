@@ -9,7 +9,39 @@ export function LiveExamPage() {
   const { examId } = useParams<{ examId: string }>();
   const navigate = useNavigate();
   const session = getStoredSession();
-  const generatedExam = liveExamState.generatedExam;
+  
+  const [activeExam, setActiveExam] = useState<any | null>(() => liveExamState.generatedExam);
+  const [scheduledExams, setScheduledExams] = useState<any[]>([]);
+  const [loadingOverview, setLoadingOverview] = useState(false);
+
+  useEffect(() => {
+    setActiveExam(liveExamState.generatedExam);
+  }, [liveExamState.generatedExam]);
+
+  useEffect(() => {
+    if (!activeExam) {
+      setLoadingOverview(true);
+      apiClient.getOverview()
+        .then((res) => {
+          setScheduledExams(res.scheduledExams || []);
+        })
+        .catch(console.error)
+        .finally(() => setLoadingOverview(false));
+    }
+  }, [activeExam]);
+
+  const startScheduledExam = async (id: string) => {
+    try {
+      const payload = await apiClient.getExam(id);
+      liveExamState.generatedExam = payload;
+      liveExamState.latestResult = null;
+      setActiveExam(payload);
+    } catch (e) {
+      alert("Failed to load exam");
+    }
+  };
+
+  const generatedExam = activeExam;
   const [timeLeft, setTimeLeft] = useState<number>(generatedExam ? generatedExam.exam.durationMinutes * 60 : 0);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
@@ -55,9 +87,71 @@ export function LiveExamPage() {
       <div className="page">
         <section className="section-heading">
           <p className="eyebrow">Live Exam</p>
-          <h2>No active exam yet</h2>
-          <p>Go to Dashboard or Exam Builder to start a test.</p>
+          <h2>Active Scheduled Exams</h2>
+          <p>Select an exam from your scheduled list to begin the test.</p>
         </section>
+
+        {loadingOverview ? (
+          <p>Loading scheduled exams...</p>
+        ) : scheduledExams.length === 0 ? (
+          <div style={{ padding: "40px", background: "white", borderRadius: "12px", border: "1px dashed var(--color-border)", textAlign: "center", marginTop: "20px" }}>
+            <p className="muted-copy" style={{ fontSize: "1.1rem" }}>No active scheduled exams right now.</p>
+            <p className="muted-copy" style={{ fontSize: "0.9rem", marginTop: "5px" }}>If an exam was recently scheduled, please check that your account is assigned to the correct batch.</p>
+          </div>
+        ) : (
+          <div className="stack" style={{ gap: "16px", marginTop: "20px" }}>
+            {scheduledExams.map(exam => {
+              const now = new Date();
+              const startTime = exam.scheduledStartTime ? new Date(exam.scheduledStartTime) : null;
+              const endTime = exam.scheduledEndTime ? new Date(exam.scheduledEndTime) : null;
+
+              const hasStarted = !startTime || startTime <= now;
+              const hasEnded = endTime && endTime < now;
+              const isAvailable = hasStarted && !hasEnded;
+
+              return (
+                <article key={exam.id} className="row-between panel" style={{
+                  padding: "20px",
+                  background: "white",
+                  opacity: isAvailable ? 1 : 0.7,
+                  transition: "all 0.2s"
+                }}>
+                  <div style={{ display: "flex", gap: "20px", alignItems: "center" }}>
+                    <div style={{
+                      width: "48px",
+                      height: "48px",
+                      borderRadius: "10px",
+                      background: isAvailable ? "var(--color-bg-secondary)" : "#f0f0f0",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "1.5rem"
+                    }}>
+                      {hasEnded ? "🏁" : hasStarted ? "📝" : "⏳"}
+                    </div>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: "1.2rem" }}>{exam.name}</h3>
+                      <div className="muted-copy" style={{ fontSize: "0.9rem", marginTop: "4px" }}>
+                        ⏱️ {exam.durationMinutes} minutes
+                        {!hasStarted && startTime && ` • Starts: ${startTime.toLocaleString()}`}
+                        {hasStarted && !hasEnded && ` • Available until: ${endTime ? endTime.toLocaleString() : "No end time"}`}
+                        {hasEnded && ` • Ended`}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    className={isAvailable ? "primary-button" : "secondary-button"}
+                    onClick={() => isAvailable && startScheduledExam(exam.id)}
+                    disabled={!isAvailable}
+                    style={{ padding: "10px 24px" }}
+                  >
+                    {hasEnded ? "Completed" : hasStarted ? "Start Exam" : "Upcoming"}
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   }
@@ -160,7 +254,7 @@ export function LiveExamPage() {
             <h3><RichText content={currentQuestion.prompt} /></h3>
 
             <div className="options-grid">
-              {currentQuestion.options.map((option) => {
+              {currentQuestion.options.map((option: any) => {
                 const isSelected = (isReviewMode ? (reviewData?.selectedOptionIds ?? []) : (answers[currentQuestion.id] ?? [])).includes(option.id);
                 const isCorrect = isReviewMode && reviewData?.correctOptionIds.includes(option.id);
                 
@@ -268,7 +362,7 @@ export function LiveExamPage() {
             <>
               <h3>Question Palette</h3>
               <div className="palette-grid">
-                {generatedExam.questions.map((question, index) => {
+                {generatedExam.questions.map((question: any, index: number) => {
                   const attempted = (answers[question.id] ?? []).length > 0;
                   return (
                     <button

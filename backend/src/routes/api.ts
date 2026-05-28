@@ -781,6 +781,30 @@ apiRouter.delete("/exams/:id", requireRole(["super_admin", "teacher"]), async (r
   res.status(204).end();
 });
 
+apiRouter.put("/exams/:examId", requireRole(["super_admin", "teacher"]), async (req, res) => {
+  const { name, durationMinutes, scheduledStartTime, scheduledEndTime, batchId } = req.body;
+  const state = await getAppState();
+  const examIndex = state.exams.findIndex((item) => item.id === req.params.examId);
+  if (examIndex === -1) {
+    res.status(404).json({ message: "Exam not found" });
+    return;
+  }
+
+  const existingExam = state.exams[examIndex];
+  const updatedExam = {
+    ...existingExam,
+    name: name ?? existingExam.name,
+    durationMinutes: durationMinutes !== undefined ? Number(durationMinutes) : existingExam.durationMinutes,
+    scheduledStartTime: scheduledStartTime !== undefined ? scheduledStartTime : existingExam.scheduledStartTime,
+    scheduledEndTime: scheduledEndTime !== undefined ? scheduledEndTime : existingExam.scheduledEndTime,
+    batchId: batchId !== undefined ? batchId : existingExam.batchId,
+  };
+
+  await upsertRecord("exams", updatedExam);
+  res.json(updatedExam);
+});
+
+
 apiRouter.get("/exams/:examId", async (req, res) => {
   const state = await getAppState();
   const exam = state.exams.find((item) => item.id === req.params.examId);
