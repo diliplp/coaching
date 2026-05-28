@@ -42,7 +42,7 @@ export function LiveExamPage() {
   };
 
   const generatedExam = activeExam;
-  const [timeLeft, setTimeLeft] = useState<number>(generatedExam ? generatedExam.exam.durationMinutes * 60 : 0);
+  const [timeLeft, setTimeLeft] = useState<number | null>(generatedExam ? generatedExam.exam.durationMinutes * 60 : null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [isReviewMode, setIsReviewMode] = useState(false);
@@ -60,7 +60,7 @@ export function LiveExamPage() {
   }, [generatedExam]);
 
   useEffect(() => {
-    if (!generatedExam || isReviewMode) {
+    if (!generatedExam || isReviewMode || timeLeft === null) {
       return;
     }
 
@@ -70,13 +70,14 @@ export function LiveExamPage() {
     }
 
     const timer = window.setTimeout(() => {
-      setTimeLeft((current) => current - 1);
+      setTimeLeft((current) => (current !== null ? current - 1 : null));
     }, 1000);
 
     return () => window.clearTimeout(timer);
   }, [timeLeft, generatedExam, isReviewMode]);
 
   const formattedTime = useMemo(() => {
+    if (timeLeft === null) return "00:00";
     const minutes = Math.floor(timeLeft / 60).toString().padStart(2, "0");
     const seconds = (timeLeft % 60).toString().padStart(2, "0");
     return `${minutes}:${seconds}`;
