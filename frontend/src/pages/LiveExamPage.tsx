@@ -157,6 +157,26 @@ export function LiveExamPage() {
     );
   }
 
+  if (!generatedExam.questions || generatedExam.questions.length === 0) {
+    return (
+      <div className="page">
+        <section className="section-heading">
+          <p className="eyebrow">Live Exam</p>
+          <h2>No Questions Found</h2>
+          <p>This exam does not have any questions. Please ask your administrator to verify the configuration.</p>
+        </section>
+        <div style={{ marginTop: "20px" }}>
+          <button className="primary-button" onClick={() => {
+            liveExamState.generatedExam = null;
+            setActiveExam(null);
+          }}>
+            Go Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const currentQuestion = generatedExam.questions[currentIndex];
 
   const toggleOption = (questionId: string, optionId: string, multiCorrect: boolean) => {
