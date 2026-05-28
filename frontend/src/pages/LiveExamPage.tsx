@@ -47,6 +47,7 @@ export function LiveExamPage() {
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [isReviewMode, setIsReviewMode] = useState(false);
   const [resultVersion, setResultVersion] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!generatedExam) {
@@ -199,7 +200,7 @@ export function LiveExamPage() {
     });
   };
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
+
 
   const submitExam = async () => {
     if (!liveExamState.generatedExam || isSubmitting) {
