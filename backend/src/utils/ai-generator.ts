@@ -182,6 +182,11 @@ STRICT STEM RULES:
      * Benzene: c1ccccc1
    NEVER use placeholders like '?' or chemical formulas inside [SMILES: ] tags.
 
+STRICT QUESTION LOGIC RULES:
+1. Unique Option Values: All option values MUST be completely unique. Never generate duplicate options (e.g., if option A is "30", no other option can have the value "30").
+2. Correct Answer Consistency: The option marked "isCorrect": true MUST be the mathematically correct value. The explanation must mathematically align with the marked correct option.
+3. Logical Verification: Solve the question step-by-step before selecting the correct option and writing the explanation, ensuring absolute mathematical accuracy.
+
 JSON RULES:
 1. NO markdown wrappers (no \`\`\`json).
 2. NO trailing commas.
