@@ -1,6 +1,8 @@
 import { Question, QuestionOption, QuestionType } from "../types.js";
 import { listRecords } from "../data/database.js";
 
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+
 // Initialize OpenRouter using native fetch
 // Expects process.env.OPENROUTER_API_KEY to be set.
 
@@ -131,7 +133,7 @@ ${textChunk}
       let rawResponse = "";
       
       if (process.env.GEMINI_API_KEY) {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${process.env.GEMINI_API_KEY}`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
@@ -263,7 +265,7 @@ export async function parseExamPrompt(promptText: string): Promise<{
   let rawResponse = "";
 
   if (process.env.GEMINI_API_KEY) {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${process.env.GEMINI_API_KEY}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -395,7 +397,7 @@ export async function detectCurriculumFromText(text: string): Promise<{
     let rawResponse = "";
 
     if (process.env.GEMINI_API_KEY) {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${process.env.GEMINI_API_KEY}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -519,7 +521,7 @@ JSON STRUCTURE:
     let rawResponse = "";
 
     if (process.env.GEMINI_API_KEY) {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${process.env.GEMINI_API_KEY}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
