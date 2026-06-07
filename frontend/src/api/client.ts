@@ -151,6 +151,35 @@ export const apiClient = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
+  sendExamHeartbeat: (examId: string, payload: { answeredCount: number; totalQuestions: number; currentQuestionIndex: number; status: "taking" | "submitted" }) =>
+    request<{ status: string }>(`/exams/${examId}/heartbeat`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  getLiveExamStatus: (examId: string) =>
+    request<{
+      examId: string;
+      examName: string;
+      totalQuestions: number;
+      statistics: {
+        totalRegistered: number;
+        activeCount: number;
+        submittedCount: number;
+        offlineCount: number;
+        notStartedCount: number;
+      };
+      students: Array<{
+        studentId: string;
+        studentName: string;
+        status: "not_started" | "active" | "offline" | "submitted";
+        answeredCount: number;
+        totalQuestions: number;
+        currentQuestionIndex: number;
+        lastActive?: string;
+      }>;
+    }>(`/exams/${examId}/live-status`, {
+      method: "GET"
+    }),
   generateExamFromPrompt: (prompt: string) =>
     request<ExamPayload>("/exams/generate-from-prompt", {
       method: "POST",
@@ -158,6 +187,11 @@ export const apiClient = {
     }),
   generateQuestionsFromBook: (bookId: string, payload: { chapterId?: string; topicId?: string; topicIds?: string[]; questionCount: number }) =>
     request<{ message: string; questions: any[] }>(`/subject-books/${bookId}/generate-questions`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  extractQuestionsFromBook: (bookId: string, payload: { chapterId?: string; topicIds?: string[] }) =>
+    request<{ message: string; count: number }>(`/subject-books/${bookId}/extract-mcq-questions`, {
       method: "POST",
       body: JSON.stringify(payload)
     }),

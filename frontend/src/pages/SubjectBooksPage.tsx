@@ -20,6 +20,7 @@ export function SubjectBooksPage() {
   
   // AI Generation State
   const [generatingForBook, setGeneratingForBook] = useState<string | null>(null);
+  const [extractingForBook, setExtractingForBook] = useState<string | null>(null);
   const [selectedChapters, setSelectedChapters] = useState<Record<string, string>>({});
   const [selectedTopicsMap, setSelectedTopicsMap] = useState<Record<string, string[]>>({});
   const [questionCount, setQuestionCount] = useState(5);
@@ -80,6 +81,25 @@ export function SubjectBooksPage() {
       console.error(error);
       setStatus(`Failed to generate AI questions: ${error.message || "Unknown error"}`);
       setGeneratingForBook(null);
+    }
+  };
+
+  const handleExtractQuestions = async (bookId: string) => {
+    setExtractingForBook(bookId);
+    setStatus("AI is reading the PDF and extracting all multiple-choice questions into the Question Bank... Please wait.");
+    try {
+      const bookChapterId = selectedChapters[bookId] || "";
+      const bookTopicIds = selectedTopicsMap[bookId] || [];
+      const result = await apiClient.extractQuestionsFromBook(bookId, {
+        chapterId: bookChapterId || undefined,
+        topicIds: bookTopicIds.length > 0 ? bookTopicIds : undefined
+      });
+      setStatus(`Success: ${result.message}`);
+      setExtractingForBook(null);
+    } catch (error: any) {
+      console.error(error);
+      setStatus(`Failed to extract questions: ${error.message || "Unknown error"}`);
+      setExtractingForBook(null);
     }
   };
 
@@ -435,6 +455,18 @@ export function SubjectBooksPage() {
                             style={{ flex: 2, height: "42px" }}
                           >
                             {generatingForBook === book.id ? "Working..." : "Generate AI Questions"}
+                          </button>
+                        </div>
+
+                        <div style={{ marginTop: "10px" }}>
+                          <button 
+                            className="secondary-button" 
+                            disabled={extractingForBook === book.id} 
+                            onClick={() => void handleExtractQuestions(book.id)}
+                            style={{ width: "100%", height: "42px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
+                          >
+                            <span>📥</span>
+                            <span>{extractingForBook === book.id ? "Extracting MCQs..." : "Extract PDF MCQs directly to Bank"}</span>
                           </button>
                         </div>
                       </div>

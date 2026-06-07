@@ -233,9 +233,16 @@ adminRouter.delete("/questions/clear-all", async (req, res) => {
 // --- Users ---
 adminRouter.get("/users", async (_req: Request, res: Response) => {
   const users = await listRecords<UserAccount>("users");
+  const students = await listRecords<Student>("students");
   const safeUsers = users.map(u => {
     const { passwordHash, ...rest } = u;
-    return rest;
+    const student = u.studentId ? students.find(s => s.id === u.studentId) : null;
+    return {
+      ...rest,
+      batchId: student?.batchId ?? "",
+      classId: student?.classId ?? "",
+      streamId: student?.streamId ?? ""
+    };
   });
   res.json(safeUsers);
 });
@@ -297,17 +304,43 @@ adminRouter.put("/users/:id", async (req, res) => {
   if (!userToUpdate) return res.status(404).json({ message: "User not found" });
 
   let studentId = userToUpdate.studentId;
-  if (role === "student" && (!batchId || !classId || !streamId)) {
-    return res.status(400).json({ message: "Students require batchId, classId, and streamId" });
-  }
 
-  if (role === "student" && !studentId) {
-    studentId = `stu-${Date.now()}`;
-  }
+  if (role === "student") {
+    let finalBatchId = batchId;
+    let finalClassId = classId;
+    let finalStreamId = streamId;
 
-  if (role === "student" && studentId) {
-    const studentData: Student = { id: studentId, name, batchId, classId, streamId };
+    if (studentId && (!finalBatchId || !finalClassId || !finalStreamId)) {
+      const existingStudent = await getRecord<Student>("students", studentId);
+      if (existingStudent) {
+        if (!finalBatchId) finalBatchId = existingStudent.batchId;
+        if (!finalClassId) finalClassId = existingStudent.classId;
+        if (!finalStreamId) finalStreamId = existingStudent.streamId;
+      }
+    }
+
+    if (!finalBatchId || !finalClassId || !finalStreamId) {
+      return res.status(400).json({ message: "Students require batchId, classId, and streamId" });
+    }
+
+    if (!studentId) {
+      studentId = `stu-${Date.now()}`;
+    }
+
+    const studentData: Student = {
+      id: studentId,
+      name,
+      batchId: finalBatchId,
+      classId: finalClassId,
+      streamId: finalStreamId
+    };
     await upsertRecord("students", studentData);
+  } else {
+    // If the role changed from student to teacher/admin, clean up student record
+    if (studentId) {
+      await deleteRecord("students", studentId);
+      studentId = undefined;
+    }
   }
 
   const updated: UserAccount = {

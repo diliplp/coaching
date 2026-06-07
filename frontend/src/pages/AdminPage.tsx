@@ -421,19 +421,42 @@ export function AdminPage() {
               {users.map((u) => (
                 <li key={u.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   {editingId === u.id ? (
-                    <div style={{ display: "flex", gap: "10px", flex: 1, marginRight: "10px", flexWrap: "wrap" }}>
-                      <input type="text" value={editData.name} onChange={(e) => setEditData({...editData, name: e.target.value})} />
-                      <input type="email" value={editData.email} onChange={(e) => setEditData({...editData, email: e.target.value})} />
-                      <select value={editData.role} onChange={(e) => setEditData({...editData, role: e.target.value})}>
-                        <option value="student">Student</option>
-                        <option value="teacher">Teacher</option>
-                        <option value="super_admin">Admin</option>
-                      </select>
+                    <div style={{ display: "flex", gap: "10px", flex: 1, marginRight: "10px", flexWrap: "wrap", flexDirection: "column" }}>
+                      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", width: "100%" }}>
+                        <input type="text" value={editData.name} onChange={(e) => setEditData({...editData, name: e.target.value})} style={{ flex: 1 }} />
+                        <input type="email" value={editData.email} onChange={(e) => setEditData({...editData, email: e.target.value})} style={{ flex: 1 }} />
+                        <select value={editData.role} onChange={(e) => setEditData({...editData, role: e.target.value})} style={{ flex: 1 }}>
+                          <option value="student">Student</option>
+                          <option value="teacher">Teacher</option>
+                          <option value="super_admin">Admin</option>
+                        </select>
+                      </div>
+                      {editData.role === "student" && (
+                        <div style={{ display: "flex", gap: "10px", width: "100%" }}>
+                          <select value={editData.classId || ""} onChange={(e) => setEditData({...editData, classId: e.target.value, streamId: "", batchId: ""})} style={{ flex: 1 }}>
+                            <option value="">Select Class...</option>
+                            {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                          <select value={editData.streamId || ""} onChange={(e) => setEditData({...editData, streamId: e.target.value, batchId: ""})} style={{ flex: 1 }}>
+                            <option value="">Select Stream...</option>
+                            {streams.filter(s => s.classId === editData.classId).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </select>
+                          <select value={editData.batchId || ""} onChange={(e) => setEditData({...editData, batchId: e.target.value})} style={{ flex: 1 }}>
+                            <option value="">Select Batch...</option>
+                            {batches.filter(b => b.streamId === editData.streamId).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                          </select>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div>
                       <strong>{u.name}</strong> <span className="muted-copy">({u.email})</span>
                       <span className="tag" style={{ marginLeft: "10px" }}>{u.role}</span>
+                      {u.role === "student" && u.batchId && (
+                        <span className="tag muted" style={{ marginLeft: "5px" }}>
+                          {batches.find(b => b.id === u.batchId)?.name || "No Batch"}
+                        </span>
+                      )}
                     </div>
                   )}
                   <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>

@@ -3,17 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { storeSession } from "../auth";
 
-const presets = [
-  { label: "Admin", email: "admin@coaching.local", password: "admin123" },
-  { label: "Teacher", email: "teacher@coaching.local", password: "teacher123" },
-  { label: "Student", email: "student@coaching.local", password: "student123" }
-];
-
 export function LoginPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState(presets[0].email);
-  const [password, setPassword] = useState(presets[0].password);
-  const [status, setStatus] = useState("Use one of the seeded demo accounts to continue.");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState("admin");
+  const [status, setStatus] = useState("Enter your credentials to continue.");
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -41,21 +36,17 @@ export function LoginPage() {
 
         <div style={{ marginBottom: "20px" }}>
           <label className="field">
-            <span>Quick Login Role (Demo)</span>
+            <span>Login Role</span>
             <select
               onChange={(e) => {
-                const preset = presets.find(p => p.email === e.target.value);
-                if (preset) {
-                  setEmail(preset.email);
-                  setPassword(preset.password);
-                }
+                setRole(e.target.value);
               }}
-              value={email}
+              value={role}
               style={{ background: "var(--color-bg-secondary)", border: "1px solid var(--color-border)" }}
             >
-              {presets.map(preset => (
-                <option key={preset.email} value={preset.email}>{preset.label} Account</option>
-              ))}
+              <option value="admin">Admin Account</option>
+              <option value="teacher">Teacher Account</option>
+              <option value="student">Student Account</option>
             </select>
           </label>
         </div>
@@ -63,11 +54,20 @@ export function LoginPage() {
         <form className="book-form" onSubmit={(event) => void handleLogin(event)}>
           <label className="field">
             <span>Email</span>
-            <input value={email} onChange={(event) => setEmail(event.target.value)} />
+            <input 
+              value={email} 
+              onChange={(event) => setEmail(event.target.value)} 
+              placeholder="Enter email"
+            />
           </label>
           <label className="field">
             <span>Password</span>
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+            <input 
+              type="password" 
+              value={password} 
+              onChange={(event) => setPassword(event.target.value)} 
+              placeholder="Enter password"
+            />
           </label>
           <button className="primary-button" type="submit">Login</button>
         </form>

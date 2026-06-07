@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { apiClient } from "../api/client";
-import type { QuestionBankResponse } from "../types";
+import { apiClient, buildPublicAssetUrl } from "../api/client";
+import type { QuestionBankResponse, SubjectBook } from "../types";
 import { RichText } from "../components/RichText";
 import { getStoredSession } from "../auth";
 
@@ -24,13 +24,20 @@ export function QuestionBankPage() {
       { id: "opt-4", label: "D", value: "" },
     ],
     explanation: "",
-    sourceType: "custom" as any
+    sourceType: "custom" as any,
+    bookId: "",
+    pageNumber: undefined as number | undefined,
+    isVerified: false
   });
 
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
   const [selectedTopicId, setSelectedTopicId] = useState<string>("");
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>("");
   const [selectedSourceType, setSelectedSourceType] = useState<string>("");
+  const [books, setBooks] = useState<SubjectBook[]>([]);
+  const [selectedBookId, setSelectedBookId] = useState<string>("");
+  const [activeQuestionIdForPdf, setActiveQuestionIdForPdf] = useState<string>("");
+  const [pdfPageNumber, setPdfPageNumber] = useState<number>(1);
 
   const session = getStoredSession();
   const isTeacher = session?.user.role === "super_admin" || session?.user.role === "teacher";
@@ -41,6 +48,7 @@ export function QuestionBankPage() {
 
   useEffect(() => {
     refreshData();
+    apiClient.getSubjectBooks().then(res => setBooks(res.books)).catch(console.error);
   }, []);
 
   if (!data) {
@@ -52,6 +60,7 @@ export function QuestionBankPage() {
     if (selectedTopicId && question.topicId !== selectedTopicId) return false;
     if (selectedDifficulty && question.difficulty !== selectedDifficulty) return false;
     if (selectedSourceType && question.sourceType !== selectedSourceType) return false;
+    if (selectedBookId && question.bookId !== selectedBookId) return false;
     return true;
   });
 
@@ -67,9 +76,12 @@ export function QuestionBankPage() {
         marks: question.marks,
         negativeMarks: question.negativeMarks,
         correctOptionIds: question.correctOptionIds,
-        options: question.options,
+        options: question.options.map((o: any) => ({ ...o })), // Deep-ish copy of options array to avoid direct mutation
         explanation: question.explanation || "",
-        sourceType: question.sourceType || "custom"
+        sourceType: question.sourceType || "custom",
+        bookId: question.bookId || "",
+        pageNumber: question.pageNumber,
+        isVerified: question.isVerified || false
       });
     } else {
       setEditingQuestion(null);
@@ -89,7 +101,10 @@ export function QuestionBankPage() {
           { id: "opt-4", label: "D", value: "" },
         ],
         explanation: "",
-        sourceType: "custom"
+        sourceType: "custom",
+        bookId: "",
+        pageNumber: undefined,
+        isVerified: false
       });
     }
     setIsFormOpen(true);
@@ -280,8 +295,9 @@ export function QuestionBankPage() {
                       placeholder={`Option ${opt.label} value`}
                       value={opt.value}
                       onChange={e => {
-                        const newOpts = [...formData.options];
-                        newOpts[index].value = e.target.value;
+                        const newOpts = formData.options.map((item, idx) => 
+                          idx === index ? { ...item, value: e.target.value } : item
+                        );
                         setFormData({...formData, options: newOpts});
                       }}
                       style={{ flex: 1 }}
@@ -374,7 +390,26 @@ export function QuestionBankPage() {
             </select>
           </label>
 
-          {(selectedSubjectId || selectedTopicId || selectedDifficulty || selectedSourceType) && (
+          <label className="field" style={{ margin: 0 }}>
+            <span>Filter by Document / Book</span>
+            <select
+              value={selectedBookId}
+              onChange={(e) => {
+                setSelectedBookId(e.target.value);
+                setActiveQuestionIdForPdf("");
+                setPdfPageNumber(1);
+              }}
+            >
+              <option value="">Select Document...</option>
+              {books.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.title}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {(selectedSubjectId || selectedTopicId || selectedDifficulty || selectedSourceType || selectedBookId) && (
             <button
               className="secondary-button"
               style={{ height: "38px" }}
@@ -383,6 +418,8 @@ export function QuestionBankPage() {
                 setSelectedTopicId("");
                 setSelectedDifficulty("");
                 setSelectedSourceType("");
+                setSelectedBookId("");
+                setActiveQuestionIdForPdf("");
               }}
             >
               Clear Filters
@@ -397,68 +434,167 @@ export function QuestionBankPage() {
         </p>
       </div>
 
-      <div className="question-grid">
-        {filteredQuestions.map((question: any) => (
-          <article className="panel question-card" key={question.id}>
-            <div className="row-between">
-              <div>
-                <span className="tag">{question.subjectName}</span>
-                <span className="tag muted" style={{ marginLeft: "5px" }}>{question.topicName}</span>
-                {question.sourceType && (
-                  <span 
-                    className="tag" 
+      {selectedBookId ? (
+        <div style={{ display: "flex", gap: "20px", height: "calc(100vh - 250px)", minHeight: "650px", marginTop: "20px" }}>
+          {/* Left Pane: PDF Viewer */}
+          <div style={{ flex: 1.2, background: "white", borderRadius: "12px", border: "1px solid var(--color-border)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--color-border)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f8f9fa" }}>
+              <span style={{ fontWeight: "bold", fontSize: "0.95rem", color: "var(--color-text-dark)" }}>
+                PDF Preview: {books.find(b => b.id === selectedBookId)?.title}
+              </span>
+              <span className="tag primary" style={{ fontSize: "0.8rem", padding: "4px 10px" }}>Page {pdfPageNumber}</span>
+            </div>
+            <iframe
+              key={`${selectedBookId}-${pdfPageNumber}`}
+              src={`${buildPublicAssetUrl(books.find(b => b.id === selectedBookId)?.fileUrl || "")}#page=${pdfPageNumber}`}
+              style={{ width: "100%", height: "100%", border: "none" }}
+              title="Book PDF Viewer"
+            />
+          </div>
+
+          {/* Right Pane: Questions List */}
+          <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "15px", paddingRight: "5px" }}>
+            {filteredQuestions.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "40px", color: "var(--color-text-muted)" }}>
+                <p>No questions generated for this document yet.</p>
+              </div>
+            ) : (
+              filteredQuestions.map((question: any) => {
+                const isActive = activeQuestionIdForPdf === question.id;
+                return (
+                  <article 
+                    className="panel question-card" 
+                    key={question.id}
+                    onClick={() => {
+                      setActiveQuestionIdForPdf(question.id);
+                      if (question.pageNumber) {
+                        setPdfPageNumber(question.pageNumber);
+                      }
+                    }}
                     style={{ 
-                      marginLeft: "5px", 
-                      background: question.sourceType === "pyq" ? "#fff3cd" : (question.sourceType === "reference" ? "#d1ecf1" : "#e2e3e5"),
-                      color: question.sourceType === "pyq" ? "#856404" : (question.sourceType === "reference" ? "#0c5460" : "#383d41"),
-                      borderColor: question.sourceType === "pyq" ? "#ffeeba" : (question.sourceType === "reference" ? "#bee5eb" : "#d6d8db")
+                      cursor: "pointer",
+                      border: isActive ? "2px solid var(--color-primary)" : "1px solid var(--color-border)",
+                      boxShadow: isActive ? "0 4px 12px rgba(0, 128, 128, 0.1)" : "none",
+                      transition: "all 0.2s ease",
+                      background: isActive ? "#fbfdfd" : "white"
                     }}
                   >
-                    {question.sourceType.toUpperCase()}
-                  </span>
-                )}
-                {question.isVerified && (
-                  <span className="tag" style={{ marginLeft: "5px", background: "#d4edda", color: "#155724", borderColor: "#c3e6cb" }}>
-                    VERIFIED
-                  </span>
+                    <div className="row-between">
+                      <div>
+                        <span className="tag">{question.subjectName}</span>
+                        <span className="tag muted" style={{ marginLeft: "5px" }}>{question.topicName}</span>
+                        {question.pageNumber && (
+                          <span className="tag primary" style={{ marginLeft: "5px" }}>Page {question.pageNumber}</span>
+                        )}
+                        {question.isVerified && (
+                          <span className="tag" style={{ marginLeft: "5px", background: "#d4edda", color: "#155724", borderColor: "#c3e6cb" }}>
+                            VERIFIED
+                          </span>
+                        )}
+                      </div>
+                      {isTeacher && (
+                        <div style={{ display: "flex", gap: "10px" }} onClick={(e) => e.stopPropagation()}>
+                          {!question.isVerified && (
+                            <button 
+                              className="secondary-button" 
+                              style={{ padding: "4px 8px", fontSize: "0.8rem", color: "#155724", borderColor: "#155724" }} 
+                              onClick={() => handleVerify(question.id)}
+                            >
+                              Verify
+                            </button>
+                          )}
+                          <button className="secondary-button" style={{ padding: "4px 8px", fontSize: "0.8rem" }} onClick={() => handleOpenForm(question)}>Edit</button>
+                          <button className="secondary-button" style={{ padding: "4px 8px", fontSize: "0.8rem", color: "red", borderColor: "red" }} onClick={() => handleDelete(question.id)}>Delete</button>
+                        </div>
+                      )}
+                    </div>
+                    <h3><RichText content={question.prompt} /></h3>
+                    <p className="muted-copy">
+                      {question.type === "multi_correct" ? "Multi correct" : "Single correct"} • {question.difficulty} • {question.marks} marks • -{question.negativeMarks}
+                    </p>
+                    <ul className="option-list">
+                      {question.options.map((option: any) => (
+                        <li key={option.id} style={{ fontWeight: question.correctOptionIds.includes(option.id) ? "bold" : "normal", color: question.correctOptionIds.includes(option.id) ? "var(--color-primary)" : "inherit" }}>
+                          {option.label}. <RichText content={option.value} />
+                          {question.correctOptionIds.includes(option.id) && " ✓"}
+                        </li>
+                      ))}
+                    </ul>
+                    {question.explanation && (
+                      <div style={{ marginTop: "15px", padding: "10px", background: "var(--color-bg-secondary)", borderRadius: "4px", fontSize: "0.9rem" }}>
+                        <strong>Explanation:</strong> <RichText content={question.explanation} />
+                      </div>
+                    )}
+                  </article>
+                );
+              })
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="question-grid">
+          {filteredQuestions.map((question: any) => (
+            <article className="panel question-card" key={question.id}>
+              <div className="row-between">
+                <div>
+                  <span className="tag">{question.subjectName}</span>
+                  <span className="tag muted" style={{ marginLeft: "5px" }}>{question.topicName}</span>
+                  {question.sourceType && (
+                    <span 
+                      className="tag" 
+                      style={{ 
+                        marginLeft: "5px", 
+                        background: question.sourceType === "pyq" ? "#fff3cd" : (question.sourceType === "reference" ? "#d1ecf1" : "#e2e3e5"),
+                        color: question.sourceType === "pyq" ? "#856404" : (question.sourceType === "reference" ? "#0c5460" : "#383d41"),
+                        borderColor: question.sourceType === "pyq" ? "#ffeeba" : (question.sourceType === "reference" ? "#bee5eb" : "#d6d8db")
+                      }}
+                    >
+                      {question.sourceType.toUpperCase()}
+                    </span>
+                  )}
+                  {question.isVerified && (
+                    <span className="tag" style={{ marginLeft: "5px", background: "#d4edda", color: "#155724", borderColor: "#c3e6cb" }}>
+                      VERIFIED
+                    </span>
+                  )}
+                </div>
+                {isTeacher && (
+                  <div style={{ display: "flex", gap: "10px" }}>
+                    {!question.isVerified && (
+                      <button 
+                        className="secondary-button" 
+                        style={{ padding: "4px 8px", fontSize: "0.8rem", color: "#155724", borderColor: "#155724" }} 
+                        onClick={() => handleVerify(question.id)}
+                      >
+                        Verify
+                      </button>
+                    )}
+                    <button className="secondary-button" style={{ padding: "4px 8px", fontSize: "0.8rem" }} onClick={() => handleOpenForm(question)}>Edit</button>
+                    <button className="secondary-button" style={{ padding: "4px 8px", fontSize: "0.8rem", color: "red", borderColor: "red" }} onClick={() => handleDelete(question.id)}>Delete</button>
+                  </div>
                 )}
               </div>
-              {isTeacher && (
-                <div style={{ display: "flex", gap: "10px" }}>
-                  {!question.isVerified && (
-                    <button 
-                      className="secondary-button" 
-                      style={{ padding: "4px 8px", fontSize: "0.8rem", color: "#155724", borderColor: "#155724" }} 
-                      onClick={() => handleVerify(question.id)}
-                    >
-                      Verify
-                    </button>
-                  )}
-                  <button className="secondary-button" style={{ padding: "4px 8px", fontSize: "0.8rem" }} onClick={() => handleOpenForm(question)}>Edit</button>
-                  <button className="secondary-button" style={{ padding: "4px 8px", fontSize: "0.8rem", color: "red", borderColor: "red" }} onClick={() => handleDelete(question.id)}>Delete</button>
+              <h3><RichText content={question.prompt} /></h3>
+              <p className="muted-copy">
+                {question.type === "multi_correct" ? "Multi correct" : "Single correct"} • {question.difficulty} • {question.marks} marks • -{question.negativeMarks}
+              </p>
+              <ul className="option-list">
+                {question.options.map((option: any) => (
+                  <li key={option.id} style={{ fontWeight: question.correctOptionIds.includes(option.id) ? "bold" : "normal", color: question.correctOptionIds.includes(option.id) ? "var(--color-primary)" : "inherit" }}>
+                    {option.label}. <RichText content={option.value} />
+                    {question.correctOptionIds.includes(option.id) && " ✓"}
+                  </li>
+                ))}
+              </ul>
+              {question.explanation && (
+                <div style={{ marginTop: "15px", padding: "10px", background: "var(--color-bg-secondary)", borderRadius: "4px", fontSize: "0.9rem" }}>
+                  <strong>Explanation:</strong> <RichText content={question.explanation} />
                 </div>
               )}
-            </div>
-            <h3><RichText content={question.prompt} /></h3>
-            <p className="muted-copy">
-              {question.type === "multi_correct" ? "Multi correct" : "Single correct"} • {question.difficulty} • {question.marks} marks • -{question.negativeMarks}
-            </p>
-            <ul className="option-list">
-              {question.options.map((option: any) => (
-                <li key={option.id} style={{ fontWeight: question.correctOptionIds.includes(option.id) ? "bold" : "normal", color: question.correctOptionIds.includes(option.id) ? "var(--color-primary)" : "inherit" }}>
-                  {option.label}. <RichText content={option.value} />
-                  {question.correctOptionIds.includes(option.id) && " ✓"}
-                </li>
-              ))}
-            </ul>
-            {question.explanation && (
-              <div style={{ marginTop: "15px", padding: "10px", background: "var(--color-bg-secondary)", borderRadius: "4px", fontSize: "0.9rem" }}>
-                <strong>Explanation:</strong> <RichText content={question.explanation} />
-              </div>
-            )}
-          </article>
-        ))}
-      </div>
+            </article>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

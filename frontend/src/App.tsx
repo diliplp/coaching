@@ -13,6 +13,7 @@ import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { ExamsListPage } from "./pages/ExamsListPage";
 import { CurriculumPage } from "./pages/CurriculumPage";
 import { OfflineExamBuilderPage } from "./pages/OfflineExamBuilderPage";
+import { LiveExamMonitorPage } from "./pages/LiveExamMonitorPage";
 import { getStoredSession, clearSession } from "./auth";
 import { apiClient } from "./api/client";
 
@@ -107,6 +108,10 @@ export default function App() {
           <Route 
             path="/exams" 
             element={<ProtectedRoute roles={["super_admin", "teacher"]}><ExamsListPage /></ProtectedRoute>} 
+          />
+          <Route 
+            path="/exams/:examId/monitor" 
+            element={<ProtectedRoute roles={["super_admin", "teacher"]}><LiveExamMonitorPage /></ProtectedRoute>} 
           />
           <Route 
             path="/curriculum" 

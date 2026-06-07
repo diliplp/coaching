@@ -3,22 +3,29 @@ import katex from "katex";
 import "katex/dist/katex.min.css";
 // @ts-ignore
 import SmiDrawer from "smiles-drawer";
+import { buildPublicAssetUrl } from "../api/client";
 
 export function RichText({ content }: { content: string }) {
   // SmiDrawer will be used by the SmilesRenderer component
 
-  const tokens: Array<{ type: "text" | "math-block" | "math-inline" | "smiles"; value: string }> = [];
+  const tokens: Array<{ type: "text" | "math-block" | "math-inline" | "smiles" | "image"; value: string }> = [];
   let remaining = content || "";
 
   while (remaining.length > 0) {
     const blockMathIdx = remaining.indexOf("$$");
+    const blockMathBracketIdx = remaining.indexOf("\\[");
     const inlineMathIdx = remaining.indexOf("$");
+    const inlineMathBracketIdx = remaining.indexOf("\\(");
     const smilesIdx = remaining.indexOf("[SMILES:");
+    const imageIdx = remaining.indexOf("[IMAGE:");
 
     const matches = [
-      { type: "math-block", idx: blockMathIdx, tag: "$$" },
-      { type: "math-inline", idx: inlineMathIdx, tag: "$" },
-      { type: "smiles", idx: smilesIdx, tag: "[SMILES:" },
+      { type: "math-block", idx: blockMathIdx, tag: "$$", endTag: "$$" },
+      { type: "math-block", idx: blockMathBracketIdx, tag: "\\[", endTag: "\\]" },
+      { type: "math-inline", idx: inlineMathIdx, tag: "$", endTag: "$" },
+      { type: "math-inline", idx: inlineMathBracketIdx, tag: "\\(", endTag: "\\)" },
+      { type: "smiles", idx: smilesIdx, tag: "[SMILES:", endTag: "]" },
+      { type: "image", idx: imageIdx, tag: "[IMAGE:", endTag: "]" },
     ]
       .filter((m) => m.idx !== -1)
       .sort((a, b) => a.idx - b.idx);
@@ -43,13 +50,10 @@ export function RichText({ content }: { content: string }) {
       tokens.push({ type: "text", value: remaining.slice(0, match.idx) });
     }
 
-    let endTag = match.tag;
+    const contentStart = match.idx + match.tag.length;
     let endIdx = -1;
 
-    const contentStart = match.idx + match.tag.length;
-
     if (match.type === "smiles") {
-      endTag = "]";
       let depth = 1;
       let i = contentStart;
       while (i < remaining.length && depth > 0) {
@@ -61,7 +65,7 @@ export function RichText({ content }: { content: string }) {
         endIdx = i - 1;
       }
     } else {
-      endIdx = remaining.indexOf(endTag, contentStart);
+      endIdx = remaining.indexOf(match.endTag, contentStart);
     }
 
     if (endIdx === -1) {
@@ -72,7 +76,7 @@ export function RichText({ content }: { content: string }) {
     const matchContent = remaining.slice(contentStart, endIdx).trim();
 
     tokens.push({ type: match.type as any, value: matchContent });
-    remaining = remaining.slice(endIdx + endTag.length);
+    remaining = remaining.slice(endIdx + match.endTag.length);
   }
 
   return (
@@ -100,6 +104,28 @@ export function RichText({ content }: { content: string }) {
 
         if (token.type === "smiles") {
           return <SmilesRenderer key={i} smiles={token.value} />;
+        }
+
+        if (token.type === "image") {
+          return (
+            <div key={i} style={{ margin: "12px 0", textAlign: "center" }}>
+              <img
+                src={buildPublicAssetUrl(token.value)}
+                alt="Question Diagram"
+                style={{
+                  maxWidth: "100%",
+                  maxHeight: "350px",
+                  borderRadius: "8px",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
+                  border: "1px solid var(--color-border)",
+                  padding: "6px",
+                  background: "#fff",
+                  display: "block",
+                  margin: "0 auto"
+                }}
+              />
+            </div>
+          );
         }
 
         return null;

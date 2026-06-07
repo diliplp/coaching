@@ -34,6 +34,7 @@ export interface Question {
   topicName?: string;
   chapterName?: string;
   sourceType?: QuestionSource;
+  bookId?: string;
 }
 
 export interface ExamPayload {

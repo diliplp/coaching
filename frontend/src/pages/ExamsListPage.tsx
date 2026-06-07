@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { apiClient } from "../api/client";
 
 export function ExamsListPage() {
+  const navigate = useNavigate();
   const [exams, setExams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [batches, setBatches] = useState<any[]>([]);
@@ -123,7 +125,8 @@ export function ExamsListPage() {
                     </p>
                   )}
                 </div>
-                <div style={{ display: "flex", gap: "10px" }}>
+                <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                  <button className="primary-button" style={{ padding: "8px 16px", fontSize: "0.85rem" }} onClick={() => navigate(`/exams/${exam.id}/monitor`)}>Monitor Live</button>
                   <button className="secondary-button" onClick={() => handleEditClick(exam)}>Edit</button>
                   <button className="secondary-button" style={{ color: "red", borderColor: "red" }} onClick={() => handleDelete(exam.id)}>Delete</button>
                 </div>

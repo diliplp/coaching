@@ -9,7 +9,8 @@ const execPromise = promisify(exec);
 
 export async function extractPdfText(filePath: string, runOcr?: boolean) {
   if (runOcr) {
-    const pythonPath = process.env.PDF_PYTHON_PATH || "python3";
+    const defaultPython = process.platform === "win32" ? "python" : "python3";
+    const pythonPath = process.env.PDF_PYTHON_PATH || defaultPython;
     const scriptPath = path.join(scriptsRoot, "make_searchable_pdf.py");
     const tempPdfPath = `${filePath}_ocr.pdf`;
     const tempTxtPath = `${filePath}_ocr.txt`;

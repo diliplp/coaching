@@ -77,6 +77,29 @@ export function LiveExamPage() {
     return () => window.clearTimeout(timer);
   }, [timeLeft, generatedExam, isReviewMode]);
 
+  useEffect(() => {
+    if (!generatedExam || isReviewMode) {
+      return;
+    }
+
+    const answeredCount = Object.values(answers).filter(val => val && val.length > 0).length;
+    const totalQuestions = generatedExam.questions.length;
+
+    const sendHeartbeat = () => {
+      apiClient.sendExamHeartbeat(generatedExam.exam.id, {
+        answeredCount,
+        totalQuestions,
+        currentQuestionIndex: currentIndex,
+        status: "taking"
+      }).catch((err) => console.error("Heartbeat error:", err));
+    };
+
+    sendHeartbeat();
+
+    const interval = setInterval(sendHeartbeat, 5000);
+    return () => clearInterval(interval);
+  }, [generatedExam, isReviewMode, answers, currentIndex]);
+
   const formattedTime = useMemo(() => {
     if (timeLeft === null) return "00:00";
     const minutes = Math.floor(timeLeft / 60).toString().padStart(2, "0");
@@ -341,56 +364,91 @@ export function LiveExamPage() {
 
         <aside className="panel exam-sidebar">
           {isReviewMode ? (
-            <div key={resultVersion} className="result-card">
-              <h3>Result Summary</h3>
-              <div style={{ fontSize: "2rem", fontWeight: "bold", margin: "10px 0" }}>{latestResult?.percentage}%</div>
-              <p>{latestResult?.obtainedMarks} / {latestResult?.totalMarks} marks</p>
-              <p>{latestResult?.correctAnswers} Correct • {latestResult?.incorrectAnswers} Incorrect</p>
-              
-              <h4 style={{ marginTop: "20px", color: "var(--color-primary)" }}>Performance Analysis</h4>
-              
-              <div style={{ marginTop: "15px" }}>
-                <strong style={{ color: "green" }}>✓ Your Strengths</strong>
-                <ul className="plain-list compact" style={{ marginTop: "5px" }}>
-                  {latestResult?.insights
-                    .filter(t => t.accuracy >= 75)
-                    .map((topic) => (
-                      <li key={topic.topicId}>
-                        <strong>{topic.topicName}</strong>
-                        <div className="muted-copy">{topic.accuracy}% Accuracy • Strong</div>
-                      </li>
-                    ))}
-                  {latestResult?.insights.filter(t => t.accuracy >= 75).length === 0 && <li className="muted-copy">Keep practicing to build strengths!</li>}
-                </ul>
+            <>
+              <div key={resultVersion} className="result-card">
+                <h3>Result Summary</h3>
+                <div style={{ fontSize: "2rem", fontWeight: "bold", margin: "10px 0" }}>{latestResult?.percentage}%</div>
+                <p>{latestResult?.obtainedMarks} / {latestResult?.totalMarks} marks</p>
+                <p>{latestResult?.correctAnswers} Correct • {latestResult?.incorrectAnswers} Incorrect</p>
+                
+                <h4 style={{ marginTop: "20px", color: "var(--color-primary)" }}>Performance Analysis</h4>
+                
+                <div style={{ marginTop: "15px" }}>
+                  <strong style={{ color: "green" }}>✓ Your Strengths</strong>
+                  <ul className="plain-list compact" style={{ marginTop: "5px" }}>
+                    {latestResult?.insights
+                      .filter(t => t.accuracy >= 75)
+                      .map((topic) => (
+                        <li key={topic.topicId}>
+                          <strong>{topic.topicName}</strong>
+                          <div className="muted-copy">{topic.accuracy}% Accuracy • Strong</div>
+                        </li>
+                      ))}
+                    {latestResult?.insights.filter(t => t.accuracy >= 75).length === 0 && <li className="muted-copy">Keep practicing to build strengths!</li>}
+                  </ul>
+                </div>
+
+                <div style={{ marginTop: "15px" }}>
+                  <strong style={{ color: "red" }}>⚠ Areas for Improvement</strong>
+                  <ul className="plain-list compact" style={{ marginTop: "5px" }}>
+                    {latestResult?.insights
+                      .filter(t => t.accuracy < 75)
+                      .sort((a, b) => a.accuracy - b.accuracy)
+                      .map((topic) => (
+                        <li key={topic.topicId}>
+                          <strong>{topic.topicName}</strong>
+                          <div className="muted-copy">{topic.accuracy}% Accuracy • Focus here</div>
+                        </li>
+                      ))}
+                    {latestResult?.insights.filter(t => t.accuracy < 75).length === 0 && <li className="muted-copy">Excellent coverage!</li>}
+                  </ul>
+                </div>
               </div>
 
-              <div style={{ marginTop: "15px" }}>
-                <strong style={{ color: "red" }}>⚠ Areas for Improvement</strong>
-                <ul className="plain-list compact" style={{ marginTop: "5px" }}>
-                  {latestResult?.insights
-                    .filter(t => t.accuracy < 75)
-                    .sort((a, b) => a.accuracy - b.accuracy)
-                    .map((topic) => (
-                      <li key={topic.topicId}>
-                        <strong>{topic.topicName}</strong>
-                        <div className="muted-copy">{topic.accuracy}% Accuracy • Focus here</div>
-                      </li>
-                    ))}
-                  {latestResult?.insights.filter(t => t.accuracy < 75).length === 0 && <li className="muted-copy">Excellent coverage!</li>}
-                </ul>
+              <h3>Question Palette</h3>
+              <div className="palette-grid">
+                {generatedExam.questions.map((question: any, index: number) => {
+                  const rev = latestResult?.review?.[index];
+                  const unanswered = !rev || !rev.selectedOptionIds || rev.selectedOptionIds.length === 0;
+                  const isCorrect = rev?.isCorrect === true;
+
+                  let statusClass = "";
+                  if (unanswered) {
+                    statusClass = "review-unanswered";
+                  } else if (isCorrect) {
+                    statusClass = "review-correct";
+                  } else {
+                    statusClass = "review-incorrect";
+                  }
+
+                  const isActive = currentIndex === index;
+
+                  return (
+                    <button
+                      type="button"
+                      key={question.id}
+                      className={`palette-button ${statusClass} ${isActive ? "active" : ""}`}
+                      onClick={() => setCurrentIndex(index)}
+                      title={unanswered ? "Unanswered" : (isCorrect ? "Correct" : "Incorrect")}
+                    >
+                      {index + 1}
+                    </button>
+                  );
+                })}
               </div>
-            </div>
+            </>
           ) : (
             <>
               <h3>Question Palette</h3>
               <div className="palette-grid">
                 {generatedExam.questions.map((question: any, index: number) => {
                   const attempted = (answers[question.id] ?? []).length > 0;
+                  const isActive = currentIndex === index;
                   return (
                     <button
                       type="button"
                       key={question.id}
-                      className={attempted ? "palette-button answered" : "palette-button"}
+                      className={`palette-button ${attempted ? "answered" : ""} ${isActive ? "active" : ""}`}
                       onClick={() => setCurrentIndex(index)}
                     >
                       {index + 1}

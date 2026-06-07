@@ -1,4 +1,4 @@
-import { Question, QuestionOption, QuestionType } from "../types.js";
+import { Question, QuestionOption, QuestionType, QuestionSource } from "../types.js";
 import { listRecords } from "../data/database.js";
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
@@ -11,74 +11,106 @@ async function generateContentWithFallback(prompt: string, fallbackJson: string 
 
   let lastError: any = null;
 
-  // 1. Try Gemini API keys
+  // 1. Try Gemini API keys with Exponential Backoff
   for (const { key, name } of keysToTry) {
-    try {
-      console.log(`Attempting generation with ${name}...`);
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            responseMimeType: "application/json"
-          }
-        })
-      });
+    let attempts = 0;
+    const maxAttempts = 3;
+    let delay = 1000; // Start with 1 second delay
 
-      if (response.ok) {
-        const data = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) {
-          return text;
+    while (attempts < maxAttempts) {
+      attempts++;
+      try {
+        console.log(`Attempting generation with ${name} (attempt ${attempts}/${maxAttempts})...`);
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseMimeType: "application/json"
+            }
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text) {
+            return text;
+          }
+        } else {
+          const errStatus = response.status;
+          const errText = await response.text();
+          console.warn(`${name} failed with status ${errStatus}: ${errText}`);
+          lastError = new Error(`Gemini API error (${name}): Status ${errStatus} - ${errText}`);
+          
+          // Retry on Rate Limit (429) or Server Errors (5xx, including 503 Service Unavailable)
+          if (errStatus === 429 || (errStatus >= 500 && errStatus < 600)) {
+            if (attempts < maxAttempts) {
+              console.log(`Temporary error (${errStatus}) on ${name}. Retrying in ${delay}ms...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              delay *= 2.5; // Exponential increase with a multiplier
+              continue;
+            }
+          }
         }
-      } else {
-        const errText = await response.text();
-        console.warn(`${name} failed: ${errText}`);
-        lastError = new Error(`Gemini API error (${name}): ${errText}`);
+        break; // Stop retry loop if it's a non-retryable error or succeeded
+      } catch (e: any) {
+        console.warn(`${name} threw exception on attempt ${attempts}:`, e.message || e);
+        lastError = e;
+        if (attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay *= 2.5;
+          continue;
+        }
       }
-    } catch (e: any) {
-      console.warn(`${name} threw error:`, e.message || e);
-      lastError = e;
     }
   }
 
   // 2. If Gemini keys failed or were not configured, try OpenRouter as final failover
   if (process.env.OPENROUTER_API_KEY) {
-    try {
-      console.log("Attempting OpenRouter failover...");
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://railway.app", 
-          "X-Title": "Coaching Portal Exam Gen"
-        },
-        body: JSON.stringify({
-          model: "openai/gpt-4o-mini", 
-          messages: [{ role: "user", content: prompt }],
-          response_format: { type: "json_object" },
-          max_tokens: 8000
-        })
-      });
+    const openRouterModels = [
+      process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini",
+      "google/gemini-1.5-flash",                // Fallback Gemini-1.5-flash hosted on OpenRouter
+      "meta-llama/llama-3-8b-instruct:free"     // Free backup model
+    ];
 
-      if (response.ok) {
-        const data = await response.json();
-        const text = data.choices?.[0]?.message?.content;
-        if (text) {
-          return text;
+    for (const model of openRouterModels) {
+      try {
+        console.log(`Attempting OpenRouter failover with model ${model}...`);
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://railway.app", 
+            "X-Title": "Coaching Portal Exam Gen"
+          },
+          body: JSON.stringify({
+            model: model, 
+            messages: [{ role: "user", content: prompt }],
+            response_format: { type: "json_object" },
+            max_tokens: 8000
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const text = data.choices?.[0]?.message?.content;
+          if (text) {
+            return text;
+          }
+        } else {
+          const errText = await response.text();
+          console.warn(`OpenRouter model ${model} failed: ${errText}`);
+          lastError = new Error(`OpenRouter API error (${model}): ${errText}`);
         }
-      } else {
-        const errText = await response.text();
-        console.warn(`OpenRouter failover failed: ${errText}`);
-        lastError = new Error(`OpenRouter API error: ${errText}`);
+      } catch (e: any) {
+        console.warn(`OpenRouter model ${model} threw error:`, e.message || e);
+        lastError = e;
       }
-    } catch (e: any) {
-      console.warn("OpenRouter threw error:", e.message || e);
-      lastError = e;
     }
   }
 
@@ -131,61 +163,62 @@ export async function generateQuestionsFromText(params: {
     : "";
 
   const allQuestions: Question[] = [];
-  const batchSize = 10;
-  const numBatches = Math.ceil(questionCount / batchSize);
-
-  console.log(`Starting AI generation for topic ${topicId}. Total requested: ${questionCount}. Batches: ${numBatches}`);
-
   let attempts = 0;
-  const maxAttempts = numBatches + 5; // Allow a few extra attempts if batches return fewer questions
+  const maxAttempts = 3; // Retry up to 3 rounds of generations to fill gap of rejected questions
 
   while (allQuestions.length < questionCount && attempts < maxAttempts) {
     attempts++;
-    const currentBatchCount = Math.min(batchSize, questionCount - allQuestions.length);
-    if (currentBatchCount <= 0) break;
+    const needed = questionCount - allQuestions.length;
+    const batchSize = 10;
+    const numBatches = Math.ceil(needed / batchSize);
 
-    const allKnownPrompts = [...existingTopicQuestions.map(q => q.prompt), ...allQuestions.map(q => q.prompt)];
-    // Randomly shuffle to provide different avoidance context if there are many questions
-    const shuffledPrompts = allKnownPrompts.sort(() => 0.5 - Math.random());
-    const previousPrompts = shuffledPrompts.slice(0, 40).join("\n- ");
-    
-    const avoidanceInstruction = allKnownPrompts.length > 0 
-      ? `\nIMPORTANT: Do NOT repeat, rephrase, or generate questions similar to these existing ones:\n- ${previousPrompts}\n\nGenerate COMPLETELY NEW and UNIQUE questions that cover different concepts or use different values.` 
-      : "";
+    console.log(`Generation round ${attempts}: Need ${needed} questions. Launching ${numBatches} parallel batches.`);
 
-    const maxChunkSize = 25000;
-    let textChunk = text;
-    if (text.length > maxChunkSize) {
-       // Pick a random starting point to explore different parts of the document
-       const maxStart = text.length - maxChunkSize;
-       const startIdx = Math.floor(Math.random() * maxStart);
-       textChunk = text.substring(startIdx, startIdx + maxChunkSize);
-    }
+    const batchPromises = Array.from({ length: numBatches }).map(async (_, batchIndex) => {
+      const currentBatchCount = batchIndex === numBatches - 1
+        ? needed - batchIndex * batchSize
+        : batchSize;
 
-    const prompt = `
+      if (currentBatchCount <= 0) return [];
+
+      const allKnownPrompts = [...existingTopicQuestions.map(q => q.prompt), ...allQuestions.map(q => q.prompt)];
+      const shuffledPrompts = allKnownPrompts.sort(() => 0.5 - Math.random());
+      const previousPrompts = shuffledPrompts.slice(0, 40).join("\n- ");
+      
+      const avoidanceInstruction = allKnownPrompts.length > 0 
+        ? `\nIMPORTANT: Do NOT repeat, rephrase, or generate questions similar to these existing ones:\n- ${previousPrompts}\n\nGenerate COMPLETELY NEW and UNIQUE questions that cover different concepts or use different values.` 
+        : "";
+
+      const maxChunkSize = 25000;
+      let textChunk = text;
+      if (text.length > maxChunkSize) {
+         const maxStart = text.length - maxChunkSize;
+         const startIdx = Math.floor(Math.random() * maxStart);
+         textChunk = text.substring(startIdx, startIdx + maxChunkSize);
+      }
+
+      const prompt = `
 You are an expert educator. Generate exactly ${currentBatchCount} NEW multiple-choice questions from the text below.
 ${exampleInstruction}
 ${avoidanceInstruction}
 
-STRICT STEM RULES:
+STRICT STEM AND MATHEMATICAL RULES:
 1. LaTeX: Use $...$ for inline and $$...$$ for blocks.
 2. JSON ESCAPING: In the JSON, use FOUR backslashes for LaTeX (e.g., "\\\\frac").
-3. Chemistry: Use [SMILES: notation] for chemical structures. 
-   IMPORTANT: A SMILES string is NOT a chemical formula. 
-   - WRONG: [SMILES: CH3COOH], [SMILES: H2O], [SMILES: C2H5OH]
-   - CORRECT: [SMILES: CC(=O)O], [SMILES: O], [SMILES: CCO]
-   - Examples for your reference:
-     * Acetic Acid: CC(=O)O
-     * Ethanol: CCO
-     * Methane: C
-     * Glucose: OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@H]1O
-     * Benzene: c1ccccc1
-   NEVER use placeholders like '?' or chemical formulas inside [SMILES: ] tags.
+3. Chemistry: Use [SMILES: notation] for chemical structures (e.g. [SMILES: CC(=O)O] for acetic acid).
+   IMPORTANT: A SMILES string is NOT a chemical formula. Never use placeholders like '?' or chemical formulas inside [SMILES: ] tags.
+4. Chemical Formulas and Equations (Subscripts/Superscripts): You MUST format ALL chemical formulas (e.g., H2O, CO2, NaCl, K2SO4, Al2(SO4)3) and chemical equations in standard LaTeX using subscripts and superscripts (e.g., use $\\text{H}_2\\text{O}$ or $\\text{K}_2\\text{SO}_4$). Never output plain text chemical formulas like H2O or K2SO4.
+5. Colligative Properties & van't Hoff Factor (i):
+   - For questions on colligative properties (freezing point depression, boiling point elevation, vapour pressure lowering, osmotic pressure) of electrolytes (e.g. NaCl, KCl, CaCl2, Na2SO4, etc.), you MUST calculate and include the van't Hoff factor (i) assuming complete dissociation (unless degree of dissociation is given).
+   - E.g., for NaCl, i = 2; for KCl, i = 2; for Na2SO4, i = 3; for MgSO4, i = 2.
+   - Do not ignore/neglect dissociation for strong/weak electrolytes.
+5. Absolute Self-Containment:
+   - Do NOT refer to external figures, tables, graphs, "above calculations", "provided text", or "given table". Each question must contain all the numerical parameters and context required to solve it, and be completely standalone.
 
 STRICT QUESTION LOGIC RULES:
-1. Unique Option Values: All option values MUST be completely unique. Never generate duplicate options (e.g., if option A is "30", no other option can have the value "30").
-2. Correct Answer Consistency: The option marked "isCorrect": true MUST be the mathematically correct value. The explanation must mathematically align with the marked correct option.
-3. Logical Verification: Solve the question step-by-step before selecting the correct option and writing the explanation, ensuring absolute mathematical accuracy.
+1. Unique Option Values: All option values MUST be completely unique. Never generate duplicate options.
+2. Correct Answer Consistency: The option marked "isCorrect": true MUST be the mathematically correct value.
+3. Mathematical Verification: You must calculate the answer step-by-step in the "calculation_scratchpad" field BEFORE outputting the prompt, options, and explanation.
 
 JSON RULES:
 1. NO markdown wrappers (no \`\`\`json).
@@ -197,6 +230,7 @@ JSON STRUCTURE:
 {
   "questions": [
     {
+      "calculation_scratchpad": "Write down the step-by-step mathematical calculations, formulas used (especially van't Hoff factor 'i' if applicable), and physical calculations here first.",
       "prompt": "Question text here",
       "difficulty": "medium",
       "marks": 2,
@@ -207,7 +241,7 @@ JSON STRUCTURE:
         { "label": "C", "value": "Option 3", "isCorrect": false },
         { "label": "D", "value": "Option 4", "isCorrect": false }
       ],
-      "explanation": "Explanation text here"
+      "explanation": "Detailed step-by-step explanation for the student, verifying the calculation."
     }
   ]
 }
@@ -216,56 +250,172 @@ TEXT CONTENT:
 ---
 ${textChunk}
 ---
-    `;
+      `;
 
-    try {
-      console.log(`Generating batch ${attempts} (need ${currentBatchCount} more)...`);
-      let rawResponse = await generateContentWithFallback(prompt, '{"questions": []}');
-      
-      const startIdx = rawResponse.indexOf("{");
-      const endIdx = rawResponse.lastIndexOf("}");
-      if (startIdx !== -1 && endIdx !== -1) {
-        rawResponse = rawResponse.substring(startIdx, endIdx + 1);
+      let batchAttempts = 0;
+      while (batchAttempts < 2) {
+        batchAttempts++;
+        try {
+          console.log(`Generating batch ${batchIndex + 1} (attempt ${batchAttempts}, count: ${currentBatchCount})...`);
+          let rawResponse = await generateContentWithFallback(prompt, '{"questions": []}');
+          
+          const startIdx = rawResponse.indexOf("{");
+          const endIdx = rawResponse.lastIndexOf("}");
+          if (startIdx !== -1 && endIdx !== -1) {
+            rawResponse = rawResponse.substring(startIdx, endIdx + 1);
+          }
+
+          let parsedObj = JSON.parse(rawResponse);
+          let parsedArr = parsedObj.questions || (Array.isArray(parsedObj) ? parsedObj : []);
+
+          const mappedQuestions = parsedArr.map((item: any, idx: number) => {
+            const qId = `q-ai-${Date.now()}-${batchIndex}-${idx}`;
+            const correctOptionIds: string[] = [];
+            const options: QuestionOption[] = (item.options || []).map((opt: any, optIndex: number) => {
+              const oId = `opt-${Date.now()}-${batchIndex}-${idx}-${optIndex}`;
+              if (opt.isCorrect) correctOptionIds.push(oId);
+              return { id: oId, label: opt.label || String.fromCharCode(65 + optIndex), value: opt.value };
+            });
+
+            return {
+              id: qId,
+              subjectId,
+              topicId,
+              type: correctOptionIds.length > 1 ? "multi_correct" : "single_correct",
+              prompt: item.prompt,
+              difficulty: item.difficulty,
+              marks: item.marks || 2,
+              negativeMarks: item.negativeMarks || 0,
+              options,
+              correctOptionIds,
+              explanation: item.explanation,
+            };
+          });
+
+          // Run Critic validation on this batch
+          const validatedQuestions = await validateQuestionsBatch(mappedQuestions, subject);
+          
+          if (validatedQuestions.length > 0) {
+            console.log(`Batch ${batchIndex + 1} succeeded and verified on attempt ${batchAttempts}. Yielded ${validatedQuestions.length}/${currentBatchCount} valid questions.`);
+            return validatedQuestions;
+          }
+        } catch (error: any) {
+          console.error(`Batch ${batchIndex + 1} attempt ${batchAttempts} failed:`, error.message);
+        }
       }
+      return [];
+    });
 
-      let parsedObj = JSON.parse(rawResponse);
-      let parsedArr = parsedObj.questions || (Array.isArray(parsedObj) ? parsedObj : []);
+    const results = await Promise.all(batchPromises);
+    for (const qList of results) {
+      allQuestions.push(...qList);
+    }
+    console.log(`Round ${attempts} finished. Total accumulated valid questions: ${allQuestions.length}/${questionCount}`);
+  }
 
-      const mappedQuestions = parsedArr.map((item: any, index: number) => {
-        const qId = `q-ai-${Date.now()}-${allQuestions.length + index}`;
+  return allQuestions.slice(0, questionCount);
+}
+
+async function validateQuestionsBatch(
+  questions: Question[],
+  subjectName?: string
+): Promise<Question[]> {
+  if (questions.length === 0) return [];
+
+  const criticPrompt = `
+You are an elite academic validator for JEE/NEET STEM questions. Review the following questions for absolute correctness:
+1. Double-check all math calculations step-by-step.
+2. Verify that electrolyte solutions (e.g. NaCl, KCl, BaCl2, etc.) correctly use the van't Hoff factor (i) in colligative property calculations. If a question neglects dissociation, mark it invalid.
+3. Ensure no duplicate option values exist.
+4. Ensure the correct option is mathematically correct and matches the step-by-step derivation.
+5. Ensure the question is completely standalone (no references to "above calculations", "provided chart", etc.).
+
+Input Questions:
+${JSON.stringify(questions.map((q, idx) => ({
+    index: idx,
+    prompt: q.prompt,
+    options: q.options.map(o => ({ id: o.id, label: o.label, value: o.value, isCorrect: q.correctOptionIds.includes(o.id) })),
+    explanation: q.explanation
+  })), null, 2)}
+
+Output JSON ONLY:
+{
+  "evaluations": [
+    {
+      "index": 0,
+      "isValid": true,
+      "reason": "Looks good"
+    },
+    {
+      "index": 1,
+      "isValid": false,
+      "reason": "Van't Hoff factor was omitted for KCl (i=2).",
+      "correctedQuestion": {
+        "prompt": "Corrected prompt here",
+        "options": [
+          { "label": "A", "value": "Correct value", "isCorrect": true },
+          { "label": "B", "value": "Distractor", "isCorrect": false },
+          { "label": "C", "value": "Distractor 2", "isCorrect": false },
+          { "label": "D", "value": "Distractor 3", "isCorrect": false }
+        ],
+        "explanation": "Corrected explanation here"
+      }
+    }
+  ]
+}
+`;
+
+  try {
+    console.log(`Validator Critic is reviewing ${questions.length} questions...`);
+    const rawResponse = await generateContentWithFallback(criticPrompt, '{"evaluations": []}');
+    const startIdx = rawResponse.indexOf("{");
+    const endIdx = rawResponse.lastIndexOf("}");
+    if (startIdx === -1 || endIdx === -1) return questions; 
+    
+    const parsed = JSON.parse(rawResponse.substring(startIdx, endIdx + 1));
+    const evaluations = parsed.evaluations || [];
+    
+    const finalQuestions: Question[] = [];
+    
+    for (const q of questions) {
+      const idx = questions.indexOf(q);
+      const evalItem = evaluations.find((e: any) => e.index === idx);
+      
+      if (!evalItem) {
+        finalQuestions.push(q);
+        continue;
+      }
+      
+      if (evalItem.isValid) {
+        finalQuestions.push(q);
+      } else if (evalItem.correctedQuestion) {
+        console.log(`Critic corrected Question ${idx}: ${evalItem.reason}`);
+        const cq = evalItem.correctedQuestion;
         const correctOptionIds: string[] = [];
-        const options: QuestionOption[] = (item.options || []).map((opt: any, optIndex: number) => {
-          const oId = `opt-${Date.now()}-${allQuestions.length + index}-${optIndex}`;
+        const options = (cq.options || []).map((opt: any, optIndex: number) => {
+          const oId = `opt-${Date.now()}-corrected-${idx}-${optIndex}`;
           if (opt.isCorrect) correctOptionIds.push(oId);
           return { id: oId, label: opt.label || String.fromCharCode(65 + optIndex), value: opt.value };
         });
-
-        return {
-          id: qId,
-          subjectId,
-          topicId,
-          type: correctOptionIds.length > 1 ? "multi_correct" : "single_correct",
-          prompt: item.prompt,
-          difficulty: item.difficulty,
-          marks: item.marks || 2,
-          negativeMarks: item.negativeMarks || 0,
+        
+        finalQuestions.push({
+          ...q,
+          prompt: cq.prompt || q.prompt,
           options,
           correctOptionIds,
-          explanation: item.explanation,
-        };
-      });
-
-      allQuestions.push(...mappedQuestions);
-      console.log(`Batch ${attempts} complete. Total now: ${allQuestions.length}/${questionCount}`);
-
-    } catch (error: any) {
-      console.error(`Batch ${attempts} failed:`, error.message);
-      if (allQuestions.length === 0 && attempts >= maxAttempts) throw error;
-      // Continue to next attempt if we have some questions or still have attempts left
+          type: correctOptionIds.length > 1 ? "multi_correct" : "single_correct",
+          explanation: cq.explanation || q.explanation
+        });
+      } else {
+        console.warn(`Critic rejected Question ${idx} completely: ${evalItem.reason}`);
+      }
     }
+    
+    return finalQuestions;
+  } catch (error) {
+    console.error("Critic validation failed, keeping original questions:", error);
+    return questions;
   }
-
-  return allQuestions;
 }
 
 export async function parseExamPrompt(promptText: string): Promise<{
@@ -414,11 +564,20 @@ export async function generateOfflineBoardPaper(params: {
 You are an expert CBSE examiner. Generate a complete, realistic Class ${className} ${subjectName} Board Question Paper.
 The paper should cover the following topics: ${topics.join(", ")}.
 
-STRICT FORMATTING RULES:
+STRICT STEM AND MATHEMATICAL RULES:
 1. LaTeX: Use $...$ for inline math/physics and $$...$$ for blocks. Use FOUR backslashes in JSON (e.g. \\\\frac).
 2. Chemistry: Use [SMILES: notation] for chemical structures (e.g., [SMILES: c1ccccc1]).
-3. Structure: Emulate exactly the standard CBSE blueprint for this subject (e.g., Sections A, B, C, D, E with appropriate typologies like MCQs, Assertion-Reason, Short Answer, Long Answer, and Case Study).
-4. Output ONLY valid JSON, no markdown wrappers.
+3. Colligative Properties & van't Hoff Factor (i):
+   - For questions on colligative properties (freezing point depression, boiling point elevation, vapour pressure lowering, osmotic pressure) of electrolytes (e.g. NaCl, KCl, CaCl2, Na2SO4, etc.), you MUST calculate and include the van't Hoff factor (i) assuming complete dissociation (unless degree of dissociation is given).
+   - E.g., for NaCl, i = 2; for KCl, i = 2; for Na2SO4, i = 3; for MgSO4, i = 2.
+   - Do not ignore/neglect dissociation for strong/weak electrolytes.
+4. Absolute Self-Containment:
+   - Do NOT refer to external figures, tables, graphs, "above calculations", "provided text", or "given table". Each question must contain all the numerical parameters and context required to solve it, and be completely standalone.
+
+STRICT QUESTION LOGIC RULES:
+1. Structure: Emulate exactly the standard CBSE blueprint for this subject (e.g., Sections A, B, C, D, E with appropriate typologies like MCQs, Assertion-Reason, Short Answer, Long Answer, and Case Study).
+2. Mathematical Verification: Perform step-by-step mathematical calculations for any numerical question first to ensure accuracy. Make sure the correct option exists in the options list and is mathematically correct.
+3. Output ONLY valid JSON, no markdown wrappers.
 
 JSON STRUCTURE:
 {
@@ -472,6 +631,106 @@ JSON STRUCTURE:
     return JSON.parse(rawResponse);
   } catch (error) {
     console.error("Offline Paper Generation failed:", error);
+    throw error;
+  }
+}
+
+export async function extractQuestionsFromPdfText(params: {
+  text: string;
+  subjectId: string;
+  topicId: string;
+  sourceType: QuestionSource;
+  bookId?: string;
+}): Promise<Question[]> {
+  const prompt = `You are an expert data extraction assistant. Your task is to read the textbook/paper text below and extract EVERY multiple-choice question (MCQ) present in it.
+Do NOT generate new questions, but DO identify and reconstruct any mathematical equations, variables, or chemical formulas that were garbled during the OCR/scanning process.
+
+For each question, find:
+1. The question prompt/text.
+2. The options (A, B, C, D, etc.) with their values.
+3. Identify which option is the correct one based on the text or solutions provided in the text.
+4. The explanation if provided in the text.
+
+OCR ERROR RECONSTRUCTION RULES:
+- The source text comes from a scanned PDF; mathematical equations, LaTeX fractions, and variables may look like garbage (e.g. 'RT x \\) RT v \\' or 'w= (F}'). You MUST use your domain knowledge of chemistry and physics to intelligently reconstruct these expressions into correct, standard, readable math formulas formatted in LaTeX.
+- Ensure all four options are mathematically clean, scientifically coherent, and matching standard JEE/NEET patterns.
+- Strip away hanging braces, floating characters, page numbers, and random OCR scanner artifacts.
+
+STRICT FORMATTING RULES:
+1. LaTeX: Use $...$ for inline and $$...$$ for blocks.
+2. JSON ESCAPING: In the JSON, use FOUR backslashes for LaTeX (e.g., "\\\\frac").
+3. Chemistry: Use [SMILES: notation] for chemical structures.
+4. Chemical Formulas and Equations (Subscripts/Superscripts): You MUST format ALL chemical formulas (e.g., H2O, CO2, NaCl, K2SO4, Al2(SO4)3) and chemical equations in standard LaTeX using subscripts and superscripts (e.g., use $\\text{H}_2\\text{O}$ or $\\text{K}_2\\text{SO}_4$). Never output plain text chemical formulas like H2O or K2SO4.
+5. Output ONLY the JSON object, no markdown code blocks.
+
+JSON STRUCTURE:
+{
+  "questions": [
+    {
+      "prompt": "Question text here",
+      "difficulty": "medium",
+      "marks": 1,
+      "negativeMarks": 0,
+      "options": [
+        { "label": "A", "value": "Option 1", "isCorrect": true },
+        { "label": "B", "value": "Option 2", "isCorrect": false },
+        { "label": "C", "value": "Option 3", "isCorrect": false },
+        { "label": "D", "value": "Option 4", "isCorrect": false }
+      ],
+      "explanation": "Detailed explanation of the solution"
+    }
+  ]
+}
+
+TEXT TO EXTRACT FROM:
+---
+${params.text}
+---
+  `;
+
+  try {
+    let rawResponse = await generateContentWithFallback(prompt, '{"questions": []}');
+    
+    const startIdx = rawResponse.indexOf("{");
+    const endIdx = rawResponse.lastIndexOf("}");
+    if (startIdx !== -1 && endIdx !== -1) {
+      rawResponse = rawResponse.substring(startIdx, endIdx + 1);
+    }
+
+    const parsedObj = JSON.parse(rawResponse);
+    const parsedArr = parsedObj.questions || (Array.isArray(parsedObj) ? parsedObj : []);
+
+    return parsedArr.map((q: any, i: number) => {
+      const correctOptionIds: string[] = [];
+      const options: QuestionOption[] = (q.options || []).map((o: any, idx: number) => {
+        const oId = `opt-pdf-${Date.now()}-${i}-${idx}-${Math.random().toString(36).substr(2, 4)}`;
+        if (o.isCorrect) correctOptionIds.push(oId);
+        return {
+          id: oId,
+          label: o.label || String.fromCharCode(65 + idx),
+          value: o.value || ""
+        };
+      });
+
+      return {
+        id: `que-pdf-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
+        subjectId: params.subjectId,
+        topicId: params.topicId,
+        type: correctOptionIds.length > 1 ? "multi_correct" : "single_correct",
+        prompt: q.prompt || "",
+        difficulty: q.difficulty || "medium",
+        marks: q.marks || 1,
+        negativeMarks: q.negativeMarks || 0,
+        correctOptionIds,
+        options,
+        explanation: q.explanation || "",
+        sourceType: params.sourceType,
+        bookId: params.bookId,
+        isVerified: true
+      };
+    });
+  } catch (error) {
+    console.error("MCQ extraction failed:", error);
     throw error;
   }
 }

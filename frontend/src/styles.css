@@ -492,6 +492,29 @@ button {
   border-color: #10b981;
 }
 
+.palette-button.active {
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.4);
+  border-color: #0f766e;
+}
+
+.palette-button.review-correct {
+  background: #22c55e !important;
+  border-color: #22c55e !important;
+  color: white !important;
+}
+
+.palette-button.review-incorrect {
+  background: #ef4444 !important;
+  border-color: #ef4444 !important;
+  color: white !important;
+}
+
+.palette-button.review-unanswered {
+  background: #eab308 !important;
+  border-color: #eab308 !important;
+  color: white !important;
+}
+
 .result-card {
   padding: 18px;
   border-radius: 20px;

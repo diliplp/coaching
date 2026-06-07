@@ -14,7 +14,7 @@ import {
   listBatchAdaptivePlans
 } from "../utils/exam-engine.js";
 import { extractPdfText } from "../utils/pdf.js";
-import { generateQuestionsFromText, ensureEnoughQuestions, parseExamPrompt, detectCurriculumFromText, generateOfflineBoardPaper } from "../utils/ai-generator.js";
+import { generateQuestionsFromText, ensureEnoughQuestions, parseExamPrompt, detectCurriculumFromText, generateOfflineBoardPaper, extractQuestionsFromPdfText } from "../utils/ai-generator.js";
 import { listReferencePapers } from "../utils/reference-papers.js";
 import { findUserByEmail, requireAuth, requireRole, signAuthToken, verifyPassword } from "../utils/auth.js";
 import type { AuthenticatedRequest, Question, QuestionSource, SubjectBook } from "../types.js";
@@ -248,7 +248,7 @@ apiRouter.get("/question-bank", requireAuth, async (req, res) => {
 });
 
 apiRouter.post("/questions", requireRole(["super_admin", "teacher"]), async (req, res) => {
-  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation, sourceType } = req.body;
+  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation, sourceType, bookId, pageNumber, isVerified } = req.body;
   if (!subjectId || !topicId || !prompt || !options || !correctOptionIds) {
     return res.status(400).json({ message: "Missing required fields" });
   }
@@ -265,7 +265,10 @@ apiRouter.post("/questions", requireRole(["super_admin", "teacher"]), async (req
     correctOptionIds,
     options,
     explanation: explanation || "",
-    sourceType: sourceType || "custom"
+    sourceType: sourceType || "custom",
+    bookId: bookId || undefined,
+    pageNumber: pageNumber || undefined,
+    isVerified: isVerified !== undefined ? isVerified : false
   };
   
   await upsertRecord("questions", newQuestion);
@@ -274,9 +277,13 @@ apiRouter.post("/questions", requireRole(["super_admin", "teacher"]), async (req
 
 apiRouter.put("/questions/:id", requireRole(["super_admin", "teacher"]), async (req, res) => {
   const id = req.params.id as string;
-  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation, sourceType } = req.body;
+  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation, sourceType, bookId, pageNumber, isVerified } = req.body;
   
+  const { getRecord } = await import("../data/database.js");
+  const existing = await getRecord<any>("questions", id);
+
   const updatedQuestion = {
+    ...(existing || {}),
     id,
     subjectId,
     topicId,
@@ -288,7 +295,10 @@ apiRouter.put("/questions/:id", requireRole(["super_admin", "teacher"]), async (
     correctOptionIds,
     options,
     explanation,
-    sourceType: sourceType || "custom"
+    sourceType: sourceType || "custom",
+    bookId: bookId !== undefined ? bookId : existing?.bookId,
+    pageNumber: pageNumber !== undefined ? pageNumber : existing?.pageNumber,
+    isVerified: isVerified !== undefined ? isVerified : existing?.isVerified
   };
 
   await upsertRecord("questions", updatedQuestion);
@@ -609,6 +619,94 @@ apiRouter.post("/subject-books/:bookId/generate-questions", requireRole(["super_
   }
 });
 
+apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["super_admin"]), async (req, res) => {
+  const state = await getAppState();
+  const bookId = req.params.bookId;
+  const chapterId = getSingleFormValue(req.body.chapterId) as string | undefined;
+  const rawTopicIds = req.body.topicIds;
+  let topicIds: string[] = [];
+
+  if (Array.isArray(rawTopicIds)) {
+    topicIds = rawTopicIds.map(String);
+  } else if (typeof rawTopicIds === "string" && rawTopicIds) {
+    topicIds = [rawTopicIds];
+  }
+  
+  const book = state.subjectBooks.find((b) => b.id === bookId);
+  if (!book) {
+    res.status(404).json({ message: "Book (PDF) not found" });
+    return;
+  }
+
+  if (topicIds.length === 0) {
+    if (chapterId) {
+      const chapter = state.chapters.find(c => c.id === chapterId);
+      const generalTopicName = `General - ${chapter?.name || "Chapter"}`;
+      let generalTopic = state.topics.find(t => t.chapterId === chapterId && t.name === generalTopicName);
+      if (!generalTopic) {
+        generalTopic = { 
+          id: `top-gen-${Date.now()}`, 
+          name: generalTopicName, 
+          subjectId: book.subjectId, 
+          chapterId: chapterId,
+          bookId: book.id
+        };
+        await upsertRecord("topics", generalTopic);
+        state.topics.push(generalTopic);
+      }
+      topicIds = [generalTopic.id];
+    } else {
+      const subject = state.subjects.find(s => s.id === book.subjectId);
+      const generalTopicName = `General - ${subject?.name || "Subject"}`;
+      let generalTopic = state.topics.find(t => t.subjectId === book.subjectId && t.name === generalTopicName);
+      if (!generalTopic) {
+        let generalChapter = state.chapters.find(c => c.subjectId === book.subjectId && c.name === "General Content" && c.bookId === book.id);
+        if (!generalChapter) {
+          generalChapter = { id: `ch-gen-${Date.now()}`, name: "General Content", subjectId: book.subjectId, bookId: book.id };
+          await upsertRecord("chapters", generalChapter);
+          state.chapters.push(generalChapter);
+        }
+        generalTopic = { 
+          id: `top-gen-${Date.now()}`, 
+          name: generalTopicName, 
+          subjectId: book.subjectId, 
+          chapterId: generalChapter.id,
+          bookId: book.id
+        };
+        await upsertRecord("topics", generalTopic);
+        state.topics.push(generalTopic);
+      }
+      topicIds = [generalTopic.id];
+    }
+  }
+
+  if (!book.parsedText) {
+    res.status(400).json({ message: "Book does not have parsed text. Was it fully processed?" });
+    return;
+  }
+
+  try {
+    const extracted = await extractQuestionsFromPdfText({
+      text: book.parsedText,
+      subjectId: book.subjectId,
+      topicId: topicIds[0],
+      sourceType: book.bookType || "reference",
+      bookId: book.id
+    });
+
+    for (const q of extracted) {
+      await upsertRecord("questions", q);
+    }
+
+    res.json({
+      message: `Successfully extracted and saved ${extracted.length} questions from the MCQ PDF.`,
+      count: extracted.length
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error?.message || "Failed to extract MCQ questions" });
+  }
+});
+
 apiRouter.post("/exams/generate/:blueprintId", requireRole(["super_admin", "teacher"]), async (req, res) => {
   const blueprintId = getSingleFormValue(req.params.blueprintId);
   if (!blueprintId) {
@@ -837,8 +935,144 @@ apiRouter.post("/exams/:examId/submit", async (req, res) => {
     return;
   }
 
+  // When submitting, also update live tracker to submitted
+  try {
+    const tracker = {
+      id: `${req.params.examId}-${effectiveStudentId}`,
+      examId: req.params.examId,
+      studentId: effectiveStudentId,
+      studentName: authUser?.name || "Unknown Student",
+      answeredCount: answers.length,
+      totalQuestions: answers.length,
+      currentQuestionIndex: 0,
+      status: "submitted",
+      lastActive: new Date().toISOString()
+    };
+    await upsertRecord("liveTrackers", tracker);
+  } catch (err) {
+    console.error("Failed to update tracker on submit:", err);
+  }
+
   res.json(result);
 });
+
+apiRouter.post("/exams/:examId/heartbeat", async (req, res) => {
+  const { examId } = req.params;
+  const { answeredCount, totalQuestions, currentQuestionIndex, status } = req.body as {
+    answeredCount: number;
+    totalQuestions: number;
+    currentQuestionIndex: number;
+    status: "taking" | "submitted";
+  };
+  const authUserId = (req as AuthenticatedRequest).auth?.sub;
+  const state = await getAppState();
+  const authUser = state.users.find((item) => item.id === authUserId);
+  const effectiveStudentId = authUser?.studentId ?? authUserId;
+
+  if (!effectiveStudentId) {
+    res.status(400).json({ message: "Student authentication required" });
+    return;
+  }
+
+  const student = state.students.find((s) => s.id === effectiveStudentId);
+  const studentName = student?.name || authUser?.name || "Unknown Student";
+
+  const tracker = {
+    id: `${examId}-${effectiveStudentId}`,
+    examId,
+    studentId: effectiveStudentId,
+    studentName,
+    answeredCount: Number(answeredCount) || 0,
+    totalQuestions: Number(totalQuestions) || 0,
+    currentQuestionIndex: Number(currentQuestionIndex) || 0,
+    status: status || "taking",
+    lastActive: new Date().toISOString()
+  };
+
+  await upsertRecord("liveTrackers", tracker);
+  res.json({ status: "ok" });
+});
+
+apiRouter.get("/exams/:examId/live-status", requireRole(["super_admin", "teacher"]), async (req, res) => {
+  const { examId } = req.params;
+  const state = await getAppState();
+  const { listRecords } = await import("../data/database.js");
+
+  const exam = state.exams.find((e) => e.id === examId);
+  if (!exam) {
+    res.status(404).json({ message: "Exam not found" });
+    return;
+  }
+
+  const batchStudents = state.students.filter((s) => s.batchId === exam.batchId);
+  const allTrackers = await listRecords<any>("liveTrackers");
+  const examTrackers = allTrackers.filter((t) => t.examId === examId);
+  const examSubmissions = state.submissions.filter((s) => s.examId === examId);
+
+  const now = Date.now();
+  const activeThresholdMs = 20 * 1000;
+
+  const studentStatuses = batchStudents.map((student) => {
+    const submission = examSubmissions.find((sub) => sub.studentId === student.id);
+    const tracker = examTrackers.find((t) => t.studentId === student.id);
+
+    let status: "not_started" | "active" | "offline" | "submitted" = "not_started";
+    let answeredCount = 0;
+    let totalQuestions = exam.questions.length;
+    let currentQuestionIndex = 0;
+    let lastActive: string | undefined = undefined;
+
+    if (submission) {
+      status = "submitted";
+      answeredCount = totalQuestions;
+    } else if (tracker) {
+      answeredCount = tracker.answeredCount;
+      totalQuestions = tracker.totalQuestions || totalQuestions;
+      currentQuestionIndex = tracker.currentQuestionIndex;
+      lastActive = tracker.lastActive;
+
+      const lastActiveTime = new Date(tracker.lastActive).getTime();
+      if (tracker.status === "submitted") {
+        status = "submitted";
+        status = "submitted";
+      } else if (now - lastActiveTime < activeThresholdMs) {
+        status = "active";
+      } else {
+        status = "offline";
+      }
+    }
+
+    return {
+      studentId: student.id,
+      studentName: student.name,
+      status,
+      answeredCount,
+      totalQuestions,
+      currentQuestionIndex,
+      lastActive
+    };
+  });
+
+  const activeCount = studentStatuses.filter((s) => s.status === "active").length;
+  const submittedCount = studentStatuses.filter((s) => s.status === "submitted").length;
+  const offlineCount = studentStatuses.filter((s) => s.status === "offline").length;
+  const notStartedCount = studentStatuses.filter((s) => s.status === "not_started").length;
+
+  res.json({
+    examId: exam.id,
+    examName: exam.name,
+    totalQuestions: exam.questions.length,
+    statistics: {
+      totalRegistered: batchStudents.length,
+      activeCount,
+      submittedCount,
+      offlineCount,
+      notStartedCount
+    },
+    students: studentStatuses
+  });
+});
+
 
 apiRouter.post("/subject-books/:bookId/detect-curriculum", requireRole(["super_admin"]), async (req, res) => {
   const state = await getAppState();
