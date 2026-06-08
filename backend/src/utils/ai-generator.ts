@@ -91,6 +91,9 @@ async function generateContentWithFallback(prompt: string, fallbackJson: string 
   if (process.env.OPENROUTER_API_KEY) {
     const openRouterModels = [
       process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini",
+      "deepseek/deepseek-chat",                 // DeepSeek-V3 (extremely cheap paid model, highly structured)
+      "deepseek/deepseek-r1:free",              // DeepSeek-R1 (free backup model)
+      "deepseek/deepseek-chat:free",            // DeepSeek-V3 (free backup model)
       "google/gemini-1.5-flash",                // Fallback Gemini-1.5-flash hosted on OpenRouter
       "meta-llama/llama-3-8b-instruct:free"     // Free backup model
     ];
