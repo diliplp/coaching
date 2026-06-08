@@ -722,6 +722,8 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
     return;
   }
 
+  const parsedText = book.parsedText;
+
   // Start the extraction process in the background to avoid 524 Cloudflare Gateway Timeout
   (async () => {
     try {
@@ -733,7 +735,7 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
       console.log(`[Background] Found ${diagrams.length} diagrams for book ${book.id}.`);
 
       const extracted = await extractQuestionsFromPdfText({
-        text: book.parsedText,
+        text: parsedText,
         subjectId: book.subjectId,
         topicId: topicIds[0],
         sourceType: book.bookType || "reference",
