@@ -722,34 +722,39 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
     return;
   }
 
-  try {
-    const filename = book.fileUrl.split("/").pop() || "";
-    const pdfPath = path.join(booksUploadsRoot, filename);
-    
-    console.log(`Extracting diagrams first for book ${book.id} at ${pdfPath}...`);
-    const diagrams = await extractPdfDiagrams(pdfPath, book.id);
-    console.log(`Found ${diagrams.length} diagrams for book ${book.id}.`);
+  // Start the extraction process in the background to avoid 524 Cloudflare Gateway Timeout
+  (async () => {
+    try {
+      const filename = book.fileUrl.split("/").pop() || "";
+      const pdfPath = path.join(booksUploadsRoot, filename);
+      
+      console.log(`[Background] Extracting diagrams first for book ${book.id} at ${pdfPath}...`);
+      const diagrams = await extractPdfDiagrams(pdfPath, book.id);
+      console.log(`[Background] Found ${diagrams.length} diagrams for book ${book.id}.`);
 
-    const extracted = await extractQuestionsFromPdfText({
-      text: book.parsedText,
-      subjectId: book.subjectId,
-      topicId: topicIds[0],
-      sourceType: book.bookType || "reference",
-      bookId: book.id,
-      diagrams
-    });
+      const extracted = await extractQuestionsFromPdfText({
+        text: book.parsedText,
+        subjectId: book.subjectId,
+        topicId: topicIds[0],
+        sourceType: book.bookType || "reference",
+        bookId: book.id,
+        diagrams
+      });
 
-    for (const q of extracted) {
-      await upsertRecord("questions", q);
+      console.log(`[Background] Saving ${extracted.length} extracted questions...`);
+      for (const q of extracted) {
+        await upsertRecord("questions", q);
+      }
+      console.log(`[Background] Successfully extracted and saved ${extracted.length} questions for book ${book.id}.`);
+    } catch (bgError: any) {
+      console.error(`[Background] Error during question extraction for book ${book.id}:`, bgError);
     }
+  })();
 
-    res.json({
-      message: `Successfully extracted and saved ${extracted.length} questions from the MCQ PDF.`,
-      count: extracted.length
-    });
-  } catch (error: any) {
-    res.status(500).json({ message: error?.message || "Failed to extract MCQ questions" });
-  }
+  res.json({
+    message: "AI extraction has started in the background. The questions and diagrams will populate in the Question Bank within 1-2 minutes. You can refresh or visit the Question Bank shortly.",
+    count: 0
+  });
 });
 
 apiRouter.post("/exams/generate/:blueprintId", requireRole(["super_admin", "teacher"]), async (req, res) => {
