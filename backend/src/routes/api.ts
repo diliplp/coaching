@@ -91,6 +91,41 @@ apiRouter.post("/auth/login", async (req, res) => {
   res.json({ token, user: safeUser });
 });
 
+apiRouter.get("/debug-env", async (req, res) => {
+  const { exec } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const execPromise = promisify(exec);
+  
+  const results: any = {};
+  
+  const commands = [
+    "echo $PATH",
+    "which python",
+    "python --version",
+    "which python3",
+    "python3 --version",
+    "which python3.11",
+    "python3.11 --version",
+    "which tesseract",
+    "tesseract --version",
+    "tesseract --list-langs",
+    "pip --version",
+    "pip3 --version",
+    "echo $TESSDATA_PREFIX"
+  ];
+  
+  for (const cmd of commands) {
+    try {
+      const { stdout, stderr } = await execPromise(cmd);
+      results[cmd] = { stdout: stdout.trim(), stderr: stderr.trim() };
+    } catch (err: any) {
+      results[cmd] = { error: err.message };
+    }
+  }
+  
+  res.json(results);
+});
+
 apiRouter.use(requireAuth);
 
 apiRouter.get("/me", async (req, res) => {
@@ -311,40 +346,6 @@ apiRouter.delete("/questions/:id", requireRole(["super_admin", "teacher"]), asyn
   res.status(204).end();
 });
 
-apiRouter.get("/debug-env", async (req, res) => {
-  const { exec } = await import("node:child_process");
-  const { promisify } = await import("node:util");
-  const execPromise = promisify(exec);
-  
-  const results: any = {};
-  
-  const commands = [
-    "echo $PATH",
-    "which python",
-    "python --version",
-    "which python3",
-    "python3 --version",
-    "which python3.11",
-    "python3.11 --version",
-    "which tesseract",
-    "tesseract --version",
-    "tesseract --list-langs",
-    "pip --version",
-    "pip3 --version",
-    "echo $TESSDATA_PREFIX"
-  ];
-  
-  for (const cmd of commands) {
-    try {
-      const { stdout, stderr } = await execPromise(cmd);
-      results[cmd] = { stdout: stdout.trim(), stderr: stderr.trim() };
-    } catch (err: any) {
-      results[cmd] = { error: err.message };
-    }
-  }
-  
-  res.json(results);
-});
 
 apiRouter.get("/analytics", requireRole(["super_admin", "teacher", "student"]), async (req: Request, res: Response) => {
   const authUserId = (req as AuthenticatedRequest).auth?.sub;
