@@ -834,21 +834,52 @@ export async function extractQuestionsFromPdfText(params: {
 
   // Deduplicate and merge similar questions in-memory
   const uniqueQuestions: any[] = [];
+  
+  function isDuplicateQuestion(p1: string, p2: string): boolean {
+    const clean1 = p1.toLowerCase().replace(/[^a-z0-9\s]/g, "");
+    const clean2 = p2.toLowerCase().replace(/[^a-z0-9\s]/g, "");
+    
+    const words1 = clean1.split(/\s+/).filter(w => w.length > 2);
+    const words2 = clean2.split(/\s+/).filter(w => w.length > 2);
+    
+    if (words1.length === 0 || words2.length === 0) return false;
+    
+    const set1 = new Set(words1);
+    const set2 = new Set(words2);
+    
+    let intersection = 0;
+    for (const w of set1) {
+      if (set2.has(w)) {
+        intersection++;
+      }
+    }
+    const union = set1.size + set2.size - intersection;
+    const similarity = intersection / union;
+    
+    if (similarity < 0.65) return false;
+    
+    // Verify that all numbers match
+    const numMatches1 = p1.match(/\d+(\.\d+)?/g) || [];
+    const numMatches2 = p2.match(/\d+(\.\d+)?/g) || [];
+    const nums1 = numMatches1.map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
+    const nums2 = numMatches2.map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
+    
+    if (nums1.length !== nums2.length) return false;
+    for (let i = 0; i < nums1.length; i++) {
+      if (Math.abs(nums1[i] - nums2[i]) > 0.0001) {
+        return false;
+      }
+    }
+    
+    return true;
+  }
+
   for (const q of allParsedQuestions) {
     const prompt = q.prompt || "";
     let foundIndex = -1;
     for (let j = 0; j < uniqueQuestions.length; j++) {
       const existingPrompt = uniqueQuestions[j].prompt || "";
-      const norm1 = existingPrompt.toLowerCase().replace(/[^a-z0-9]/g, "");
-      const norm2 = prompt.toLowerCase().replace(/[^a-z0-9]/g, "");
-      
-      let isMatch = norm1 === norm2;
-      if (!isMatch && norm1.length > 25 && norm2.length > 25) {
-        if (norm1.includes(norm2) || norm2.includes(norm1)) {
-          isMatch = true;
-        }
-      }
-      if (isMatch) {
+      if (isDuplicateQuestion(existingPrompt, prompt)) {
         foundIndex = j;
         break;
       }
