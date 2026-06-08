@@ -108,6 +108,7 @@ export interface Question {
   explanation: string;
   sourceType?: QuestionSource;
   isVerified?: boolean;
+  bookId?: string;
 }
 
 export interface ExamBlueprintTopicRule {

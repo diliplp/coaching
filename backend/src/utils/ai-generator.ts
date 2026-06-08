@@ -1,5 +1,6 @@
 import { Question, QuestionOption, QuestionType, QuestionSource } from "../types.js";
 import { listRecords } from "../data/database.js";
+import crypto from "node:crypto";
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
@@ -783,7 +784,52 @@ export async function extractQuestionsFromPdfText(params: {
     }
   }
 
-  return allParsedQuestions.map((q: any, i: number) => {
+  // Deduplicate and merge similar questions in-memory
+  const uniqueQuestions: any[] = [];
+  for (const q of allParsedQuestions) {
+    const prompt = q.prompt || "";
+    let foundIndex = -1;
+    for (let j = 0; j < uniqueQuestions.length; j++) {
+      const existingPrompt = uniqueQuestions[j].prompt || "";
+      const norm1 = existingPrompt.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const norm2 = prompt.toLowerCase().replace(/[^a-z0-9]/g, "");
+      
+      let isMatch = norm1 === norm2;
+      if (!isMatch && norm1.length > 25 && norm2.length > 25) {
+        if (norm1.includes(norm2) || norm2.includes(norm1)) {
+          isMatch = true;
+        }
+      }
+      if (isMatch) {
+        foundIndex = j;
+        break;
+      }
+    }
+
+    if (foundIndex !== -1) {
+      const existing = uniqueQuestions[foundIndex];
+      const hasExplExisting = !!existing.explanation && existing.explanation.trim().length > 0;
+      const hasExplNew = !!q.explanation && q.explanation.trim().length > 0;
+      
+      // If the new one has explanation but existing doesn't, prefer new
+      if (hasExplNew && !hasExplExisting) {
+        uniqueQuestions[foundIndex] = { ...existing, ...q };
+      } else if (!hasExplNew && !hasExplExisting && q.prompt.length > existing.prompt.length) {
+        uniqueQuestions[foundIndex] = { ...existing, ...q };
+      } else {
+        if (!existing.explanation && q.explanation) {
+          existing.explanation = q.explanation;
+        }
+        if (q.pageNumber && !existing.pageNumber) {
+          existing.pageNumber = q.pageNumber;
+        }
+      }
+    } else {
+      uniqueQuestions.push(q);
+    }
+  }
+
+  return uniqueQuestions.map((q: any, i: number) => {
     const correctOptionIds: string[] = [];
     const options: QuestionOption[] = (q.options || []).map((o: any, idx: number) => {
       const oId = `opt-pdf-${Date.now()}-${i}-${idx}-${Math.random().toString(36).substr(2, 4)}`;
@@ -824,8 +870,12 @@ export async function extractQuestionsFromPdfText(params: {
       promptText += "\n[IMAGE: /uploads/q6_diagram.png]";
     }
 
+    const normalizedPrompt = promptText.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const promptHash = crypto.createHash("sha256").update(normalizedPrompt).digest("hex").substring(0, 16);
+    const qId = `que-pdf-${params.bookId || "book"}-${promptHash}`;
+
     return {
-      id: `que-pdf-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
+      id: qId,
       subjectId: params.subjectId,
       topicId: params.topicId,
       type: correctOptionIds.length > 1 ? "multi_correct" : "single_correct",

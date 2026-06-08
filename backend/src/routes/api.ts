@@ -546,6 +546,12 @@ apiRouter.post("/subject-books", requireRole(["super_admin"]), upload.single("pd
 apiRouter.delete("/subject-books/:id", requireRole(["super_admin"]), async (req, res) => {
   try {
     const { id } = req.params;
+    const state = await getAppState();
+    const bookQuestions = state.questions.filter(q => q.bookId === id);
+    console.log(`Deleting ${bookQuestions.length} questions associated with book ${id}...`);
+    for (const q of bookQuestions) {
+      await deleteRecord("questions", q.id);
+    }
     await deleteRecord("subjectBooks", id as string);
     res.status(204).end();
   } catch (error) {
