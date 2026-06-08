@@ -24,14 +24,11 @@ export async function extractPdfText(filePath: string, runOcr?: boolean) {
       // Overwrite the original PDF with the OCR/searchable version
       await fs.unlink(filePath);
       await fs.rename(tempPdfPath, filePath);
-
-      // Read the extracted text from the output text file
-      const extractedText = await fs.readFile(tempTxtPath, "utf-8");
       
       // Clean up text file
       await fs.unlink(tempTxtPath);
 
-      // Extract page count using pdfjs-dist on the newly text-enabled PDF
+      // Extract page count and text using pdfjs-dist on the newly text-enabled PDF
       const dataBuffer = await fs.readFile(filePath);
       const uint8Array = new Uint8Array(dataBuffer);
       const loadingTask = pdfjs.getDocument({
@@ -41,11 +38,23 @@ export async function extractPdfText(filePath: string, runOcr?: boolean) {
       });
       const pdfDocument = await loadingTask.promise;
       const pageCount = pdfDocument.numPages;
+      let fullText = "";
+
+      for (let i = 1; i <= pageCount; i++) {
+        const page = await pdfDocument.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+          .map((item: any) => item.str)
+          .join(" ");
+        fullText += `--- PAGE ${i} ---\n` + pageText + "\n\n";
+      }
+
+      const extractedText = fullText.trim();
 
       return {
         pageCount,
-        extractedText: extractedText.trim(),
-        previewText: extractedText.trim().substring(0, 2000),
+        extractedText,
+        previewText: extractedText.substring(0, 2000),
       };
     } catch (err: any) {
       console.error("Python OCR process failed:", err);
