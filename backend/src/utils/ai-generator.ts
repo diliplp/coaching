@@ -671,7 +671,9 @@ function shouldSkipPage(pageText: string): boolean {
 
 async function extractFromChunkText(chunkText: string): Promise<any[]> {
   const prompt = `You are an expert data extraction assistant. Your task is to read the textbook/paper text below and extract EVERY multiple-choice question (MCQ) present in it.
-Do NOT generate new questions, but DO identify and reconstruct any mathematical equations, variables, or chemical formulas that were garbled during the OCR/scanning process.
+Do NOT generate new questions, and do NOT invent any questions.
+
+CRITICAL: Only extract questions that are explicitly written in the source text. If the text does not contain any actual multiple-choice questions (e.g. it is just metadata, instructions, student name, roll number, blank page, OMR sheet, or a list of codes), you MUST return an empty array of questions: {"questions": []}. Do NOT invent, hallucinate, or generate any new questions under any circumstances.
 
 For each question, find:
 1. The question prompt/text.
@@ -756,7 +758,30 @@ export async function extractQuestionsFromPdfText(params: {
     for (let i = 0; i < chunks.length; i++) {
       console.log(`Extracting from chunk ${i + 1}/${chunks.length} sequentially...`);
       const qList = await extractFromChunkText(chunks[i]);
-      allParsedQuestions.push(...qList.map(q => ({ ...q, pageNumber: 1 })));
+      
+      const validList = qList.filter((q: any) => {
+        const prompt = q.prompt || "";
+        if (!prompt) return false;
+        if (prompt.length < 15) return true;
+        const cleanPrompt = prompt.toLowerCase().replace(/[^a-z0-9\s]/g, "");
+        const cleanSource = chunks[i].toLowerCase().replace(/[^a-z0-9\s]/g, "");
+        const words = cleanPrompt.split(/\s+/).filter((w: string) => w.length > 3);
+        if (words.length === 0) return true;
+        let matchCount = 0;
+        for (const word of words) {
+          if (cleanSource.includes(word)) {
+            matchCount++;
+          }
+        }
+        const ratio = matchCount / words.length;
+        if (ratio < 0.35) {
+          console.log(`[Validation] Discarded hallucinated question: "${prompt.substring(0, 60)}..." (match ratio: ${ratio})`);
+          return false;
+        }
+        return true;
+      });
+
+      allParsedQuestions.push(...validList.map(q => ({ ...q, pageNumber: 1 })));
       if (i < chunks.length - 1) {
         const delay = isGeminiQuotaExceeded ? 1000 : 8000;
         await new Promise(resolve => setTimeout(resolve, delay));
@@ -773,7 +798,30 @@ export async function extractQuestionsFromPdfText(params: {
 
       console.log(`Extracting from page ${i + 1}/${pages.length} sequentially...`);
       const qList = await extractFromChunkText(pageText);
-      const taggedList = qList.map((q: any) => ({ ...q, pageNumber: i + 1 }));
+      
+      const validList = qList.filter((q: any) => {
+        const prompt = q.prompt || "";
+        if (!prompt) return false;
+        if (prompt.length < 15) return true;
+        const cleanPrompt = prompt.toLowerCase().replace(/[^a-z0-9\s]/g, "");
+        const cleanSource = pageText.toLowerCase().replace(/[^a-z0-9\s]/g, "");
+        const words = cleanPrompt.split(/\s+/).filter((w: string) => w.length > 3);
+        if (words.length === 0) return true;
+        let matchCount = 0;
+        for (const word of words) {
+          if (cleanSource.includes(word)) {
+            matchCount++;
+          }
+        }
+        const ratio = matchCount / words.length;
+        if (ratio < 0.35) {
+          console.log(`[Validation] Discarded hallucinated question: "${prompt.substring(0, 60)}..." (match ratio: ${ratio})`);
+          return false;
+        }
+        return true;
+      });
+
+      const taggedList = validList.map((q: any) => ({ ...q, pageNumber: i + 1 }));
       allParsedQuestions.push(...taggedList);
 
       // Wait between active pages to avoid rate limits
