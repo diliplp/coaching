@@ -3,7 +3,7 @@ import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
-import { scriptsRoot } from "./paths.js";
+import { scriptsRoot, uploadsRoot } from "./paths.js";
 
 const execPromise = promisify(exec);
 
@@ -76,7 +76,7 @@ export async function extractPdfText(filePath: string, runOcr?: boolean) {
       const pageText = textContent.items
         .map((item: any) => item.str)
         .join(" ");
-      fullText += pageText + "\n\n";
+      fullText += `--- PAGE ${i} ---\n` + pageText + "\n\n";
     }
 
     const extractedText = fullText.trim();
@@ -92,3 +92,32 @@ export async function extractPdfText(filePath: string, runOcr?: boolean) {
     throw new Error(`PDF extraction failed: ${err.message}`);
   }
 }
+
+export async function extractPdfDiagrams(
+  filePath: string,
+  bookId: string
+): Promise<Array<{ page: number; url: string; bbox: number[] }>> {
+  const defaultPython = process.platform === "win32" ? "python" : "python3";
+  const pythonPath = process.env.PDF_PYTHON_PATH || defaultPython;
+  const scriptPath = path.join(scriptsRoot, "extract_diagrams.py");
+  const outputDir = path.join(uploadsRoot, "diagrams");
+
+  try {
+    await fs.mkdir(outputDir, { recursive: true });
+    console.log(`Running Python diagram extraction on: ${filePath}`);
+    const { stdout } = await execPromise(`"${pythonPath}" "${scriptPath}" "${filePath}" "${outputDir}" "${bookId}"`);
+    
+    const lines = stdout.split("\n");
+    const jsonStr = lines.join("\n").trim();
+    const startIdx = jsonStr.indexOf("[");
+    const endIdx = jsonStr.lastIndexOf("]");
+    if (startIdx !== -1 && endIdx !== -1) {
+      return JSON.parse(jsonStr.substring(startIdx, endIdx + 1));
+    }
+    return [];
+  } catch (err: any) {
+    console.error("Python diagram extraction failed:", err);
+    return [];
+  }
+}
+

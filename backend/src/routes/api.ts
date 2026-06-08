@@ -13,7 +13,8 @@ import {
   getExamQuestions,
   listBatchAdaptivePlans
 } from "../utils/exam-engine.js";
-import { extractPdfText } from "../utils/pdf.js";
+import path from "node:path";
+import { extractPdfText, extractPdfDiagrams } from "../utils/pdf.js";
 import { generateQuestionsFromText, ensureEnoughQuestions, parseExamPrompt, detectCurriculumFromText, generateOfflineBoardPaper, extractQuestionsFromPdfText } from "../utils/ai-generator.js";
 import { listReferencePapers } from "../utils/reference-papers.js";
 import { findUserByEmail, requireAuth, requireRole, signAuthToken, verifyPassword } from "../utils/auth.js";
@@ -722,12 +723,20 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
   }
 
   try {
+    const filename = book.fileUrl.split("/").pop() || "";
+    const pdfPath = path.join(booksUploadsRoot, filename);
+    
+    console.log(`Extracting diagrams first for book ${book.id} at ${pdfPath}...`);
+    const diagrams = await extractPdfDiagrams(pdfPath, book.id);
+    console.log(`Found ${diagrams.length} diagrams for book ${book.id}.`);
+
     const extracted = await extractQuestionsFromPdfText({
       text: book.parsedText,
       subjectId: book.subjectId,
       topicId: topicIds[0],
       sourceType: book.bookType || "reference",
-      bookId: book.id
+      bookId: book.id,
+      diagrams
     });
 
     for (const q of extracted) {
