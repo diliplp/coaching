@@ -835,12 +835,15 @@ export async function extractQuestionsFromPdfText(params: {
   // Deduplicate and merge similar questions in-memory
   const uniqueQuestions: any[] = [];
   
-  function isDuplicateQuestion(p1: string, p2: string): boolean {
+  function isDuplicateQuestion(q1: any, q2: any): boolean {
+    const p1 = q1.prompt || "";
+    const p2 = q2.prompt || "";
+
     const clean1 = p1.toLowerCase().replace(/[^a-z0-9\s]/g, "");
     const clean2 = p2.toLowerCase().replace(/[^a-z0-9\s]/g, "");
     
-    const words1 = clean1.split(/\s+/).filter(w => w.length > 2);
-    const words2 = clean2.split(/\s+/).filter(w => w.length > 2);
+    const words1 = clean1.split(/\s+/).filter((w: string) => w.length > 2);
+    const words2 = clean2.split(/\s+/).filter((w: string) => w.length > 2);
     
     if (words1.length === 0 || words2.length === 0) return false;
     
@@ -856,30 +859,61 @@ export async function extractQuestionsFromPdfText(params: {
     const union = set1.size + set2.size - intersection;
     const similarity = intersection / union;
     
-    if (similarity < 0.65) return false;
+    if (similarity < 0.5) return false;
     
-    // Verify that all numbers match
-    const numMatches1 = p1.match(/\d+(\.\d+)?/g) || [];
-    const numMatches2 = p2.match(/\d+(\.\d+)?/g) || [];
-    const nums1 = numMatches1.map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
-    const nums2 = numMatches2.map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
+    // Normalize and extract numbers
+    const unicodeMap: Record<string, string> = {
+      '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4', '₅': '5', '₆': '6', '₇': '7', '₈': '8', '₉': '9',
+      '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9',
+      '⁻': '-'
+    };
+    const normalizeNums = (str: string) => {
+      let norm = str.split('').map(char => unicodeMap[char] || char).join('');
+      const matches = norm.match(/-?\d+(\.\d+)?/g) || [];
+      return matches.map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
+    };
     
-    if (nums1.length !== nums2.length) return false;
-    for (let i = 0; i < nums1.length; i++) {
-      if (Math.abs(nums1[i] - nums2[i]) > 0.0001) {
-        return false;
+    const nums1 = normalizeNums(p1);
+    const nums2 = normalizeNums(p2);
+    
+    let numbersMatch = false;
+    if (nums1.length === nums2.length) {
+      numbersMatch = true;
+      for (let i = 0; i < nums1.length; i++) {
+        if (Math.abs(nums1[i] - nums2[i]) > 0.0001) {
+          numbersMatch = false;
+          break;
+        }
       }
     }
     
-    return true;
+    const opts1 = q1.options || [];
+    const opts2 = q2.options || [];
+    let optionsMatch = false;
+    if (opts1.length > 0 && opts1.length === opts2.length) {
+      const vals1 = opts1.map((o: any) => (o.value || "").toLowerCase().replace(/[^a-z0-9]/g, "")).sort();
+      const vals2 = opts2.map((o: any) => (o.value || "").toLowerCase().replace(/[^a-z0-9]/g, "")).sort();
+      let matchCount = 0;
+      for (let i = 0; i < vals1.length; i++) {
+        if (vals1[i] === vals2[i] || vals1[i].includes(vals2[i]) || vals2[i].includes(vals1[i])) {
+          matchCount++;
+        }
+      }
+      optionsMatch = matchCount >= 3;
+    }
+    
+    if (similarity >= 0.85) return true;
+    if (similarity >= 0.5) {
+      if (numbersMatch || optionsMatch) return true;
+    }
+    
+    return false;
   }
 
   for (const q of allParsedQuestions) {
-    const prompt = q.prompt || "";
     let foundIndex = -1;
     for (let j = 0; j < uniqueQuestions.length; j++) {
-      const existingPrompt = uniqueQuestions[j].prompt || "";
-      if (isDuplicateQuestion(existingPrompt, prompt)) {
+      if (isDuplicateQuestion(uniqueQuestions[j], q)) {
         foundIndex = j;
         break;
       }

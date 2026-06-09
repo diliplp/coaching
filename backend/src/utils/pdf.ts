@@ -22,14 +22,20 @@ export async function extractPdfText(filePath: string, runOcr?: boolean) {
       if (stderr) console.error("OCR Stderr:", stderr);
 
       // Overwrite the original PDF with the OCR/searchable version
-      await fs.unlink(filePath);
-      await fs.rename(tempPdfPath, filePath);
+      let activePdfPath = filePath;
+      try {
+        await fs.unlink(filePath);
+        await fs.rename(tempPdfPath, filePath);
+      } catch (err: any) {
+        console.warn(`[OCR] Could not overwrite original PDF (locked on Windows): ${err.message}. Using temp OCR PDF path: ${tempPdfPath}`);
+        activePdfPath = tempPdfPath;
+      }
       
       // Clean up text file
-      await fs.unlink(tempTxtPath);
+      try { await fs.unlink(tempTxtPath); } catch {}
 
       // Extract page count and text using pdfjs-dist on the newly text-enabled PDF
-      const dataBuffer = await fs.readFile(filePath);
+      const dataBuffer = await fs.readFile(activePdfPath);
       const uint8Array = new Uint8Array(dataBuffer);
       const loadingTask = pdfjs.getDocument({
         data: uint8Array,
@@ -50,6 +56,11 @@ export async function extractPdfText(filePath: string, runOcr?: boolean) {
       }
 
       const extractedText = fullText.trim();
+
+      // Clean up temp pdf if it was not renamed
+      if (activePdfPath === tempPdfPath) {
+        try { await fs.unlink(tempPdfPath); } catch {}
+      }
 
       return {
         pageCount,
