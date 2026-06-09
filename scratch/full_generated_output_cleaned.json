@@ -1,0 +1,1562 @@
+[
+  {
+    "id": "que-pdf-book-e1d08a3ea841a237",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "Which of the following aqueous solutions should have the highest boiling point?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-0-1-vk37"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-0-0-dgn5",
+        "label": "A",
+        "value": "1.0 M NaOH"
+      },
+      {
+        "id": "opt-pdf-1781014837855-0-1-vk37",
+        "label": "B",
+        "value": "1.0 M Na2SO4"
+      },
+      {
+        "id": "opt-pdf-1781014837855-0-2-imwo",
+        "label": "C",
+        "value": "1.0 M NH4NO3"
+      },
+      {
+        "id": "opt-pdf-1781014837855-0-3-dimx",
+        "label": "D",
+        "value": "1.0 M KNO3"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 1
+  },
+  {
+    "id": "que-pdf-book-bfbdfecf6288b763",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "The unit of ebullioscopic constant is",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-1-0-tbl5"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-1-0-tbl5",
+        "label": "A",
+        "value": "K kg mol^{-1} or K (molality)^{-1}"
+      },
+      {
+        "id": "opt-pdf-1781014837855-1-1-vp2e",
+        "label": "B",
+        "value": "mol kg K^{-1} or K' (molality)"
+      },
+      {
+        "id": "opt-pdf-1781014837855-1-2-o96u",
+        "label": "C",
+        "value": "kg mol^{-1} K^{-1} or K (molality)^{-1}"
+      },
+      {
+        "id": "opt-pdf-1781014837855-1-3-3rvo",
+        "label": "D",
+        "value": "K mol kg^{-1} or K (molality)"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 1
+  },
+  {
+    "id": "que-pdf-book-d36afc7060d9d1f1",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "The values of Van't Hoff factors for KCl, NaCl and K2SO4, respectively, are",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-2-1-m9n9"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-2-0-wov9",
+        "label": "A",
+        "value": "2, 2 and 2"
+      },
+      {
+        "id": "opt-pdf-1781014837855-2-1-m9n9",
+        "label": "B",
+        "value": "2, 2 and 3"
+      },
+      {
+        "id": "opt-pdf-1781014837855-2-2-i5nu",
+        "label": "C",
+        "value": "1, 1 and 2"
+      },
+      {
+        "id": "opt-pdf-1781014837855-2-3-299u",
+        "label": "D",
+        "value": "1, 1 and 1"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 1
+  },
+  {
+    "id": "que-pdf-book-3d62a0ee2a6de049",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "We have three aqueous solutions of NaCl labelled as ‘A,’ ‘B’ and ‘C’ with concentrations 0.1 M, 0.01 M and 0.001 M, respectively. The value of Van't Hoff factor for these solutions will be in the",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-3-0-w39i"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-3-0-w39i",
+        "label": "A",
+        "value": "i, <i, <i"
+      },
+      {
+        "id": "opt-pdf-1781014837855-3-1-pw7q",
+        "label": "B",
+        "value": "1, >1, >1"
+      },
+      {
+        "id": "opt-pdf-1781014837855-3-2-63qu",
+        "label": "C",
+        "value": "1, =1, 4"
+      },
+      {
+        "id": "opt-pdf-1781014837855-3-3-6bkl",
+        "label": "D",
+        "value": "i, <1, >1"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 1
+  },
+  {
+    "id": "que-pdf-book-de92026fb4294556",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "4 L of 0.02 M aqueous solution of NaCl was diluted by adding one litre of water. The molarity of the resultant solution is",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-4-3-bzz6"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-4-0-htnp",
+        "label": "A",
+        "value": "0.004"
+      },
+      {
+        "id": "opt-pdf-1781014837855-4-1-qq8k",
+        "label": "B",
+        "value": "0.008"
+      },
+      {
+        "id": "opt-pdf-1781014837855-4-2-a943",
+        "label": "C",
+        "value": "0.012"
+      },
+      {
+        "id": "opt-pdf-1781014837855-4-3-bzz6",
+        "label": "D",
+        "value": "0.016"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 1
+  },
+  {
+    "id": "que-pdf-book-5e8de75fe78c00d3",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "Consider the Figure and mark the correct option.",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-5-1-a8oh"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-5-0-kbyx",
+        "label": "A",
+        "value": "Water will move from side (A) to side (B) if a pressure lower than osmotic pressure is applied on piston (B)."
+      },
+      {
+        "id": "opt-pdf-1781014837855-5-1-a8oh",
+        "label": "B",
+        "value": "Water will move from side (B) to side (A) if a pressure greater than osmotic pressure is applied on piston (B)."
+      },
+      {
+        "id": "opt-pdf-1781014837855-5-2-1nnh",
+        "label": "C",
+        "value": "Water will move from side (B) to side (A) if a pressure equal to osmotic pressure is applied on piston (B)."
+      },
+      {
+        "id": "opt-pdf-1781014837855-5-3-jpww",
+        "label": "D",
+        "value": "Water will move from side (A) to side (B) if pressure equal to osmotic pressure is applied on piston (A)."
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 1
+  },
+  {
+    "id": "que-pdf-book-eaff5b7ab135c65c",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "Which of the following aqueous solution has same osmotic pressure?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-6-1-q9sb"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-6-0-h22y",
+        "label": "A",
+        "value": "(i) 0.1 M NaCl solution (ii) 0.1 M glucose solution (iii) 0.6 gm urea in 100 mL solution"
+      },
+      {
+        "id": "opt-pdf-1781014837855-6-1-q9sb",
+        "label": "B",
+        "value": "(ii), (iii), (iv)"
+      },
+      {
+        "id": "opt-pdf-1781014837855-6-2-tw2e",
+        "label": "C",
+        "value": "(i), (ii), (iv)"
+      },
+      {
+        "id": "opt-pdf-1781014837855-6-3-a52q",
+        "label": "D",
+        "value": "(i), (ii), (iv)"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 1
+  },
+  {
+    "id": "que-pdf-book-db7adb526e016541",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "Osmotic pressure of aqueous solution of urea is 500 mm at 283 K. If its temperature is maintained at 298 K, then on how much dilution its osmotic pressure would be 105.3 mm?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-7-1-md6y"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-7-0-9sk7",
+        "label": "A",
+        "value": "10 times"
+      },
+      {
+        "id": "opt-pdf-1781014837855-7-1-md6y",
+        "label": "B",
+        "value": "5 times"
+      },
+      {
+        "id": "opt-pdf-1781014837855-7-2-i2so",
+        "label": "C",
+        "value": "2.5 times"
+      },
+      {
+        "id": "opt-pdf-1781014837855-7-3-7tht",
+        "label": "D",
+        "value": "4 times"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 1
+  },
+  {
+    "id": "que-pdf-book-7e5c8fa40d35f040",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "Four solutions of K2SO4 possess concentration of 0.1 m, 0.01 m, 0.001 m and 0.0001 m respectively. So among which solution has highest Van't Hoff factor?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-8-0-2jgv"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-8-0-2jgv",
+        "label": "A",
+        "value": "0.0001 m"
+      },
+      {
+        "id": "opt-pdf-1781014837855-8-1-bm3r",
+        "label": "B",
+        "value": "0.001 m"
+      },
+      {
+        "id": "opt-pdf-1781014837855-8-2-yms0",
+        "label": "C",
+        "value": "0.01 m"
+      },
+      {
+        "id": "opt-pdf-1781014837855-8-3-5rq4",
+        "label": "D",
+        "value": "0.1 m"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 1
+  },
+  {
+    "id": "que-pdf-book-999293e7a110943d",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "To produce difference between freezing point and boiling point of a solution by 105.0°C, how much sucrose should be dissolved in 100 gm of water? (K_f = 1.86°C kg mol^{-1} and K_b = 0.51°C kg mol^{-1})",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-9-0-k2bx"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-9-0-k2bx",
+        "label": "A",
+        "value": "72 gm"
+      },
+      {
+        "id": "opt-pdf-1781014837855-9-1-0cro",
+        "label": "B",
+        "value": "34.2 gm"
+      },
+      {
+        "id": "opt-pdf-1781014837855-9-2-soxr",
+        "label": "C",
+        "value": "342 gm"
+      },
+      {
+        "id": "opt-pdf-1781014837855-9-3-9gmz",
+        "label": "D",
+        "value": "460 gm"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 1
+  },
+  {
+    "id": "que-pdf-book-85a030dd57accad4",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "The total pressure for volatile components A and B is 0.02 bar at equilibrium. If the mole fractions at component A is 0.2, then, what will be the partial pressure of component B?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-10-2-lljh"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-10-0-ojx5",
+        "label": "A",
+        "value": "0.02 bar"
+      },
+      {
+        "id": "opt-pdf-1781014837855-10-1-r4g9",
+        "label": "B",
+        "value": "0.04 bar"
+      },
+      {
+        "id": "opt-pdf-1781014837855-10-2-lljh",
+        "label": "C",
+        "value": "0.016 bar"
+      },
+      {
+        "id": "opt-pdf-1781014837855-10-3-fqlw",
+        "label": "D",
+        "value": "0.2 bar"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 1
+  },
+  {
+    "id": "que-pdf-book-ed9f0912b90dbd7b",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "1.5% Urea solution and 5.25% unknown substance’s solutions are isotonic. The density of both the solutions are 1 gm/cm³ then what is the molecular weight of unknown substance?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-11-3-5raf"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-11-0-th33",
+        "label": "A",
+        "value": "90.0 gram/mole"
+      },
+      {
+        "id": "opt-pdf-1781014837855-11-1-voy3",
+        "label": "B",
+        "value": "115.0 gram/mole"
+      },
+      {
+        "id": "opt-pdf-1781014837855-11-2-g0gz",
+        "label": "C",
+        "value": "105.0 gram/mole"
+      },
+      {
+        "id": "opt-pdf-1781014837855-11-3-5raf",
+        "label": "D",
+        "value": "210.0 gram/mole"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 1
+  },
+  {
+    "id": "que-pdf-book-8c906715ceb76045",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "How much H₂SO₄ is required to prepare 0.1 M 1 liter H₂SO₄ solution? The density of 98% W/W H₂SO₄ is 1.80 gm/mL.",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-12-1-ub4e"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-12-0-yogj",
+        "label": "A",
+        "value": "22.20 mL"
+      },
+      {
+        "id": "opt-pdf-1781014837855-12-1-ub4e",
+        "label": "B",
+        "value": "5.55 mL"
+      },
+      {
+        "id": "opt-pdf-1781014837855-12-2-tf5h",
+        "label": "C",
+        "value": "11.10 mL"
+      },
+      {
+        "id": "opt-pdf-1781014837855-12-3-tpdu",
+        "label": "D",
+        "value": "16.65 mL"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 2
+  },
+  {
+    "id": "que-pdf-book-40c87304f076bd31",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "What is the molality of 2.05 molar aqueous solution of acetic acid? The density of solution is 1.02 gram/mL.",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-13-2-mvx7"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-13-0-v3j2",
+        "label": "A",
+        "value": "114M"
+      },
+      {
+        "id": "opt-pdf-1781014837855-13-1-bb28",
+        "label": "B",
+        "value": "3.28M"
+      },
+      {
+        "id": "opt-pdf-1781014837855-13-2-mvx7",
+        "label": "C",
+        "value": "2.28M"
+      },
+      {
+        "id": "opt-pdf-1781014837855-13-3-oax9",
+        "label": "D",
+        "value": "0.44 M"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 2
+  },
+  {
+    "id": "que-pdf-book-67c83555ed3d36b9",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "Which of the following having the highest boiling point?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-14-0-nrzs"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-14-0-nrzs",
+        "label": "A",
+        "value": "0.01 M Na₂SO₄"
+      },
+      {
+        "id": "opt-pdf-1781014837855-14-1-4onm",
+        "label": "B",
+        "value": "0.015 M Sucrose"
+      },
+      {
+        "id": "opt-pdf-1781014837855-14-2-lrlg",
+        "label": "C",
+        "value": "0.015 M Glucose"
+      },
+      {
+        "id": "opt-pdf-1781014837855-14-3-cdfa",
+        "label": "D",
+        "value": "0.01 M NaNO₃"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 2
+  },
+  {
+    "id": "que-pdf-book-80092873bf1abfae",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "What will be the osmotic pressure of the solution prepared by dissolving 1.75 gram sucrose in 50 mL solution at 17 °C temperature?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-15-2-fkt3"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-15-0-fm9h",
+        "label": "A",
+        "value": "0.406"
+      },
+      {
+        "id": "opt-pdf-1781014837855-15-1-x76l",
+        "label": "B",
+        "value": "8.12"
+      },
+      {
+        "id": "opt-pdf-1781014837855-15-2-fkt3",
+        "label": "C",
+        "value": "0.822"
+      },
+      {
+        "id": "opt-pdf-1781014837855-15-3-px9q",
+        "label": "D",
+        "value": "0.0406"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 2
+  },
+  {
+    "id": "que-pdf-book-7e1d2f596f067e73",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "5% sucrose solution is isotonic with 1% 'X' solution. What will be the molecular weight of 'X'?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-16-2-qu9j"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-16-0-kziu",
+        "label": "A",
+        "value": "342 gram/mole"
+      },
+      {
+        "id": "opt-pdf-1781014837855-16-1-uvb3",
+        "label": "B",
+        "value": "180 gram/mole"
+      },
+      {
+        "id": "opt-pdf-1781014837855-16-2-qu9j",
+        "label": "C",
+        "value": "68.4 gram/mole"
+      },
+      {
+        "id": "opt-pdf-1781014837855-16-3-866c",
+        "label": "D",
+        "value": "171 gram/mole"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 2
+  },
+  {
+    "id": "que-pdf-book-b6f8b8afaaafc9bb",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "What is the vapor pressure of the solution prepared by dissolving 0.5 gram substance (Molecular weight 65) in 100 mL CCl₄? The vapor pressure of CCl₄ is 143 mm. density of CCl₄ is 1.58.",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-17-2-jqgc"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-17-0-4i4p",
+        "label": "A",
+        "value": "143.99 mm"
+      },
+      {
+        "id": "opt-pdf-1781014837855-17-1-s0wt",
+        "label": "B",
+        "value": "94.39 mm"
+      },
+      {
+        "id": "opt-pdf-1781014837855-17-2-jqgc",
+        "label": "C",
+        "value": "141.97 mm"
+      },
+      {
+        "id": "opt-pdf-1781014837855-17-3-w0y0",
+        "label": "D",
+        "value": "199.34 mm"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 2
+  },
+  {
+    "id": "que-pdf-book-0036982b13f63af8",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "The boiling point of water at 760 mm pressure is 373 K. The vapor pressure of water at 298K is 23mm. If the vaporization enthalpy is 40.656 KJ/mole, then what will be boiling point of water at 23 mm pressure?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-18-1-np6b"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-18-0-rk35",
+        "label": "A",
+        "value": "250K"
+      },
+      {
+        "id": "opt-pdf-1781014837855-18-1-np6b",
+        "label": "B",
+        "value": "298K"
+      },
+      {
+        "id": "opt-pdf-1781014837855-18-2-50a2",
+        "label": "C",
+        "value": "516K"
+      },
+      {
+        "id": "opt-pdf-1781014837855-18-3-0562",
+        "label": "D",
+        "value": "12.5K"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 2
+  },
+  {
+    "id": "que-pdf-book-e249c4f35c1b408f",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "What will be the osmotic pressure of 5% W/V sugar solution at 150°C temperature?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-19-0-m0ik"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-19-0-m0ik",
+        "label": "A",
+        "value": "5.07 atmosphere"
+      },
+      {
+        "id": "opt-pdf-1781014837855-19-1-cdcj",
+        "label": "B",
+        "value": "5.70 atmosphere"
+      },
+      {
+        "id": "opt-pdf-1781014837855-19-2-m285",
+        "label": "C",
+        "value": "7.5 atmosphere"
+      },
+      {
+        "id": "opt-pdf-1781014837855-19-3-1iqv",
+        "label": "D",
+        "value": "3.55 atmosphere"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 2
+  },
+  {
+    "id": "que-pdf-book-16b702727e1dcd0d",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "The concentration of an aqueous solution of glucose is 10% W/V. How much solution is required to dissolve 1 mole glucose?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-20-3-47kr"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-20-0-xk43",
+        "label": "A",
+        "value": "18 litre"
+      },
+      {
+        "id": "opt-pdf-1781014837855-20-1-134j",
+        "label": "B",
+        "value": "9 litre"
+      },
+      {
+        "id": "opt-pdf-1781014837855-20-2-5omm",
+        "label": "C",
+        "value": "0.9 litre"
+      },
+      {
+        "id": "opt-pdf-1781014837855-20-3-47kr",
+        "label": "D",
+        "value": "1.8 litre"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 2
+  },
+  {
+    "id": "que-pdf-book-6adb4cfc991f0ace",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "What is the mole fraction of NaCl, when solution is prepared by dissolving 5.85 gram NaCl in 90 gram of water?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-21-3-clxp"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-21-0-pnho",
+        "label": "A",
+        "value": "0.2"
+      },
+      {
+        "id": "opt-pdf-1781014837855-21-1-g1ki",
+        "label": "B",
+        "value": "0.1"
+      },
+      {
+        "id": "opt-pdf-1781014837855-21-2-eltp",
+        "label": "C",
+        "value": "0.01"
+      },
+      {
+        "id": "opt-pdf-1781014837855-21-3-clxp",
+        "label": "D",
+        "value": "0.0196"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 2
+  },
+  {
+    "id": "que-pdf-book-54022adf7b099610",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "Which of the following having the same Van't Hoff factor as K₃[Fe(CN)₆]?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-22-0-9r4q"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-22-0-9r4q",
+        "label": "A",
+        "value": "Al₂(SO₄)₃"
+      },
+      {
+        "id": "opt-pdf-1781014837855-22-1-308n",
+        "label": "B",
+        "value": "NaCl"
+      },
+      {
+        "id": "opt-pdf-1781014837855-22-2-ixjc",
+        "label": "C",
+        "value": "Al(NO₃)₃"
+      },
+      {
+        "id": "opt-pdf-1781014837855-22-3-vkmk",
+        "label": "D",
+        "value": "Na₂SO₄"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 2
+  },
+  {
+    "id": "que-pdf-book-64a673885808314a",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "What will be the Van’t Hoff factor i for the 0.1 M ideal solution?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-23-3-u81m"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-23-0-8w6y",
+        "label": "A",
+        "value": "0.1"
+      },
+      {
+        "id": "opt-pdf-1781014837855-23-1-t4uw",
+        "label": "B",
+        "value": "Zero"
+      },
+      {
+        "id": "opt-pdf-1781014837855-23-2-2al9",
+        "label": "C",
+        "value": "10"
+      },
+      {
+        "id": "opt-pdf-1781014837855-23-3-u81m",
+        "label": "D",
+        "value": "1"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 2
+  },
+  {
+    "id": "que-pdf-book-ce47b11c67461513",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "Which of the following having the same Van't Hoff factor as that of K₃[Fe(CN)₆]?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-24-2-58sg"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-24-0-anpx",
+        "label": "A",
+        "value": "Al₂(SO₄)₃"
+      },
+      {
+        "id": "opt-pdf-1781014837855-24-1-dsje",
+        "label": "B",
+        "value": "K₂SO₄"
+      },
+      {
+        "id": "opt-pdf-1781014837855-24-2-58sg",
+        "label": "C",
+        "value": "Al(NO₃)₃"
+      },
+      {
+        "id": "opt-pdf-1781014837855-24-3-qjog",
+        "label": "D",
+        "value": "KCl"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 2
+  },
+  {
+    "id": "que-pdf-book-4d9c8961a6114586",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "How much methanol should be added to water, to make 150 mL 2 M solution of CH₃OH?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-25-0-3q0m"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-25-0-3q0m",
+        "label": "A",
+        "value": "9.6 gram"
+      },
+      {
+        "id": "opt-pdf-1781014837855-25-1-b9jz",
+        "label": "B",
+        "value": "2.4 gram"
+      },
+      {
+        "id": "opt-pdf-1781014837855-25-2-5t5r",
+        "label": "C",
+        "value": "9.6 x 10⁵ gram"
+      },
+      {
+        "id": "opt-pdf-1781014837855-25-3-bcax",
+        "label": "D",
+        "value": "4.3 x 10⁴ gram"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 2
+  },
+  {
+    "id": "que-pdf-book-1ef23ef81b96db63",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "Which of the following having maximum boiling point?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-26-1-7ze7"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-26-0-9bjc",
+        "label": "A",
+        "value": "1.1M glucose solution"
+      },
+      {
+        "id": "opt-pdf-1781014837855-26-1-7ze7",
+        "label": "B",
+        "value": "1.1 M Na₂SO₄ solution"
+      },
+      {
+        "id": "opt-pdf-1781014837855-26-2-m9mz",
+        "label": "C",
+        "value": "1.1 M KCl solution"
+      },
+      {
+        "id": "opt-pdf-1781014837855-26-3-25u5",
+        "label": "D",
+        "value": "1.1 M C₆H₁₂O₆ solution"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 2
+  },
+  {
+    "id": "que-pdf-book-afecf82a97b85d82",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "What is the concentration of NO₂ ion on mixing equal volume solution of 0.1 M AgNO₃ and 0.2 M NaCl?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-27-3-rs1e"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-27-0-4vyj",
+        "label": "A",
+        "value": "0.1M"
+      },
+      {
+        "id": "opt-pdf-1781014837855-27-1-iy3s",
+        "label": "B",
+        "value": "0.15M"
+      },
+      {
+        "id": "opt-pdf-1781014837855-27-2-guh8",
+        "label": "C",
+        "value": "0.2M"
+      },
+      {
+        "id": "opt-pdf-1781014837855-27-3-rs1e",
+        "label": "D",
+        "value": "0.05 M"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 2
+  },
+  {
+    "id": "que-pdf-book-d34dcf5ea392dbaa",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "The solution of 1 gram urea boils at 100.25 °C. At what temperature will the same volume solution of 3 gram glucose boil?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-28-2-sar9"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-28-0-e07v",
+        "label": "A",
+        "value": "100° C"
+      },
+      {
+        "id": "opt-pdf-1781014837855-28-1-eu8s",
+        "label": "B",
+        "value": "100.5° C"
+      },
+      {
+        "id": "opt-pdf-1781014837855-28-2-sar9",
+        "label": "C",
+        "value": "100.25° C"
+      },
+      {
+        "id": "opt-pdf-1781014837855-28-3-191g",
+        "label": "D",
+        "value": "100.75° C"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 2
+  },
+  {
+    "id": "que-pdf-book-e460a3641d6fefbc",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "The solution of 6.8 gram non-ionic substance in 100 gram water is freezed at —0.93 °C. What is the molar mass of unknown substance (K_f = 1.86)?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-29-1-yx9a"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-29-0-sw1m",
+        "label": "A",
+        "value": "34"
+      },
+      {
+        "id": "opt-pdf-1781014837855-29-1-yx9a",
+        "label": "B",
+        "value": "136"
+      },
+      {
+        "id": "opt-pdf-1781014837855-29-2-81hi",
+        "label": "C",
+        "value": "68"
+      },
+      {
+        "id": "opt-pdf-1781014837855-29-3-db56",
+        "label": "D",
+        "value": "13.6"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 2
+  },
+  {
+    "id": "que-pdf-book-1658e5bec6bf0e79",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "What will be equal for the isotonic solution at constant temperature ?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-30-2-5pv6"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-30-0-t11m",
+        "label": "A",
+        "value": "Density"
+      },
+      {
+        "id": "opt-pdf-1781014837855-30-1-sxsw",
+        "label": "B",
+        "value": "Normality"
+      },
+      {
+        "id": "opt-pdf-1781014837855-30-2-5pv6",
+        "label": "C",
+        "value": "Molar concentration"
+      },
+      {
+        "id": "opt-pdf-1781014837855-30-3-z9xn",
+        "label": "D",
+        "value": "Volume"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 3
+  },
+  {
+    "id": "que-pdf-book-3ca0366b1df7dce1",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "| The molal depression constant of water is 1.86° C/m. Then find out the freezing point of 0.1 m NaCl solution.",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-31-2-l6u4"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-31-0-hogf",
+        "label": "A",
+        "value": "-1.86° C"
+      },
+      {
+        "id": "opt-pdf-1781014837855-31-1-c5zu",
+        "label": "B",
+        "value": "0.372° GC"
+      },
+      {
+        "id": "opt-pdf-1781014837855-31-2-l6u4",
+        "label": "C",
+        "value": "-0.372° C"
+      },
+      {
+        "id": "opt-pdf-1781014837855-31-3-wazo",
+        "label": "D",
+        "value": "-0.186° C"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 3
+  },
+  {
+    "id": "que-pdf-book-07d960e198a7808f",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "Of the following 0.10 m aqueous solutions, which one will exhibit the largest freezing point depression ?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-32-2-wl3m"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-32-0-l7qe",
+        "label": "A",
+        "value": "KCl"
+      },
+      {
+        "id": "opt-pdf-1781014837855-32-1-ddfi",
+        "label": "B",
+        "value": "CgH),0¢"
+      },
+      {
+        "id": "opt-pdf-1781014837855-32-2-wl3m",
+        "label": "C",
+        "value": "Al, (SO,)."
+      },
+      {
+        "id": "opt-pdf-1781014837855-32-3-ikta",
+        "label": "D",
+        "value": "K,SO,"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 3
+  },
+  {
+    "id": "que-pdf-book-b83683e48cb24afe",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "| Which of the following electrolytes has the same value of Van't Hoff’s factor (i) as that of Al,(SO,)., (if all are 100% ionised)",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-33-3-eoab"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-33-0-et0h",
+        "label": "A",
+        "value": "K,SO,"
+      },
+      {
+        "id": "opt-pdf-1781014837855-33-1-g7vn",
+        "label": "B",
+        "value": "K,[Fe(CN)¢]"
+      },
+      {
+        "id": "opt-pdf-1781014837855-33-2-f4vo",
+        "label": "C",
+        "value": "AI(NO,),"
+      },
+      {
+        "id": "opt-pdf-1781014837855-33-3-eoab",
+        "label": "D",
+        "value": "K,[Fe(CN)¢]"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 3
+  },
+  {
+    "id": "que-pdf-book-5a391da15b781090",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "The boiling point of 0.2 mol kg™ solution of X in water is greater than equimolal solution of Y in water. Which one of the following statements is true in this case ?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-34-0-5rov"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-34-0-5rov",
+        "label": "A",
+        "value": "X is undergoing dissociation in water."
+      },
+      {
+        "id": "opt-pdf-1781014837855-34-1-j3em",
+        "label": "B",
+        "value": "Molecular mass of X is greater than the molecular mass of Y."
+      },
+      {
+        "id": "opt-pdf-1781014837855-34-2-w1fv",
+        "label": "C",
+        "value": "Molecular mass of X is less than the molecular mass of Y."
+      },
+      {
+        "id": "opt-pdf-1781014837855-34-3-2ul4",
+        "label": "D",
+        "value": "Y is undergoing dissociation in water while X undergoes no change."
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 3
+  },
+  {
+    "id": "que-pdf-book-714509efb79adc83",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "18 g glucose (C,H,,O,) is added to 178.2 g water. The vapour pressure of water (in torr) for this aqueous solution is :",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-35-3-76bg"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-35-0-zmwa",
+        "label": "A",
+        "value": "759.0"
+      },
+      {
+        "id": "opt-pdf-1781014837855-35-1-m2j2",
+        "label": "B",
+        "value": "7.6"
+      },
+      {
+        "id": "opt-pdf-1781014837855-35-2-fnre",
+        "label": "C",
+        "value": "76.0"
+      },
+      {
+        "id": "opt-pdf-1781014837855-35-3-76bg",
+        "label": "D",
+        "value": "752.4"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 3
+  },
+  {
+    "id": "que-pdf-book-d1966de00a76bf8b",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "Which one is not equal to zero for an ideal solution 2",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-36-1-38jf"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-36-0-j59y",
+        "label": "A",
+        "value": "AH"
+      },
+      {
+        "id": "opt-pdf-1781014837855-36-1-38jf",
+        "label": "B",
+        "value": "AS..."
+      },
+      {
+        "id": "opt-pdf-1781014837855-36-2-dfxx",
+        "label": "C",
+        "value": "AV nix"
+      },
+      {
+        "id": "opt-pdf-1781014837855-36-3-u9s2",
+        "label": "D",
+        "value": "‘AP = P observed - P raoult"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 3
+  },
+  {
+    "id": "que-pdf-book-296134cf60b2185b",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "Which of the following statements about the composition of the vapour over an ideal 1:1 molar mixture of benzene and toluene is correct? Assume that the temperature is constant at 25°C. (Given, vapour pressure data at 25°C, benzene = 12.8 kPa toluene = 3.85 kPa)",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-37-3-um00"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-37-0-i347",
+        "label": "A",
+        "value": "The vapour will contain a higher percentage of toluene."
+      },
+      {
+        "id": "opt-pdf-1781014837855-37-1-5d33",
+        "label": "B",
+        "value": "The vapour will contain equal amounts of benzene and toluene."
+      },
+      {
+        "id": "opt-pdf-1781014837855-37-2-v1af",
+        "label": "C",
+        "value": "Not enough information is given to make a prediction."
+      },
+      {
+        "id": "opt-pdf-1781014837855-37-3-um00",
+        "label": "D",
+        "value": "The vapour will contain a higher percentage of benzene."
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 3
+  },
+  {
+    "id": "que-pdf-book-a48ff1035ddd61a3",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "If increase in boiling point of 1 molal glucose solution is 2K and increase in freezing point of 2 molal glucose solution is also 2K. Then state the relationship of K_b and K_f.",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-38-2-bxvf"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-38-0-7s3x",
+        "label": "A",
+        "value": "K_b = 1.5 K_f"
+      },
+      {
+        "id": "opt-pdf-1781014837855-38-1-buxt",
+        "label": "B",
+        "value": "K_b = 0.5 K_f"
+      },
+      {
+        "id": "opt-pdf-1781014837855-38-2-bxvf",
+        "label": "C",
+        "value": "K_b = 2 K_f"
+      },
+      {
+        "id": "opt-pdf-1781014837855-38-3-kxhr",
+        "label": "D",
+        "value": "K_f = K_b"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 3
+  },
+  {
+    "id": "que-pdf-book-d341ee7c7d2230b0",
+    "subjectId": "chemistry",
+    "topicId": "solutions",
+    "type": "single_correct",
+    "prompt": "The mixture that forms maximum boiling azeotrope is:",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781014837855-39-1-r14b"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781014837855-39-0-kadw",
+        "label": "A",
+        "value": "Heptane + Octane"
+      },
+      {
+        "id": "opt-pdf-1781014837855-39-1-r14b",
+        "label": "B",
+        "value": "Water + Nitric acid"
+      },
+      {
+        "id": "opt-pdf-1781014837855-39-2-mfu8",
+        "label": "C",
+        "value": "Ethanol + Water"
+      },
+      {
+        "id": "opt-pdf-1781014837855-39-3-7rax",
+        "label": "D",
+        "value": "Acetone + Carbon disulphide"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 3
+  }
+]

@@ -1,5 +1,8 @@
 import pg from "pg";
 import { extractQuestionsFromPdfText } from "../backend/dist/utils/ai-generator.js";
+import { cleanQuestion } from "./clean_question.mjs";
+
+
 import { upsertRecord, getRecord, listRecords } from "../backend/dist/data/database.js";
 
 async function run() {
@@ -24,8 +27,19 @@ async function run() {
     });
     
     console.log(`Extracted ${questions.length} questions.`);
-    for (const q of questions) {
-      await upsertRecord("questions", q);
+    const seen = new Set();
+for (const rawQ of questions) {
+  const normPrompt = rawQ.prompt?.toLowerCase().replace(/\s+/g, " ").trim();
+  if (normPrompt && seen.has(normPrompt)) {
+    console.log(`- Skipping duplicate question: "${rawQ.prompt.substring(0, 60)}..."`);
+    continue;
+  }
+  seen.add(normPrompt);
+  const q = cleanQuestion(rawQ);
+  await upsertRecord("questions", q);
+  console.log(`- Saved question: "${q.prompt.substring(0, 60)}..."`);
+}
+
       console.log(`- Saved question: "${q.prompt.substring(0, 60)}..."`);
     }
     console.log("All questions imported successfully!");
