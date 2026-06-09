@@ -749,6 +749,13 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
         diagrams
       });
 
+      const stateBefore = await getAppState();
+      const existingBookQs = stateBefore.questions.filter(q => q.bookId === book.id);
+      console.log(`[Background] Clearing ${existingBookQs.length} existing questions for book ${book.id} to prevent duplicates/leftovers...`);
+      for (const q of existingBookQs) {
+        await deleteRecord("questions", q.id);
+      }
+
       console.log(`[Background] Saving ${extracted.length} extracted questions...`);
       for (const q of extracted) {
         await upsertRecord("questions", q);
