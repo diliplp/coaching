@@ -1,0 +1,89 @@
+{
+  "questions": [
+    {
+      "prompt": "Which of the following aqueous solutions should have the highest boiling point?",
+      "difficulty": "medium",
+      "marks": 1,
+      "negativeMarks": 0,
+      "options": [
+        {
+          "label": "A",
+          "value": "$1.0\\text{ M NaOH}$",
+          "isCorrect": false
+        },
+        {
+          "label": "B",
+          "value": "$1.0\\text{M Na}_2\\text{SO}_4$",
+          "isCorrect": true
+        },
+        {
+          "label": "C",
+          "value": "$1.0\\text{M NH}_4\\text{NO}_3$",
+          "isCorrect": false
+        },
+        {
+          "label": "D",
+          "value": "$1.0\\text{M KNO}_3$",
+          "isCorrect": false
+        }
+      ],
+      "explanation": "Boiling point elevation is a colligative property and depends on the number of solute particles in the solution. We need to consider the Van't Hoff factor ($i$) for each solution.\nFor $\\text{NaOH}$, $i \\approx 2$ ($\\text{Na}^+$, $\\text{OH}^-$).\nFor $\\text{Na}_2\\text{SO}_4$, $i \\approx 3$ ($2\\text{Na}^+$, $\\text{SO}_4^{2-}$).\nFor $\\text{NH}_4\\text{NO}_3$, $i \\approx 2$ ($\\text{NH}_4^+$, $\\text{NO}_3^-$).\nFor $\\text{KNO}_3$, $i \\approx 2$ ($\\text{K}^+$, $\\text{NO}_3^-$).\nSince $\\text{Na}_2\\text{SO}_4$ dissociates into the most particles per mole, it will have the highest boiling point."
+    },
+    {
+      "prompt": "The unit of ebullioscopic constant is",
+      "difficulty": "medium",
+      "marks": 1,
+      "negativeMarks": 0,
+      "options": [
+        {
+          "label": "A",
+          "value": "$\\text{K kg mol}^{-1}$ or $\\text{K (molality)}^{-1}$",
+          "isCorrect": true
+        },
+        {
+          "label": "B",
+          "value": "$\\text{mol kg K}^{-1}$ or $\\text{K}^{-1} \\text{ (molality)}$",
+          "isCorrect": false
+        },
+        {
+          "label": "C",
+          "value": "$\\text{kg mol}^{-1} \\text{ K}$ or $\\text{K (molality)}^{-1}$",
+          "isCorrect": false
+        },
+        {
+          "label": "D",
+          "value": "$\\text{K mol kg}^{-1}$ or $\\text{K (molality)}$",
+          "isCorrect": false
+        }
+      ],
+      "explanation": "The ebullioscopic constant ($K_b$) is defined by the formula $\\Delta T_b = K_b \\cdot m$, where $\\Delta T_b$ is the boiling point elevation in Kelvin (K) and $m$ is the molality in $\\text{mol kg}^{-1}$. Therefore, the unit of $K_b$ must be $\\text{K / (mol kg}^{-1}) = \\text{K kg mol}^{-1}$, or $\\text{K (molality)}^{-1}$."
+    },
+    {
+      "prompt": "The values of Van't Hoff factors for $\\text{KCl}$, $\\text{NaCl}$ and $\\text{K}_2\\text{SO}_4$ respectively, are",
+      "difficulty": "medium",
+      "marks": 1,
+      "negativeMarks": 0,
+      "options": [
+        {
+          "label": "A",
+          "value": "$2, 2 \\text{ and } 2$",
+          "isCorrect": false
+        },
+        {
+          "label": "B",
+          "value": "$2, 2 \\text{ and } 3$",
+          "isCorrect": true
+        },
+        {
+          "label": "C",
+          "value": "$1, 1 \\text{ and } 2$",
+          "isCorrect": false
+        },
+        {
+          "label": "D",
+          "value": "$1, 1 \\text{ and } 1$",
+          "isCorrect": false
+        }
+      ],
+      "explanation": "The Van't Hoff factor ($i$) represents the number of particles a solute dissociates into in a solution.\nFor $\\text{KCl}$: $\\text{KCl} \\rightarrow \\text{K}^+ + \\text{Cl}^-$, so $i = 2$.\nFor $\\text{NaCl}$: $\\text{NaCl} \\rightarrow \\text{Na}^+ + \\text{Cl}^-$, so $i = 2$.\nFor $\\text{K}_2\\text{SO}_4$: $\\text{K}_2\\text{SO}_4 \\rightarrow 2\\text{K}^+ + \\text{SO}_4^{2-}$, so $i = 3$.\nTherefore, the values are $2, 2, \\text{ and } 3$ respectively."
+    }

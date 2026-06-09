@@ -1,0 +1,291 @@
+[
+  {
+    "id": "que-pdf-book-e89433bfbd09c596",
+    "subjectId": "dummy",
+    "topicId": "dummy",
+    "type": "single_correct",
+    "prompt": "Which of the following having same Van't Hoff factor as $\\text{K}_4[\\text{Fe}(\\text{CN})_6]$?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781013597941-0-0-xkvk"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781013597941-0-0-xkvk",
+        "label": "A",
+        "value": "$\\\\text{Al}_2(\\\\text{SO}_4)_3$"
+      },
+      {
+        "id": "opt-pdf-1781013597941-0-1-x9ha",
+        "label": "B",
+        "value": "NaCl"
+      },
+      {
+        "id": "opt-pdf-1781013597941-0-2-szc3",
+        "label": "C",
+        "value": "$\\\\text{Al}(\\\\text{NO}_3)_3$"
+      },
+      {
+        "id": "opt-pdf-1781013597941-0-3-blhi",
+        "label": "D",
+        "value": "$\\\\text{Na}_2\\\\text{SO}_4$"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 1
+  },
+  {
+    "id": "que-pdf-book-64a673885808314a",
+    "subjectId": "dummy",
+    "topicId": "dummy",
+    "type": "single_correct",
+    "prompt": "What will be the Van't Hoff factor 'i' for the 0.1 M ideal solution?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781013597942-1-3-kb5g"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781013597941-1-0-1kmd",
+        "label": "A",
+        "value": "0.1"
+      },
+      {
+        "id": "opt-pdf-1781013597942-1-1-tkab",
+        "label": "B",
+        "value": "Zero"
+      },
+      {
+        "id": "opt-pdf-1781013597942-1-2-sygj",
+        "label": "C",
+        "value": "10"
+      },
+      {
+        "id": "opt-pdf-1781013597942-1-3-kb5g",
+        "label": "D",
+        "value": "1"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 1
+  },
+  {
+    "id": "que-pdf-book-2a66f5d4e6419cbd",
+    "subjectId": "dummy",
+    "topicId": "dummy",
+    "type": "single_correct",
+    "prompt": "Which of the following having same Van't Hoff factor as that of $\\text{K}_4[\\text{Fe}(\\text{CN})_6]$?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781013597942-2-2-ia9k"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781013597942-2-0-mxy8",
+        "label": "A",
+        "value": "$\\\\text{Al}_2(\\\\text{SO}_4)_4$"
+      },
+      {
+        "id": "opt-pdf-1781013597942-2-1-x0rt",
+        "label": "B",
+        "value": "$\\\\text{K}_2\\\\text{SO}_4$"
+      },
+      {
+        "id": "opt-pdf-1781013597942-2-2-ia9k",
+        "label": "C",
+        "value": "$\\\\text{Al}(\\\\text{NO}_3)_3$"
+      },
+      {
+        "id": "opt-pdf-1781013597942-2-3-mjyn",
+        "label": "D",
+        "value": "KCl"
+      }
+    ],
+    "explanation": "$\\text{K}_4[\\text{Fe}(\\text{CN})_6] \\rightarrow 3\\text{K}^+ + [\\text{Fe}(\\text{CN})_6]^{3-}$\\\\n$\\text{Al}(\\text{NO}_3)_3 \\rightarrow \\text{Al}^{3+} + 3\\text{NO}_3^{-}$\\\\nTotal no. of ions in both are same.",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 1
+  },
+  {
+    "id": "que-pdf-book-97ad89d2bdd04ed6",
+    "subjectId": "dummy",
+    "topicId": "dummy",
+    "type": "single_correct",
+    "prompt": "How much methanol should be added to water, to make 150 mL, 2 M solution of $\\text{CH}_3\\text{OH}$?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781013597942-3-0-ua7e"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781013597942-3-0-ua7e",
+        "label": "A",
+        "value": "9.6 gram"
+      },
+      {
+        "id": "opt-pdf-1781013597942-3-1-z7rx",
+        "label": "B",
+        "value": "2.4 gram"
+      },
+      {
+        "id": "opt-pdf-1781013597942-3-2-hivb",
+        "label": "C",
+        "value": "$9.6 \\times 10^0$ gram"
+      },
+      {
+        "id": "opt-pdf-1781013597942-3-3-pefw",
+        "label": "D",
+        "value": "$4.3 \\times 10$ gram"
+      }
+    ],
+    "explanation": "1000 mL 1 M $\\text{CH}_3\\text{OH}$ = 32 gram\\\\n150 mL 2 M $\\text{CH}_3\\text{OH}$ = $\\frac{32 \\times 150 \\times 2}{1000} = 9.6$ gram",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 1
+  },
+  {
+    "id": "que-pdf-book-1ef23ef81b96db63",
+    "subjectId": "dummy",
+    "topicId": "dummy",
+    "type": "single_correct",
+    "prompt": "Which of the following having maximum boiling point?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781013597942-4-1-3sdu"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781013597942-4-0-e7q0",
+        "label": "A",
+        "value": "1.1 M glucose solution"
+      },
+      {
+        "id": "opt-pdf-1781013597942-4-1-3sdu",
+        "label": "B",
+        "value": "1.1 M $\\text{Na}_2\\text{SO}_4$ solution"
+      },
+      {
+        "id": "opt-pdf-1781013597942-4-2-29l3",
+        "label": "C",
+        "value": "1.1 M KCl solution"
+      },
+      {
+        "id": "opt-pdf-1781013597942-4-3-ichx",
+        "label": "D",
+        "value": "1.1 M $\\text{C}_{12}\\text{H}_{22}\\text{O}_{11}$ solution"
+      }
+    ],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 1
+  },
+  {
+    "id": "que-pdf-book-85923b0dab4c428b",
+    "subjectId": "dummy",
+    "topicId": "dummy",
+    "type": "single_correct",
+    "prompt": "What is the concentration of $\\text{NO}_3^{-}$ ion on mixing equal volume solution of 0.1 M $\\text{AgNO}_3$ and 0.2 M NaCl?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781013597942-5-3-ngnt"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781013597942-5-0-0bxv",
+        "label": "A",
+        "value": "0.1M"
+      },
+      {
+        "id": "opt-pdf-1781013597942-5-1-labo",
+        "label": "B",
+        "value": "0.15M"
+      },
+      {
+        "id": "opt-pdf-1781013597942-5-2-m8hw",
+        "label": "C",
+        "value": "0.2M"
+      },
+      {
+        "id": "opt-pdf-1781013597942-5-3-ngnt",
+        "label": "D",
+        "value": "0.05 M"
+      }
+    ],
+    "explanation": "0.1 M $\\text{AgNO}_3$ and 0.2 M NaCl are mixed. So total volume = 2 litre. So concentration will be halved.\\\\nConcentration of $\\text{AgNO}_3 = \\frac{0.1}{2} = 0.05$ M",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 1
+  },
+  {
+    "id": "que-pdf-book-f48a0e0d3f411da4",
+    "subjectId": "dummy",
+    "topicId": "dummy",
+    "type": "single_correct",
+    "prompt": "The solution of 1 gram urea boils at $100.25 \\text{ } ^\\circ\\text{C}$. At what temperature the same volume solution of 3 gram glucose will boil?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [
+      "opt-pdf-1781013597942-6-2-bcpt"
+    ],
+    "options": [
+      {
+        "id": "opt-pdf-1781013597942-6-0-xn54",
+        "label": "A",
+        "value": "$100 \\text{ } ^\\circ\\text{C}$"
+      },
+      {
+        "id": "opt-pdf-1781013597942-6-1-5nt2",
+        "label": "B",
+        "value": "$100.5 \\text{ } ^\\circ\\text{C}$"
+      },
+      {
+        "id": "opt-pdf-1781013597942-6-2-bcpt",
+        "label": "C",
+        "value": "$100.25 \\text{ } ^\\circ\\text{C}$"
+      },
+      {
+        "id": "opt-pdf-1781013597942-6-3-flm5",
+        "label": "D",
+        "value": "$100.75 \\text{ } ^\\circ\\text{C}$"
+      }
+    ],
+    "explanation": "Mole of urea = $\\frac{1}{60}$\\\\nMole of glucose = $\\frac{3}{180} = \\frac{1}{60}$\\\\nConcentration is same and hence boiling point also same.",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 1
+  },
+  {
+    "id": "que-pdf-book-ad63a9271cd5554d",
+    "subjectId": "dummy",
+    "topicId": "dummy",
+    "type": "single_correct",
+    "prompt": "The solution of 6.8 gram non-ionic substance in 100 gram water is freezed at $-0.93 \\text{ } ^\\circ\\text{C}$. What is the molar mass of unknown substance? ($\\text{K}_f = 1.86$)",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "correctOptionIds": [],
+    "options": [],
+    "explanation": "",
+    "sourceType": "pdf",
+    "isVerified": true,
+    "pageNumber": 1
+  }
+]

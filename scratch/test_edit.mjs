@@ -1,0 +1,48 @@
+import fetch from "node-fetch";
+
+async function main() {
+  const url = "http://localhost:3030/api/questions/q-ai-1780812744511-0-1";
+  
+  // First, we log in to get a token
+  const loginRes = await fetch("http://localhost:3030/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "admin@coaching.local", password: "admin123" })
+  });
+  
+  const { token } = await loginRes.json();
+  console.log("Logged in, token retrieved.");
+
+  // Get current state of the question
+  const getRes = await fetch("http://localhost:3030/api/question-bank", {
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  const data = await getRes.json();
+  const originalQ = data.questions.find(q => q.id === "q-ai-1780812744511-0-1");
+  console.log("Original Question pageNumber:", originalQ.pageNumber);
+  console.log("Original Question bookId:", originalQ.bookId);
+
+  // Perform PUT request simulating editing the prompt
+  const updatedPayload = {
+    ...originalQ,
+    prompt: originalQ.prompt + " (Edited)"
+  };
+  delete updatedPayload.bookId; // Simulating omitting it in payload
+  delete updatedPayload.pageNumber;
+
+  const putRes = await fetch(url, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`
+    },
+    body: JSON.stringify(updatedPayload)
+  });
+
+  const updatedQ = await putRes.json();
+  console.log("Updated Question Prompt:", updatedQ.prompt);
+  console.log("Updated Question pageNumber:", updatedQ.pageNumber);
+  console.log("Updated Question bookId:", updatedQ.bookId);
+}
+
+main().catch(console.error);

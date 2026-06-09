@@ -1,0 +1,25 @@
+Found 1 questions:
+
+Q1: [Page 2] Which of the following having same Van't Hoff factor as K,[Fe(CN),]?
+Options: [
+  {
+    "id": "opt-pdf-1781003848965-22-0-5t0b",
+    "label": "A",
+    "value": "Al$_2$(SO$_4$)$_3$"
+  },
+  {
+    "id": "opt-pdf-1781003848965-22-1-k8dc",
+    "label": "B",
+    "value": "NaCl"
+  },
+  {
+    "id": "opt-pdf-1781003848965-22-2-pqdh",
+    "label": "C",
+    "value": "Al(NO$_3$)$_3$"
+  },
+  {
+    "id": "opt-pdf-1781003848965-22-3-n6pk",
+    "label": "D",
+    "value": "Na$_2$SO$_4$"
+  }
+]

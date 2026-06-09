@@ -1,0 +1,221 @@
+[
+  {
+    "prompt": "Which of the following having same Van't Hoff factor as $\\text{K}_4[\\text{Fe}(\\text{CN})_6]$?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "options": [
+      {
+        "label": "A",
+        "value": "$\\\\text{Al}_2(\\\\text{SO}_4)_3$",
+        "isCorrect": true
+      },
+      {
+        "label": "B",
+        "value": "NaCl",
+        "isCorrect": false
+      },
+      {
+        "label": "C",
+        "value": "$\\\\text{Al}(\\\\text{NO}_3)_3$",
+        "isCorrect": false
+      },
+      {
+        "label": "D",
+        "value": "$\\\\text{Na}_2\\\\text{SO}_4$",
+        "isCorrect": false
+      }
+    ],
+    "explanation": null,
+    "pageNumber": 1
+  },
+  {
+    "prompt": "What will be the Van't Hoff factor 'i' for the 0.1 M ideal solution?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "options": [
+      {
+        "label": "A",
+        "value": "0.1",
+        "isCorrect": false
+      },
+      {
+        "label": "B",
+        "value": "Zero",
+        "isCorrect": false
+      },
+      {
+        "label": "C",
+        "value": "10",
+        "isCorrect": false
+      },
+      {
+        "label": "D",
+        "value": "1",
+        "isCorrect": true
+      }
+    ],
+    "explanation": null,
+    "pageNumber": 1
+  },
+  {
+    "prompt": "Which of the following having same Van't Hoff factor as that of $\\text{K}_4[\\text{Fe}(\\text{CN})_6]$?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "options": [
+      {
+        "label": "A",
+        "value": "$\\\\text{Al}_2(\\\\text{SO}_4)_4$",
+        "isCorrect": false
+      },
+      {
+        "label": "B",
+        "value": "$\\\\text{K}_2\\\\text{SO}_4$",
+        "isCorrect": false
+      },
+      {
+        "label": "C",
+        "value": "$\\\\text{Al}(\\\\text{NO}_3)_3$",
+        "isCorrect": true
+      },
+      {
+        "label": "D",
+        "value": "KCl",
+        "isCorrect": false
+      }
+    ],
+    "explanation": "$\\text{K}_4[\\text{Fe}(\\text{CN})_6] \\rightarrow 3\\text{K}^+ + [\\text{Fe}(\\text{CN})_6]^{3-}$\\\\n$\\text{Al}(\\text{NO}_3)_3 \\rightarrow \\text{Al}^{3+} + 3\\text{NO}_3^{-}$\\\\nTotal no. of ions in both are same.",
+    "pageNumber": 1
+  },
+  {
+    "prompt": "How much methanol should be added to water, to make 150 mL, 2 M solution of $\\text{CH}_3\\text{OH}$?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "options": [
+      {
+        "label": "A",
+        "value": "9.6 gram",
+        "isCorrect": true
+      },
+      {
+        "label": "B",
+        "value": "2.4 gram",
+        "isCorrect": false
+      },
+      {
+        "label": "C",
+        "value": "$9.6 \\times 10^0$ gram",
+        "isCorrect": false
+      },
+      {
+        "label": "D",
+        "value": "$4.3 \\times 10$ gram",
+        "isCorrect": false
+      }
+    ],
+    "explanation": "1000 mL 1 M $\\text{CH}_3\\text{OH}$ = 32 gram\\\\n150 mL 2 M $\\text{CH}_3\\text{OH}$ = $\\frac{32 \\times 150 \\times 2}{1000} = 9.6$ gram",
+    "pageNumber": 1
+  },
+  {
+    "prompt": "Which of the following having maximum boiling point?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "options": [
+      {
+        "label": "A",
+        "value": "1.1 M glucose solution",
+        "isCorrect": false
+      },
+      {
+        "label": "B",
+        "value": "1.1 M $\\text{Na}_2\\text{SO}_4$ solution",
+        "isCorrect": true
+      },
+      {
+        "label": "C",
+        "value": "1.1 M KCl solution",
+        "isCorrect": false
+      },
+      {
+        "label": "D",
+        "value": "1.1 M $\\text{C}_{12}\\text{H}_{22}\\text{O}_{11}$ solution",
+        "isCorrect": false
+      }
+    ],
+    "explanation": null,
+    "pageNumber": 1
+  },
+  {
+    "prompt": "What is the concentration of $\\text{NO}_3^{-}$ ion on mixing equal volume solution of 0.1 M $\\text{AgNO}_3$ and 0.2 M NaCl?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "options": [
+      {
+        "label": "A",
+        "value": "0.1M",
+        "isCorrect": false
+      },
+      {
+        "label": "B",
+        "value": "0.15M",
+        "isCorrect": false
+      },
+      {
+        "label": "C",
+        "value": "0.2M",
+        "isCorrect": false
+      },
+      {
+        "label": "D",
+        "value": "0.05 M",
+        "isCorrect": true
+      }
+    ],
+    "explanation": "0.1 M $\\text{AgNO}_3$ and 0.2 M NaCl are mixed. So total volume = 2 litre. So concentration will be halved.\\\\nConcentration of $\\text{AgNO}_3 = \\frac{0.1}{2} = 0.05$ M",
+    "pageNumber": 1
+  },
+  {
+    "prompt": "The solution of 1 gram urea boils at $100.25 \\text{ } ^\\circ\\text{C}$. At what temperature the same volume solution of 3 gram glucose will boil?",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "options": [
+      {
+        "label": "A",
+        "value": "$100 \\text{ } ^\\circ\\text{C}$",
+        "isCorrect": false
+      },
+      {
+        "label": "B",
+        "value": "$100.5 \\text{ } ^\\circ\\text{C}$",
+        "isCorrect": false
+      },
+      {
+        "label": "C",
+        "value": "$100.25 \\text{ } ^\\circ\\text{C}$",
+        "isCorrect": true
+      },
+      {
+        "label": "D",
+        "value": "$100.75 \\text{ } ^\\circ\\text{C}$",
+        "isCorrect": false
+      }
+    ],
+    "explanation": "Mole of urea = $\\frac{1}{60}$\\\\nMole of glucose = $\\frac{3}{180} = \\frac{1}{60}$\\\\nConcentration is same and hence boiling point also same.",
+    "pageNumber": 1
+  },
+  {
+    "prompt": "The solution of 6.8 gram non-ionic substance in 100 gram water is freezed at $-0.93 \\text{ } ^\\circ\\text{C}$. What is the molar mass of unknown substance? ($\\text{K}_f = 1.86$)",
+    "difficulty": "medium",
+    "marks": 1,
+    "negativeMarks": 0,
+    "options": [],
+    "explanation": null,
+    "pageNumber": 1
+  }
+]

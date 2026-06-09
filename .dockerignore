@@ -1,0 +1,18 @@
+node_modules
+backend/node_modules
+frontend/node_modules
+backend/dist
+frontend/dist
+.git
+.gitignore
+1. Classification and Nomenclature of Organic Compounds.pdf
+output.pdf
+UnitTest_D07-Jun-2026.pdf
+chapters6_D26-May-2026.pdf
+gujarat-tuition-exam-portal-client-presentation.pptx
+Chapters-Topics.docx
+Sample.pdf
+nm1.jpeg
+scratch
+backend/uploads
+

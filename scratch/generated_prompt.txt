@@ -1,0 +1,134 @@
+You are an expert data extraction assistant. Your task is to read the textbook/paper text below and extract EVERY multiple-choice question (MCQ) present in it.
+Do NOT generate new questions, and do NOT invent any questions.
+CRITICAL: The source text has been preprocessed to insert '[QUESTION <number>]' markers before each question. You MUST extract every single block starting with a '[QUESTION <number>]' marker as a separate, distinct question in the 'questions' array. Never merge, combine, skip, or collapse any '[QUESTION <number>]' blocks under any circumstances. Even if two blocks look extremely similar, have almost identical prompts, or ask about the same chemical compounds (for example, two different questions asking about the Van't Hoff factor of K₄[Fe(CN)₆] or K₃[Fe(CN)₆]), you MUST extract them as two separate question entries in the JSON. Do NOT mix options or explanations from one question with the prompt/options of another question. Keep them completely separate with their own options, correct answer, and explanation.
+Only extract questions that are explicitly written in the source text. If the text does not contain any actual multiple-choice questions (e.g. it is just metadata, instructions, student name, roll number, blank page, OMR sheet, or a list of codes), you MUST return an empty array of questions: {"questions": []}. Do NOT invent, hallucinate, or generate any new questions under any circumstances.
+
+For each question, find:
+1. The question prompt/text.
+2. The options (A, B, C, D, etc.) with their values.
+3. Identify which option is the correct one based on the text or solutions provided in the text.
+4. The explanation if provided in the text.
+
+OCR ERROR RECONSTRUCTION RULES:
+- The source text comes from a scanned PDF; mathematical equations, LaTeX fractions, and variables may look like garbage (e.g. 'RT x \) RT v \' or 'w= (F}'). You MUST use your domain knowledge of chemistry and physics to intelligently reconstruct these expressions into correct, standard, readable math formulas formatted in LaTeX.
+- Ensure all four options are mathematically clean, scientifically coherent, and matching standard JEE/NEET patterns.
+- Strip away hanging braces, floating characters, page numbers, and random OCR scanner artifacts.
+
+STRICT FORMATTING RULES:
+1. LaTeX: Use $...$ for inline and $$...$$ for blocks.
+2. JSON ESCAPING: In the JSON, use FOUR backslashes for LaTeX (e.g., "\\frac").
+3. Chemistry: Use [SMILES: notation] for chemical structures.
+4. Chemical Formulas and Equations (Subscripts/Superscripts): You MUST format ALL chemical formulas (e.g., H2O, CO2, NaCl, K2SO4, Al2(SO4)3) and chemical equations in standard LaTeX using subscripts and superscripts (e.g., use $\text{H}_2\text{O}$ or $\text{K}_2\text{SO}_4$). Never output plain text chemical formulas like H2O or K2SO4.
+5. Output ONLY the JSON object, no markdown code blocks.
+
+JSON STRUCTURE:
+{
+  "questions": [
+    {
+      "prompt": "Question text here",
+      "difficulty": "medium",
+      "marks": 1,
+      "negativeMarks": 0,
+      "options": [
+        { "label": "A", "value": "Option 1", "isCorrect": true },
+        { "label": "B", "value": "Option 2", "isCorrect": false },
+        { "label": "C", "value": "Option 3", "isCorrect": false },
+        { "label": "D", "value": "Option 4", "isCorrect": false }
+      ],
+      "explanation": "Detailed explanation of the solution"
+    }
+  ]
+}
+
+TEXT TO EXTRACT FROM:
+---
+--- PAGE 12 ---
+12 ---
+(A) 0.2 (B) 0.1 (C) 0.01 (D) 0.0196
+Ans. (D) 0.0196
+
+5.85/58.5 0.1
+
+» x = ———~ == = 0.0196
+NaCl :
+
+[QUESTION 23]
+Which of the following having same Van't Hoff factor as K,[Fe(CN),] ?
+(A) Al,(SO,), (B) NaCl (C) AI(NO,), (D) Na,SO,
+
+Ans. (A) Al,(SO,)3
+
+[QUESTION 24]
+What will be the Van't Hoff factor i for the 0.1 M ideal solution 2
+
+(A) 0.1 (B) Zero (C) 10 (D) 1
+Ans. (D)1
+
+[QUESTION 25]
+Which of the following having same Van't Hoff factor as that of K,[Fe(CN),] ?
+(A) AL,(SO,)4 (B) K,SO, (C) AI(NO,), (D) KCI
+
+Ans. (C) Al(NO3),
+K,{Fe(CN),] 3 3K* + [Fe(CN),]°
+
+Al(NO,), — Al*® + 3NO,”
+‘> Total no. of ions in both are same.
+
+[QUESTION 26]
+How much methanol should be added to water, to make 150 mL. 2 M solution of CH,0H ?
+
+(A) 9.6 gram (B) 2.4 gram (C) 9.6 x 10° gram (D) 4.3 x 10 gram
+Ans. (A) 9.6 gram
+‘i 1000 mL 1 M CH,0OH = 32 gram
+
+150 mL 2 M CH,OH = ?
+
+32 x 150 x 2
+= “anon 9.6 gram
+
+[QUESTION 27]
+Which of the following having maximum boiling point ?
+(A) 1.1 ™M glucose solution (B) 1.1M Na,SO, solution
+(C) 1.1M KCI solution (D) 1.1 M C,H,,0, solution
+
+Ans. (B) 1.1M Na,SO, solution
+
+[QUESTION 28]
+What is the concentration of NO3 ion on mixing equal volume solution of 0.1 M AgNO, and 0.2 M
+NaCl ?
+(A) 0.1M (B) 0.15M (C) 0.2M (D) 0.05 M
+
+Ans. (D)0.05M
+
+“™» 0.1 M AgNO, and 0.2 M NaCl are mixed
+So total volume = 2 litre
+
+So concentration will be halved.
+0.1
+Concentration of AgNO, = = 0.05 M
+
+[QUESTION 29]
+The solution of 1 gram urea boils at 100.25 °C, At what temperature the same volume solution of 3
+gram glucose will boil ?
+
+(A) 100°C (B) 100.5° C (C) 100.25° C (D) 100.75° C
+Ans. (C) 100.25° C
+
+1
+u Mole of urea = 60
+Mole of glucose = é
+180 ~—- 60
+.. Concentration is same and hence boiling point also same.
+
+[QUESTION 30]
+The solution of 6.8 gram non-ionic substance in 100 gram water is freezed at —0.93 °C. What is the
+
+molar mass of unknown substance ? (K; = 1.86)
+
+Welcome To Future - Quantum Paper
+
+@ scanned with OKEN Scanner
+
+
+
+---

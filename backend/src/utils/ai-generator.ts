@@ -1,17 +1,56 @@
 import { Question, QuestionOption, QuestionType, QuestionSource } from "../types.js";
 import { listRecords } from "../data/database.js";
 import crypto from "node:crypto";
+import fs from "node:fs";
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
 function repairJsonString(raw: string): string {
-  return raw.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, (match, p1) => {
-    const parts = p1.split('\\\\');
-    const processedParts = parts.map((part: string) => {
-      return part.replace(/\\(?!n|")/g, '\\\\');
-    });
-    return '"' + processedParts.join('\\\\') + '"';
-  });
+  let inString = false;
+  let result = "";
+  let i = 0;
+  
+  while (i < raw.length) {
+    const char = raw[i];
+    
+    if (char === '"') {
+      let backslashCount = 0;
+      let j = i - 1;
+      while (j >= 0 && raw[j] === '\\') {
+        backslashCount++;
+        j--;
+      }
+      
+      if (backslashCount % 2 === 0) {
+        inString = !inString;
+      }
+      result += char;
+      i++;
+    } else if (inString && char === '\\') {
+      const nextChar = raw[i + 1] || "";
+      let isValidEscape = false;
+      if (['"', '\\', '/', 'b', 'f', 'n', 'r', 't'].includes(nextChar)) {
+        isValidEscape = true;
+      } else if (nextChar === 'u') {
+        const hex = raw.substring(i + 2, i + 6);
+        if (hex.length === 4 && /^[0-9a-fA-F]{4}$/.test(hex)) {
+          isValidEscape = true;
+        }
+      }
+      
+      if (isValidEscape) {
+        result += char + nextChar;
+        i += 2;
+      } else {
+        result += '\\\\';
+        i++;
+      }
+    } else {
+      result += char;
+      i++;
+    }
+  }
+  return result;
 }
 
 let isGeminiQuotaExceeded = false;
@@ -660,9 +699,42 @@ JSON STRUCTURE:
 
 function shouldSkipPage(pageText: string): boolean {
   const lower = pageText.toLowerCase();
-  if (lower.includes("omr answer sheet") || lower.includes("omr sheet") || lower.includes("answer sheet")) {
+  
+  // Skip OMR / bubble sheet templates
+  if (
+    lower.includes("omr answer sheet") || 
+    lower.includes("omr sheet") || 
+    lower.includes("answer sheet") ||
+    lower.includes("bubble sheet") ||
+    lower.includes("student name:") ||
+    lower.includes("rollnumber:") ||
+    (lower.includes("abcd") && lower.includes("oooo"))
+  ) {
     return true;
   }
+
+  // Skip page number list / metadata mapping tables
+  if (
+    lower.includes("universal_queid") || 
+    lower.includes("universal_queld") ||
+    (lower.match(/qp26/g) || []).length > 5 ||
+    (lower.match(/qp25/g) || []).length > 5
+  ) {
+    return true;
+  }
+
+  // Skip solution/explanation pages
+  if (
+    lower.includes("explanation :") ||
+    lower.includes("explanation:") ||
+    lower.includes("ans. (") ||
+    lower.includes("ans.(") ||
+    lower.includes("ans:") ||
+    lower.includes("ans :")
+  ) {
+    return true;
+  }
+
   if (pageText.trim().length < 100) {
     return true;
   }
@@ -670,10 +742,15 @@ function shouldSkipPage(pageText: string): boolean {
 }
 
 async function extractFromChunkText(chunkText: string): Promise<any[]> {
+  // Preprocess text to add explicit question markers for any numbered questions
+  const preprocessedChunk = chunkText.replace(/(?:\r?\n|^)\s*(\d+)\.\s+/g, (match, num) => {
+    return `\n\n[QUESTION ${num}]\n`;
+  });
+
   const prompt = `You are an expert data extraction assistant. Your task is to read the textbook/paper text below and extract EVERY multiple-choice question (MCQ) present in it.
 Do NOT generate new questions, and do NOT invent any questions.
-
-CRITICAL: Only extract questions that are explicitly written in the source text. If the text does not contain any actual multiple-choice questions (e.g. it is just metadata, instructions, student name, roll number, blank page, OMR sheet, or a list of codes), you MUST return an empty array of questions: {"questions": []}. Do NOT invent, hallucinate, or generate any new questions under any circumstances.
+CRITICAL: The source text has been preprocessed to insert '[QUESTION <number>]' markers before each question. You MUST extract every single block starting with a '[QUESTION <number>]' marker as a separate, distinct question in the 'questions' array. Never merge, combine, skip, or collapse any '[QUESTION <number>]' blocks under any circumstances. Even if two blocks look extremely similar, have almost identical prompts, or ask about the same chemical compounds (for example, two different questions asking about the Van't Hoff factor of K₄[Fe(CN)₆] or K₃[Fe(CN)₆]), you MUST extract them as two separate question entries in the JSON. Do NOT mix options or explanations from one question with the prompt/options of another question. Keep them completely separate with their own options, correct answer, and explanation.
+Only extract questions that are explicitly written in the source text. If the text does not contain any actual multiple-choice questions (e.g. it is just metadata, instructions, student name, roll number, blank page, OMR sheet, or a list of codes), you MUST return an empty array of questions: {"questions": []}. Do NOT invent, hallucinate, or generate any new questions under any circumstances.
 
 For each question, find:
 1. The question prompt/text.
@@ -691,7 +768,8 @@ STRICT FORMATTING RULES:
 2. JSON ESCAPING: In the JSON, use FOUR backslashes for LaTeX (e.g., "\\\\frac").
 3. Chemistry: Use [SMILES: notation] for chemical structures.
 4. Chemical Formulas and Equations (Subscripts/Superscripts): You MUST format ALL chemical formulas (e.g., H2O, CO2, NaCl, K2SO4, Al2(SO4)3) and chemical equations in standard LaTeX using subscripts and superscripts (e.g., use $\\text{H}_2\\text{O}$ or $\\text{K}_2\\text{SO}_4$). Never output plain text chemical formulas like H2O or K2SO4.
-5. Output ONLY the JSON object, no markdown code blocks.
+5. DOUBLE QUOTES ESCAPING: NEVER use literal unescaped double quotes (") inside any string value (such as prompt, options, or explanation). You must escape them with a backslash (\") or replace them with single quotes (') to ensure the JSON is perfectly valid and parseable.
+6. Output ONLY the JSON object, no markdown code blocks.
 
 JSON STRUCTURE:
 {
@@ -714,24 +792,64 @@ JSON STRUCTURE:
 
 TEXT TO EXTRACT FROM:
 ---
-${chunkText}
+${preprocessedChunk}
 ---
 `;
 
+  let rawResponse = "";
+  let repaired = "";
   try {
-    let rawResponse = await generateContentWithFallback(prompt, '{"questions": []}');
+    rawResponse = await generateContentWithFallback(prompt, '{"questions": []}');
     const startIdx = rawResponse.indexOf("{");
     const endIdx = rawResponse.lastIndexOf("}");
     if (startIdx !== -1 && endIdx !== -1) {
       rawResponse = rawResponse.substring(startIdx, endIdx + 1);
     }
-    const repaired = repairJsonString(rawResponse);
+    repaired = repairJsonString(rawResponse);
     const parsedObj = JSON.parse(repaired);
     return parsedObj.questions || (Array.isArray(parsedObj) ? parsedObj : []);
   } catch (error: any) {
     console.error("MCQ chunk extraction failed:", error.message);
+    try {
+      fs.writeFileSync("scratch/failed_json_raw.json", rawResponse, "utf8");
+      fs.writeFileSync("scratch/failed_json_repaired.json", repaired, "utf8");
+      console.log("Failed JSON written to scratch/failed_json_raw.json and scratch/failed_json_repaired.json");
+    } catch (e) {}
     return [];
   }
+}
+
+function chunkPageText(pageText: string, maxQuestionsPerChunk = 6): string[] {
+  const preprocessed = pageText.replace(/(?:\r?\n|^)\s*(\d+)\.\s+/g, (match, num) => {
+    return `\n\n[QUESTION ${num}]\n`;
+  });
+
+  const regex = /\[QUESTION \d+\]/g;
+  const matches = [...preprocessed.matchAll(regex)];
+
+  if (matches.length <= maxQuestionsPerChunk) {
+    return [preprocessed];
+  }
+
+  const chunks: string[] = [];
+  let lastIndex = 0;
+
+  for (let i = maxQuestionsPerChunk; i < matches.length; i += maxQuestionsPerChunk) {
+    const match = matches[i];
+    const startIndex = match.index!;
+    const chunkText = preprocessed.substring(lastIndex, startIndex).trim();
+    if (chunkText) {
+      chunks.push(chunkText);
+    }
+    lastIndex = startIndex;
+  }
+
+  const lastChunkText = preprocessed.substring(lastIndex).trim();
+  if (lastChunkText) {
+    chunks.push(lastChunkText);
+  }
+
+  return chunks;
 }
 
 export async function extractQuestionsFromPdfText(params: {
@@ -797,35 +915,39 @@ export async function extractQuestionsFromPdfText(params: {
       }
 
       console.log(`Extracting from page ${i + 1}/${pages.length} sequentially...`);
-      const qList = await extractFromChunkText(pageText);
-      
-      const validList = qList.filter((q: any) => {
-        const prompt = q.prompt || "";
-        if (!prompt) return false;
-        if (prompt.length < 15) return true;
-        const cleanPrompt = prompt.toLowerCase().replace(/[^a-z0-9\s]/g, "");
-        const cleanSource = pageText.toLowerCase().replace(/[^a-z0-9\s]/g, "");
-        const words = cleanPrompt.split(/\s+/).filter((w: string) => w.length > 3);
-        if (words.length === 0) return true;
-        let matchCount = 0;
-        for (const word of words) {
-          if (cleanSource.includes(word)) {
-            matchCount++;
+      const chunks = chunkPageText(pageText, 6);
+      for (let c = 0; c < chunks.length; c++) {
+        if (chunks.length > 1) {
+          console.log(`  Processing sub-chunk ${c + 1}/${chunks.length}...`);
+        }
+        const qList = await extractFromChunkText(chunks[c]);
+        
+        const validList = qList.filter((q: any) => {
+          const prompt = q.prompt || "";
+          if (!prompt) return false;
+          if (prompt.length < 15) return true;
+          const cleanPrompt = prompt.toLowerCase().replace(/[^a-z0-9\s]/g, "");
+          const cleanSource = chunks[c].toLowerCase().replace(/[^a-z0-9\s]/g, "");
+          const words = cleanPrompt.split(/\s+/).filter((w: string) => w.length > 3);
+          if (words.length === 0) return true;
+          let matchCount = 0;
+          for (const word of words) {
+            if (cleanSource.includes(word)) {
+              matchCount++;
+            }
           }
-        }
-        const ratio = matchCount / words.length;
-        if (ratio < 0.35) {
-          console.log(`[Validation] Discarded hallucinated question: "${prompt.substring(0, 60)}..." (match ratio: ${ratio})`);
-          return false;
-        }
-        return true;
-      });
+          const ratio = matchCount / words.length;
+          if (ratio < 0.35) {
+            console.log(`[Validation] Discarded hallucinated question: "${prompt.substring(0, 60)}..." (match ratio: ${ratio})`);
+            return false;
+          }
+          return true;
+        });
 
-      const taggedList = validList.map((q: any) => ({ ...q, pageNumber: i + 1 }));
-      allParsedQuestions.push(...taggedList);
+        const taggedList = validList.map((q: any) => ({ ...q, pageNumber: i + 1 }));
+        allParsedQuestions.push(...taggedList);
 
-      // Wait between active pages to avoid rate limits
-      if (i < pages.length - 1) {
+        // Wait between sub-chunks/pages to avoid rate limits
         const delay = isGeminiQuotaExceeded ? 1000 : 8000;
         await new Promise(resolve => setTimeout(resolve, delay));
       }
@@ -836,18 +958,8 @@ export async function extractQuestionsFromPdfText(params: {
   const uniqueQuestions: any[] = [];
   
   function isDuplicateQuestion(q1: any, q2: any): boolean {
-    const p1 = q1.prompt || "";
-    const p2 = q2.prompt || "";
-
-    const stopwords = new Set([
-      "the", "of", "and", "to", "is", "in", "for", "on", "with", "at", "by", 
-      "an", "was", "be", "which", "from", "that", "this", "these", "those",
-      "are", "it", "its", "if", "then", "else", "what", "how", "why", "where",
-      "when", "who", "whom", "whose", "will", "would", "should", "could",
-      "can", "may", "might", "must", "shall", "about", "above", "after", "again",
-      "against", "all", "any", "both", "each", "few", "more", "most", "other",
-      "some", "such", "than", "too", "very"
-    ]);
+    const p1 = (q1.prompt || "").replace(/\[image:[^\]]+\]/gi, "").trim();
+    const p2 = (q2.prompt || "").replace(/\[image:[^\]]+\]/gi, "").trim();
 
     const unicodeMap: Record<string, string> = {
       '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4', '₅': '5', '₆': '6', '₇': '7', '₈': '8', '₉': '9',
@@ -855,44 +967,57 @@ export async function extractQuestionsFromPdfText(params: {
       '⁻': '-'
     };
 
-    const cleanPrompt = (str: string) => {
+    const stripLaTeX = (str: string) => {
       let norm = str.split('').map(char => unicodeMap[char] || char).join('');
       return norm.toLowerCase()
-        // Strip LaTeX formatting
-        .replace(/\$\$/g, "")
-        .replace(/\$/g, "")
         .replace(/\\text\s*\{([^}]+)\}/g, "$1")
         .replace(/\\mathrm\s*\{([^}]+)\}/g, "$1")
         .replace(/\\mathbf\s*\{([^}]+)\}/g, "$1")
         .replace(/\\vec\s*\{([^}]+)\}/g, "$1")
-        .replace(/\\_[a-zA-Z0-9]/g, "")
-        .replace(/\\^[a-zA-Z0-9]/g, "")
-        .replace(/[\{\}\_\^]/g, "")
-        .replace(/[^a-z0-9\s]/g, "");
+        .replace(/\\bold\s*\{([^}]+)\}/g, "$1")
+        .replace(/\\text/g, "")
+        .replace(/\\mathrm/g, "")
+        .replace(/\$\$/g, "")
+        .replace(/\$/g, "")
+        .replace(/[\{\}\_\^\\]/g, "")
+        .replace(/[^a-z0-9]/g, "");
     };
 
-    const clean1 = cleanPrompt(p1);
-    const clean2 = cleanPrompt(p2);
-    
-    const words1 = clean1.split(/\s+/).filter((w: string) => w.length > 2 && !stopwords.has(w));
-    const words2 = clean2.split(/\s+/).filter((w: string) => w.length > 2 && !stopwords.has(w));
-    
-    if (words1.length === 0 || words2.length === 0) return false;
-    
-    const set1 = new Set(words1);
-    const set2 = new Set(words2);
-    
-    let intersection = 0;
-    for (const w of set1) {
-      if (set2.has(w)) {
-        intersection++;
+    const clean1 = stripLaTeX(p1);
+    const clean2 = stripLaTeX(p2);
+
+    // Substring check (if one prompt contains another and is long enough)
+    if (clean1.length >= 20 && clean2.length >= 20) {
+      if (clean1.includes(clean2) || clean2.includes(clean1)) {
+        return true;
       }
     }
-    const union = set1.size + set2.size - intersection;
-    const similarity = intersection / union;
-    
-    if (similarity < 0.45) return false;
-    
+
+    // Trigram Jaccard similarity
+    const getCharNgrams = (str: string, n: number) => {
+      const ngrams = new Set<string>();
+      const clean = stripLaTeX(str);
+      for (let i = 0; i <= clean.length - n; i++) {
+        ngrams.add(clean.substring(i, i + n));
+      }
+      return ngrams;
+    };
+
+    const charNgramSimilarity = (str1: string, str2: string, n: number = 3) => {
+      const set1 = getCharNgrams(str1, n);
+      const set2 = getCharNgrams(str2, n);
+      if (set1.size === 0 || set2.size === 0) return 0;
+      let intersection = 0;
+      for (const item of set1) {
+        if (set2.has(item)) {
+          intersection++;
+        }
+      }
+      return intersection / (set1.size + set2.size - intersection);
+    };
+
+    const similarity = charNgramSimilarity(p1, p2, 3);
+
     // Normalize and extract numbers
     const normalizeNums = (str: string) => {
       let norm = str.split('').map(char => unicodeMap[char] || char).join('');
@@ -914,12 +1039,32 @@ export async function extractQuestionsFromPdfText(params: {
       }
     }
     
+    const getOptVal = (o: any) => typeof o === 'string' ? o : (o?.value || '');
+    
+    const normalizeOptionValue = (str: string) => {
+      let norm = str.split('').map(char => unicodeMap[char] || char).join('');
+      return norm.toLowerCase()
+        .replace(/\\text\s*\{([^}]+)\}/g, "$1")
+        .replace(/\\mathrm\s*\{([^}]+)\}/g, "$1")
+        .replace(/\\mathbf\s*\{([^}]+)\}/g, "$1")
+        .replace(/\\vec\s*\{([^}]+)\}/g, "$1")
+        .replace(/\\bold\s*\{([^}]+)\}/g, "$1")
+        .replace(/\\text/g, "")
+        .replace(/\\mathrm/g, "")
+        .replace(/\$\$/g, "")
+        .replace(/\$/g, "")
+        .replace(/[\{\}\_\^\\]/g, "")
+        .replace(/i/g, "l")
+        .replace(/1/g, "l")
+        .replace(/[^a-z]/g, "");
+    };
+
     const opts1 = q1.options || [];
     const opts2 = q2.options || [];
     let optionsMatch = false;
     if (opts1.length > 0 && opts2.length > 0) {
-      const vals1 = opts1.map((o: any) => (o.value || "").toLowerCase().replace(/[^a-z0-9]/g, ""));
-      const vals2 = opts2.map((o: any) => (o.value || "").toLowerCase().replace(/[^a-z0-9]/g, ""));
+      const vals1 = opts1.map((o: any) => normalizeOptionValue(getOptVal(o)));
+      const vals2 = opts2.map((o: any) => normalizeOptionValue(getOptVal(o)));
       let matchCount = 0;
       for (const v1 of vals1) {
         if (!v1) continue;
@@ -935,7 +1080,12 @@ export async function extractQuestionsFromPdfText(params: {
       optionsMatch = matchCount >= Math.max(2, Math.floor(minOptions * 0.75));
     }
     
-    if (similarity >= 0.85) return true;
+    if (similarity >= 0.75) {
+      if (opts1.length > 0 && opts2.length > 0 && !optionsMatch) {
+        return false;
+      }
+      return true;
+    }
     if (similarity >= 0.45) {
       if (numbersMatch || optionsMatch) return true;
     }
@@ -954,21 +1104,33 @@ export async function extractQuestionsFromPdfText(params: {
 
     if (foundIndex !== -1) {
       const existing = uniqueQuestions[foundIndex];
-      const hasExplExisting = !!existing.explanation && existing.explanation.trim().length > 0;
-      const hasExplNew = !!q.explanation && q.explanation.trim().length > 0;
       
-      // If the new one has explanation but existing doesn't, prefer new
-      if (hasExplNew && !hasExplExisting) {
-        uniqueQuestions[foundIndex] = { ...existing, ...q };
-      } else if (!hasExplNew && !hasExplExisting && q.prompt.length > existing.prompt.length) {
-        uniqueQuestions[foundIndex] = { ...existing, ...q };
+      // Preserve minimum page number
+      const p1 = existing.pageNumber || 1;
+      const p2 = q.pageNumber || 1;
+      existing.pageNumber = Math.min(p1, p2);
+      
+      // Merge prompt (keep shorter clean one, preserving image tag)
+      const imgMatchExisting = existing.prompt.match(/\[image:[^\]]+\]/i);
+      const imgMatchNew = q.prompt.match(/\[image:[^\]]+\]/i);
+      const imageTag = imgMatchExisting ? imgMatchExisting[0] : (imgMatchNew ? imgMatchNew[0] : null);
+
+      const cleanPromptExisting = existing.prompt.replace(/\[image:[^\]]+\]/gi, "").trim();
+      const cleanPromptNew = q.prompt.replace(/\[image:[^\]]+\]/gi, "").trim();
+
+      let bestPrompt = cleanPromptExisting;
+      if (cleanPromptNew.length > 0 && cleanPromptNew.length < cleanPromptExisting.length) {
+        bestPrompt = cleanPromptNew;
+      }
+
+      if (imageTag) {
+        existing.prompt = `${bestPrompt}\n${imageTag}`;
       } else {
-        if (!existing.explanation && q.explanation) {
-          existing.explanation = q.explanation;
-        }
-        if (q.pageNumber && !existing.pageNumber) {
-          existing.pageNumber = q.pageNumber;
-        }
+        existing.prompt = bestPrompt;
+      }
+
+      if (!existing.explanation && q.explanation) {
+        existing.explanation = q.explanation;
       }
     } else {
       uniqueQuestions.push(q);
@@ -991,7 +1153,24 @@ export async function extractQuestionsFromPdfText(params: {
     const pageNum = q.pageNumber;
 
     if (pageNum && params.diagrams) {
-      const pageDiagrams = params.diagrams.filter(d => d.page === pageNum);
+      // Filter out tiny page number / scanner artifacts from pageDiagrams (area must be >= 0.005)
+      const pageDiagrams = params.diagrams.filter(d => {
+        if (d.page !== pageNum) return false;
+        if (Array.isArray(d.bbox) && d.bbox.length === 4) {
+          const [y1, x1, y2, x2] = d.bbox;
+          const area = Math.abs(x2 - x1) * Math.abs(y2 - y1);
+          return area >= 0.005; 
+        }
+        return true; 
+      });
+
+      // Sort by area descending so that the largest diagram is first
+      pageDiagrams.sort((a, b) => {
+        const areaA = Array.isArray(a.bbox) && a.bbox.length === 4 ? Math.abs(a.bbox[3] - a.bbox[1]) * Math.abs(a.bbox[2] - a.bbox[0]) : 0;
+        const areaB = Array.isArray(b.bbox) && b.bbox.length === 4 ? Math.abs(b.bbox[3] - b.bbox[1]) * Math.abs(b.bbox[2] - b.bbox[0]) : 0;
+        return areaB - areaA;
+      });
+
       if (pageDiagrams.length > 0) {
         const lowerPrompt = promptText.toLowerCase();
         if (
@@ -1002,7 +1181,9 @@ export async function extractQuestionsFromPdfText(params: {
           lowerPrompt.includes("semi-permeable") ||
           lowerPrompt.includes("membrane")
         ) {
-          promptText += `\n[IMAGE: ${pageDiagrams[0].url}]`;
+          if (!promptText.includes("[IMAGE:")) {
+            promptText += `\n[IMAGE: ${pageDiagrams[0].url}]`;
+          }
         }
       }
     }
@@ -1034,7 +1215,8 @@ export async function extractQuestionsFromPdfText(params: {
       explanation: q.explanation || "",
       sourceType: params.sourceType,
       bookId: params.bookId,
-      isVerified: true
+      isVerified: true,
+      pageNumber: pageNum
     };
   });
 }
