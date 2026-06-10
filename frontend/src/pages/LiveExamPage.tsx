@@ -328,10 +328,65 @@ export function LiveExamPage() {
               })}
             </div>
 
-            {isReviewMode && reviewData?.explanation && (
-              <div className="explanation-box" style={{ marginTop: "20px", padding: "15px", background: "var(--color-bg-secondary)", borderRadius: "8px" }}>
-                <h4>Explanation:</h4>
-                <RichText content={reviewData.explanation} />
+            {isReviewMode && (
+              <div className="explanation-box" style={{ 
+                marginTop: "24px", 
+                padding: "24px", 
+                background: "#f8fafc", 
+                borderRadius: "16px", 
+                border: "1px solid #e2e8f0",
+                boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)"
+              }}>
+                <div style={{ marginBottom: "20px" }}>
+                  <h4 style={{ color: "#059669", marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px", fontSize: "1.1rem" }}>
+                    <span style={{ 
+                      background: "#10b981", 
+                      color: "white", 
+                      width: "24px", 
+                      height: "24px", 
+                      borderRadius: "50%", 
+                      display: "flex", 
+                      alignItems: "center", 
+                      justifyContent: "center",
+                      fontSize: "0.9rem"
+                    }}>✓</span> 
+                    Correct Answer
+                  </h4>
+                  <div style={{ 
+                    padding: "16px", 
+                    background: "white", 
+                    borderRadius: "12px", 
+                    border: "1px solid #d1fae5",
+                    boxShadow: "inset 0 2px 4px 0 rgba(0, 0, 0, 0.05)"
+                  }}>
+                    {reviewData?.correctOptionIds.map(cid => {
+                      const opt = currentQuestion.options.find((o: any) => o.id === cid);
+                      return (
+                        <div key={cid} style={{ fontWeight: "600", color: "#065f46", fontSize: "1.05rem" }}>
+                          Option {opt?.label}: <RichText content={opt?.value || ""} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {reviewData?.explanation ? (
+                  <div>
+                    <h4 style={{ color: "#475569", marginBottom: "12px", fontSize: "1.1rem" }}>Explanation</h4>
+                    <div style={{ 
+                      lineHeight: "1.7", 
+                      color: "#334155", 
+                      background: "white", 
+                      padding: "16px", 
+                      borderRadius: "12px", 
+                      border: "1px solid #e2e8f0" 
+                    }}>
+                      <RichText content={reviewData.explanation} />
+                    </div>
+                  </div>
+                ) : (
+                  <p className="muted-copy" style={{ fontStyle: "italic" }}>No detailed explanation available for this question.</p>
+                )}
               </div>
             )}
 
@@ -472,8 +527,123 @@ export function LiveExamPage() {
               Back to Dashboard
             </button>
           )}
-        </aside>
       </section>
+
+      {isReviewMode && (
+        <section className="section" style={{ marginTop: "40px", maxWidth: "1100px", margin: "40px auto" }}>
+          <div className="panel" style={{ padding: "30px", background: "white" }}>
+            <h3 style={{ marginBottom: "25px", display: "flex", alignItems: "center", gap: "12px", fontSize: "1.5rem" }}>
+              <span style={{ fontSize: "1.8rem" }}>📜</span> Detailed Question-wise Analysis
+            </h3>
+            <div className="stack" style={{ gap: "30px" }}>
+              {generatedExam.questions.map((question: any, index: number) => {
+                const rev = latestResult?.review?.[index];
+                const isCorrect = rev?.isCorrect;
+                const unanswered = !rev?.selectedOptionIds || rev.selectedOptionIds.length === 0;
+
+                return (
+                  <article key={question.id} style={{ 
+                    borderLeft: `8px solid ${unanswered ? "#94a3b8" : (isCorrect ? "#10b981" : "#ef4444")}`,
+                    padding: "24px",
+                    background: "#fdfdfd",
+                    borderRadius: "12px",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+                    border: "1px solid var(--color-border)",
+                    borderLeftWidth: "8px"
+                  }}>
+                    <div className="row-between" style={{ marginBottom: "16px", alignItems: "center" }}>
+                      <span style={{ fontWeight: "700", color: "var(--color-text-muted)", fontSize: "0.9rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                        Question {index + 1}
+                      </span>
+                      <span style={{ 
+                        fontWeight: "bold", 
+                        color: unanswered ? "#64748b" : (isCorrect ? "#059669" : "#dc2626"),
+                        fontSize: "0.85rem",
+                        background: unanswered ? "#f1f5f9" : (isCorrect ? "#ecfdf5" : "#fef2f2"),
+                        padding: "6px 14px",
+                        borderRadius: "20px",
+                        border: `1px solid ${unanswered ? "#e2e8f0" : (isCorrect ? "#d1fae5" : "#fecaca")}`
+                      }}>
+                        {unanswered ? "UNATTEMPTED" : (isCorrect ? "✓ CORRECT" : "✗ INCORRECT")}
+                      </span>
+                    </div>
+                    
+                    <div style={{ fontSize: "1.2rem", marginBottom: "20px", fontWeight: "500", lineHeight: "1.5" }}>
+                      <RichText content={question.prompt} />
+                    </div>
+
+                    <div className="options-grid" style={{ pointerEvents: "none", opacity: 0.9, marginBottom: "20px" }}>
+                      {question.options.map((option: any) => {
+                        const isSelected = (rev?.selectedOptionIds ?? []).includes(option.id);
+                        const isCorrectOpt = (rev?.correctOptionIds ?? []).includes(option.id);
+                        
+                        let border = "1px solid var(--color-border)";
+                        let bg = "white";
+                        if (isCorrectOpt) {
+                          border = "2px solid #10b981";
+                          bg = "#f0fdf4";
+                        } else if (isSelected && !isCorrectOpt) {
+                          border = "2px solid #ef4444";
+                          bg = "#fef2f2";
+                        }
+
+                        return (
+                          <div key={option.id} style={{ 
+                            padding: "12px 16px", 
+                            borderRadius: "10px", 
+                            border, 
+                            background: bg,
+                            display: "flex",
+                            gap: "12px",
+                            alignItems: "center",
+                            boxShadow: isCorrectOpt || isSelected ? "0 2px 4px rgba(0,0,0,0.05)" : "none"
+                          }}>
+                            <strong style={{ 
+                              color: isCorrectOpt ? "#059669" : (isSelected ? "#dc2626" : "var(--color-text-muted)"),
+                              fontSize: "1.1rem"
+                            }}>{option.label}.</strong>
+                            <div style={{ flex: 1 }}>
+                              <RichText content={option.value} />
+                            </div>
+                            {isCorrectOpt && <span style={{ color: "#059669", fontWeight: "bold" }}>✓</span>}
+                            {isSelected && !isCorrectOpt && <span style={{ color: "#dc2626", fontWeight: "bold" }}>✗</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div style={{ marginTop: "20px", padding: "20px", background: "#f8fafc", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
+                      <div style={{ marginBottom: "12px", display: "flex", alignItems: "center", gap: "10px" }}>
+                        <strong style={{ color: "#059669", fontSize: "1rem" }}>Correct Answer: </strong>
+                        <span style={{ 
+                          fontWeight: "700", 
+                          background: "#10b981", 
+                          color: "white", 
+                          padding: "2px 10px", 
+                          borderRadius: "4px",
+                          fontSize: "0.9rem"
+                        }}>
+                          {rev?.correctOptionIds.map((cid: string) => question.options.find((o: any) => o.id === cid)?.label).join(", ")}
+                        </span>
+                      </div>
+                      {rev?.explanation ? (
+                        <div>
+                          <strong style={{ color: "#475569", fontSize: "1rem", display: "block", marginBottom: "8px" }}>Explanation:</strong>
+                          <div style={{ color: "#334155", fontSize: "1rem", lineHeight: "1.6" }}>
+                            <RichText content={rev.explanation} />
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="muted-copy" style={{ fontStyle: "italic", fontSize: "0.9rem", margin: 0 }}>No detailed explanation available for this question.</p>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

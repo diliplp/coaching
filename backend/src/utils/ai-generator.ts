@@ -755,8 +755,8 @@ Only extract questions that are explicitly written in the source text. If the te
 For each question, find:
 1. The question prompt/text.
 2. The options (A, B, C, D, etc.) with their values.
-3. Identify which option is the correct one based on the text or solutions provided in the text.
-4. The explanation if provided in the text.
+3. Identify which option is the correct one based on the text or solutions provided in the text (often marked with 'Ans.' or 'Correct Option').
+4. The explanation if provided in the text. EXPLANATIONS often appear immediately after the question or options, sometimes preceded by markers like '™', 'Explanation:', 'Sol.', or '+'. You MUST capture these explanations and include them in the 'explanation' field.
 
 OCR ERROR RECONSTRUCTION RULES:
 - The source text comes from a scanned PDF; mathematical equations, LaTeX fractions, and variables may look like garbage (e.g. 'RT x \\) RT v \\' or 'w= (F}'). You MUST use your domain knowledge of chemistry and physics to intelligently reconstruct these expressions into correct, standard, readable math formulas formatted in LaTeX.
