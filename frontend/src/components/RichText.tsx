@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 // @ts-ignore
@@ -108,28 +108,37 @@ export function RichText({ content }: { content: string }) {
 
         if (token.type === "image") {
           return (
-            <div key={i} style={{ margin: "12px 0", textAlign: "center" }}>
-              <img
-                src={buildPublicAssetUrl(token.value)}
-                alt="Question Diagram"
-                style={{
-                  maxWidth: "100%",
-                  maxHeight: "350px",
-                  borderRadius: "8px",
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
-                  border: "1px solid var(--color-border)",
-                  padding: "6px",
-                  background: "#fff",
-                  display: "block",
-                  margin: "0 auto"
-                }}
-              />
-            </div>
+            <DiagramImage key={i} src={buildPublicAssetUrl(token.value)} />
           );
         }
 
         return null;
       })}
+    </div>
+  );
+}
+
+function DiagramImage({ src }: { src: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    <div style={{ margin: "12px 0", textAlign: "center" }}>
+      <img
+        src={src}
+        alt="Question Diagram"
+        onError={() => setFailed(true)}
+        style={{
+          maxWidth: "100%",
+          maxHeight: "350px",
+          borderRadius: "8px",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
+          border: "1px solid var(--color-border)",
+          padding: "6px",
+          background: "#fff",
+          display: "block",
+          margin: "0 auto"
+        }}
+      />
     </div>
   );
 }

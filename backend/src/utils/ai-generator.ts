@@ -1153,15 +1153,27 @@ export async function extractQuestionsFromPdfText(params: {
     const pageNum = q.pageNumber;
 
     if (pageNum && params.diagrams) {
-      // Filter out tiny page number / scanner artifacts from pageDiagrams (area must be >= 0.005)
+      // Build a set of URLs that appear on 3+ pages — these are watermarks/logos
+      const urlPageCount: Record<string, Set<number>> = {};
+      for (const d of params.diagrams) {
+        if (!urlPageCount[d.url]) urlPageCount[d.url] = new Set();
+        urlPageCount[d.url].add(d.page);
+      }
+      const watermarkUrls = new Set(
+        Object.entries(urlPageCount).filter(([, pages]) => pages.size >= 3).map(([url]) => url)
+      );
+
+      // Filter: must be on correct page, not a watermark, and area between 0.005–0.50
+      // (real exam diagrams are rarely >50% of page; page-spanning watermarks are typically 0.3–0.9)
       const pageDiagrams = params.diagrams.filter(d => {
         if (d.page !== pageNum) return false;
+        if (watermarkUrls.has(d.url)) return false;
         if (Array.isArray(d.bbox) && d.bbox.length === 4) {
           const [y1, x1, y2, x2] = d.bbox;
           const area = Math.abs(x2 - x1) * Math.abs(y2 - y1);
-          return area >= 0.005; 
+          return area >= 0.005 && area <= 0.50;
         }
-        return true; 
+        return true;
       });
 
       // Sort by area descending so that the largest diagram is first
