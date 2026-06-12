@@ -13,13 +13,14 @@ const BASE_URL = env === "local"
 const ids = JSON.parse(fs.readFileSync("scratch/competitive_ids.json", "utf8"));
 
 // Map each question PDF to its subject key
+// useVision: true → send PDF to Gemini Vision for accurate subscript/superscript extraction
 const PAPERS = [
-  { file: "12th_jee_physics.pdf",     subjectKey: "jeePhysics",    title: "JEE Physics 2024",    bookType: "pyq" },
-  { file: "12th JEE Chemistry.pdf",   subjectKey: "jeeChemistry",  title: "JEE Chemistry 2024",  bookType: "pyq" },
-  { file: "12th jee maths.pdf",       subjectKey: "jeeMaths",      title: "JEE Mathematics 2024",bookType: "pyq" },
-  { file: "12th_neet_physics.pdf",    subjectKey: "neetPhysics",   title: "NEET Physics 2024",   bookType: "pyq" },
-  { file: "12th_neet_chemistry.pdf",  subjectKey: "neetChemistry", title: "NEET Chemistry 2024", bookType: "pyq" },
-  { file: "12_neet_biology.pdf",      subjectKey: "neetBiology",   title: "NEET Biology 2024",   bookType: "pyq" },
+  { file: "12th_jee_physics.pdf",     subjectKey: "jeePhysics",    title: "JEE Physics 2024",    bookType: "pyq", useVision: true },
+  { file: "12th JEE Chemistry.pdf",   subjectKey: "jeeChemistry",  title: "JEE Chemistry 2024",  bookType: "pyq", useVision: true },
+  { file: "12th jee maths.pdf",       subjectKey: "jeeMaths",      title: "JEE Mathematics 2024",bookType: "pyq", useVision: true },
+  { file: "12th_neet_physics.pdf",    subjectKey: "neetPhysics",   title: "NEET Physics 2024",   bookType: "pyq", useVision: true },
+  { file: "12th_neet_chemistry.pdf",  subjectKey: "neetChemistry", title: "NEET Chemistry 2024", bookType: "pyq", useVision: true },
+  { file: "12_neet_biology.pdf",      subjectKey: "neetBiology",   title: "NEET Biology 2024",   bookType: "pyq", useVision: false },
 ];
 
 async function login() {
@@ -52,11 +53,11 @@ async function uploadBook(token, filePath, subjectId, title, bookType) {
   return data;
 }
 
-async function triggerExtraction(token, bookId, topicId) {
+async function triggerExtraction(token, bookId, topicId, useVision = false) {
   const res = await fetch(`${BASE_URL}/subject-books/${bookId}/extract-mcq-questions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ topicId })
+    body: JSON.stringify({ topicId, useVision })
   });
   const data = await res.json();
   if (!res.ok) throw new Error(`Extraction trigger failed: ${JSON.stringify(data)}`);
@@ -89,10 +90,10 @@ async function main() {
       const book = await uploadBook(token, filePath, subjectId, paper.title, paper.bookType);
       console.log(`  Uploaded book id=${book.id}`);
 
-      console.log(`  Triggering extraction (topicId=${topicId})...`);
-      const extractResult = await triggerExtraction(token, book.id, topicId);
+      console.log(`  Triggering extraction (topicId=${topicId}, useVision=${paper.useVision})...`);
+      const extractResult = await triggerExtraction(token, book.id, topicId, paper.useVision);
       console.log(`  Extraction started: ${extractResult.message || JSON.stringify(extractResult)}`);
-      results.push({ file: paper.file, bookId: book.id, subjectKey: paper.subjectKey, status: "extraction_triggered" });
+      results.push({ file: paper.file, bookId: book.id, subjectKey: paper.subjectKey, status: "extraction_triggered", useVision: paper.useVision });
     } catch (err) {
       console.error(`  [ERROR] ${err.message}`);
       results.push({ file: paper.file, subjectKey: paper.subjectKey, status: "error", error: err.message });

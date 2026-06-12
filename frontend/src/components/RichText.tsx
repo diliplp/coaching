@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import katex from "katex";
 import "katex/dist/katex.min.css";
+import "katex/contrib/mhchem";
 // @ts-ignore
 import SmiDrawer from "smiles-drawer";
 import { buildPublicAssetUrl } from "../api/client";

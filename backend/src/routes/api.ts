@@ -16,7 +16,7 @@ import {
 } from "../utils/exam-engine.js";
 import path from "node:path";
 import { extractPdfText, extractPdfDiagrams } from "../utils/pdf.js";
-import { generateQuestionsFromText, ensureEnoughQuestions, parseExamPrompt, detectCurriculumFromText, generateOfflineBoardPaper, extractQuestionsFromPdfText } from "../utils/ai-generator.js";
+import { generateQuestionsFromText, ensureEnoughQuestions, parseExamPrompt, detectCurriculumFromText, generateOfflineBoardPaper, extractQuestionsFromPdfText, extractQuestionsFromPdfVision } from "../utils/ai-generator.js";
 import { listReferencePapers } from "../utils/reference-papers.js";
 import { findUserByEmail, requireAuth, requireRole, signAuthToken, verifyPassword } from "../utils/auth.js";
 import type { AuthenticatedRequest, Question, QuestionSource, SubjectBook } from "../types.js";
@@ -286,13 +286,16 @@ apiRouter.post("/exams/create-competitive", requireRole(["super_admin", "teacher
 
     for (const section of sectionRequests) {
       const { subjectId, questionCount, label } = section;
-      const pool = state.questions.filter(q => q.subjectId === subjectId);
+      // Sort by pageNumber so questions appear in PDF order
+      const pool = state.questions
+        .filter(q => q.subjectId === subjectId)
+        .sort((a, b) => (a.pageNumber ?? 999) - (b.pageNumber ?? 999));
       if (pool.length < questionCount) {
         return res.status(400).json({
           message: `Not enough questions for section "${label}": need ${questionCount}, have ${pool.length}`
         });
       }
-      const picked = pool.sort(() => 0.5 - Math.random()).slice(0, questionCount);
+      const picked = pool.slice(0, questionCount);
       examSections.push({ subjectId, label, questionCount, startIndex });
       allQuestions.push(...picked);
       startIndex += questionCount;
@@ -312,10 +315,11 @@ apiRouter.post("/exams/create-competitive", requireRole(["super_admin", "teacher
       sections: examSections,
       scheduledStartTime: scheduledStartTime || undefined,
       scheduledEndTime: scheduledEndTime || undefined,
+      // Keep options in natural A/B/C/D order — never shuffle for competitive exams
       questions: allQuestions.map((q, i) => ({
         questionId: q.id,
         order: i + 1,
-        optionOrderIds: q.options.map(o => o.id).sort(() => 0.5 - Math.random())
+        optionOrderIds: q.options.map(o => o.id)
       }))
     };
 
@@ -820,44 +824,64 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
     }
   }
 
-  if (!book.parsedText) {
-    res.status(400).json({ message: "Book does not have parsed text. Was it fully processed?" });
+  const useVision = req.body.useVision === true || req.body.useVision === "true";
+
+  if (!useVision && !book.parsedText) {
+    res.status(400).json({ message: "Book does not have parsed text. Was it fully processed? Pass useVision:true to use PDF vision instead." });
     return;
   }
 
-  const parsedText = book.parsedText;
+  const parsedText = book.parsedText || "";
 
   // Start the extraction process in the background to avoid 524 Cloudflare Gateway Timeout
   (async () => {
     try {
       const filename = book.fileUrl.split("/").pop() || "";
       const pdfPath = path.join(booksUploadsRoot, filename);
-      
+
       console.log(`[Background] Extracting diagrams first for book ${book.id} at ${pdfPath}...`);
       const diagrams = await extractPdfDiagrams(pdfPath, book.id);
       console.log(`[Background] Found ${diagrams.length} diagrams for book ${book.id}.`);
 
-      const extracted = await extractQuestionsFromPdfText({
-        text: parsedText,
-        subjectId: book.subjectId,
-        topicId: topicIds[0],
-        sourceType: book.bookType || "reference",
-        bookId: book.id,
-        diagrams
-      });
+      let extracted: Awaited<ReturnType<typeof extractQuestionsFromPdfText>>;
+      if (useVision) {
+        console.log(`[Background] Using vision-based extraction for book ${book.id}...`);
+        extracted = await extractQuestionsFromPdfVision({
+          pdfPath,
+          subjectId: book.subjectId,
+          topicId: topicIds[0],
+          sourceType: book.bookType || "reference",
+          bookId: book.id,
+          diagrams
+        });
+      } else {
+        extracted = await extractQuestionsFromPdfText({
+          text: parsedText,
+          subjectId: book.subjectId,
+          topicId: topicIds[0],
+          sourceType: book.bookType || "reference",
+          bookId: book.id,
+          diagrams
+        });
+      }
 
       const stateBefore = await getAppState();
       const existingBookQs = stateBefore.questions.filter(q => q.bookId === book.id);
-      console.log(`[Background] Clearing ${existingBookQs.length} existing questions for book ${book.id} to prevent duplicates/leftovers...`);
-      for (const q of existingBookQs) {
-        await deleteRecord("questions", q.id);
+      if (extracted.length === 0) {
+        console.warn(`[Background] Extraction returned 0 questions for book ${book.id} — keeping existing questions to avoid data loss.`);
+      } else {
+        const stateBefore = await getAppState();
+        const existingBookQs = stateBefore.questions.filter(q => q.bookId === book.id);
+        console.log(`[Background] Clearing ${existingBookQs.length} existing questions for book ${book.id}...`);
+        for (const q of existingBookQs) {
+          await deleteRecord("questions", q.id);
+        }
+        console.log(`[Background] Saving ${extracted.length} extracted questions...`);
+        for (const q of extracted) {
+          await upsertRecord("questions", q);
+        }
+        console.log(`[Background] Successfully extracted and saved ${extracted.length} questions for book ${book.id}.`);
       }
-
-      console.log(`[Background] Saving ${extracted.length} extracted questions...`);
-      for (const q of extracted) {
-        await upsertRecord("questions", q);
-      }
-      console.log(`[Background] Successfully extracted and saved ${extracted.length} questions for book ${book.id}.`);
     } catch (bgError: any) {
       console.error(`[Background] Error during question extraction for book ${book.id}:`, bgError);
     }

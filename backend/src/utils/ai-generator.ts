@@ -55,6 +55,66 @@ function repairJsonString(raw: string): string {
 
 let isGeminiQuotaExceeded = false;
 
+async function generateContentWithVision(prompt: string, pdfBase64: string): Promise<string> {
+  const keysToTry = isGeminiQuotaExceeded ? [] : [
+    { key: process.env.GEMINI_API_KEY, name: "Primary Gemini API Key" },
+    { key: process.env.GEMINI_API_KEY_BACKUP, name: "Backup Gemini API Key" }
+  ].filter(item => !!item.key);
+
+  for (const { key, name } of keysToTry) {
+    let attempts = 0;
+    const maxAttempts = 4;
+    let delay = 60000; // start at 60s for 429 rate limits on large PDFs
+
+    while (attempts < maxAttempts) {
+      attempts++;
+      try {
+        console.log(`[Vision] Attempting with ${name} (attempt ${attempts}/${maxAttempts})...`);
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{
+                parts: [
+                  { inline_data: { mime_type: "application/pdf", data: pdfBase64 } },
+                  { text: prompt }
+                ]
+              }],
+              generationConfig: { responseMimeType: "application/json" }
+            })
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text) return text;
+        } else {
+          const errStatus = response.status;
+          const errText = await response.text();
+          console.warn(`[Vision] ${name} failed ${errStatus}: ${errText.substring(0, 300)}`);
+          if ((errStatus === 429 || errStatus >= 500) && attempts < maxAttempts) {
+            console.log(`[Vision] Waiting ${delay / 1000}s before retry...`);
+            await new Promise(r => setTimeout(r, delay));
+            delay = Math.min(delay * 2, 300000); // cap at 5 min
+            continue;
+          }
+        }
+        break;
+      } catch (e: any) {
+        console.warn(`[Vision] ${name} exception:`, e.message);
+        if (attempts < maxAttempts) {
+          await new Promise(r => setTimeout(r, delay));
+          delay = Math.min(delay * 2, 300000);
+        }
+      }
+    }
+  }
+  return '{"questions": []}';
+}
+
 async function generateContentWithFallback(prompt: string, fallbackJson: string = "{}"): Promise<string> {
   const keysToTry = isGeminiQuotaExceeded ? [] : [
     { key: process.env.GEMINI_API_KEY, name: "Primary Gemini API Key" },
@@ -268,7 +328,7 @@ STRICT STEM AND MATHEMATICAL RULES:
 2. JSON ESCAPING: In the JSON, use FOUR backslashes for LaTeX (e.g., "\\\\frac").
 3. Chemistry: Use [SMILES: notation] for chemical structures (e.g. [SMILES: CC(=O)O] for acetic acid).
    IMPORTANT: A SMILES string is NOT a chemical formula. Never use placeholders like '?' or chemical formulas inside [SMILES: ] tags.
-4. Chemical Formulas and Equations (Subscripts/Superscripts): You MUST format ALL chemical formulas (e.g., H2O, CO2, NaCl, K2SO4, Al2(SO4)3) and chemical equations in standard LaTeX using subscripts and superscripts (e.g., use $\\text{H}_2\\text{O}$ or $\\text{K}_2\\text{SO}_4$). Never output plain text chemical formulas like H2O or K2SO4.
+4. Chemical Formulas and Equations: Use mhchem notation $\\ce{formula}$ for ALL chemical formulas and equations. Examples: $\\ce{H2O}$, $\\ce{CO2}$, $\\ce{H2SO4}$, $\\ce{K4[Fe(CN)6]}$, $\\ce{O2^+}$, $\\ce{SO4^{2-}}$, $\\ce{Fe^{3+}}$, $\\ce{CH4}$. For reactions use $\\ce{A -> B}$ or $\\ce{A + B -> C + D}$. Never output plain text chemical formulas like H2O or K2SO4. In JSON strings \\ce becomes \\\\ce.
 5. Colligative Properties & van't Hoff Factor (i):
    - For questions on colligative properties (freezing point depression, boiling point elevation, vapour pressure lowering, osmotic pressure) of electrolytes (e.g. NaCl, KCl, CaCl2, Na2SO4, etc.), you MUST calculate and include the van't Hoff factor (i) assuming complete dissociation (unless degree of dissociation is given).
    - E.g., for NaCl, i = 2; for KCl, i = 2; for Na2SO4, i = 3; for MgSO4, i = 2.
@@ -767,7 +827,7 @@ STRICT FORMATTING RULES:
 1. LaTeX: Use $...$ for inline and $$...$$ for blocks.
 2. JSON ESCAPING: In the JSON, use FOUR backslashes for LaTeX (e.g., "\\\\frac").
 3. Chemistry: Use [SMILES: notation] for chemical structures.
-4. Chemical Formulas and Equations (Subscripts/Superscripts): You MUST format ALL chemical formulas (e.g., H2O, CO2, NaCl, K2SO4, Al2(SO4)3) and chemical equations in standard LaTeX using subscripts and superscripts (e.g., use $\\text{H}_2\\text{O}$ or $\\text{K}_2\\text{SO}_4$). Never output plain text chemical formulas like H2O or K2SO4.
+4. Chemical Formulas and Equations: Use mhchem notation $\\ce{formula}$ for ALL chemical formulas and equations. Examples: $\\ce{H2O}$, $\\ce{CO2}$, $\\ce{H2SO4}$, $\\ce{K4[Fe(CN)6]}$, $\\ce{O2^+}$, $\\ce{SO4^{2-}}$, $\\ce{Fe^{3+}}$, $\\ce{CH4}$. For reactions use $\\ce{A -> B}$ or $\\ce{A + B -> C + D}$. Never output plain text chemical formulas like H2O or K2SO4. In JSON strings \\ce becomes \\\\ce.
 5. DOUBLE QUOTES ESCAPING: NEVER use literal unescaped double quotes (") inside any string value (such as prompt, options, or explanation). You must escape them with a backslash (\") or replace them with single quotes (') to ensure the JSON is perfectly valid and parseable.
 6. Output ONLY the JSON object, no markdown code blocks.
 
@@ -1231,4 +1291,159 @@ export async function extractQuestionsFromPdfText(params: {
       pageNumber: pageNum
     };
   });
+}
+
+export async function extractQuestionsFromPdfVision(params: {
+  pdfPath: string;
+  subjectId: string;
+  topicId: string;
+  sourceType: QuestionSource;
+  bookId?: string;
+  diagrams?: Array<{ page: number; url: string; bbox: number[] }>;
+}): Promise<Question[]> {
+  console.log(`[Vision] Reading PDF: ${params.pdfPath}`);
+
+  let pdfBase64: string;
+  try {
+    const buf = fs.readFileSync(params.pdfPath);
+    const sizeMB = buf.length / (1024 * 1024);
+    console.log(`[Vision] PDF size: ${sizeMB.toFixed(1)} MB`);
+    if (sizeMB > 19) {
+      console.warn("[Vision] PDF exceeds 19 MB inline limit — aborting vision extraction");
+      return [];
+    }
+    pdfBase64 = buf.toString("base64");
+  } catch (e: any) {
+    console.error(`[Vision] Cannot read PDF: ${e.message}`);
+    return [];
+  }
+
+  const prompt = `You are an expert MCQ extraction assistant for JEE/NEET competitive exam papers.
+
+Extract EVERY multiple-choice question from this PDF. Read the VISUAL content carefully.
+
+CRITICAL RULES:
+1. Preserve ALL subscripts and superscripts exactly as typeset (e.g. O₂⁺, CH₄, SO₄²⁻, e⁻, H₂O)
+2. Extract ALL 4 options verbatim — never shuffle or invent options
+3. Mark the correct option using the answer key in the document (look for "Ans.", answer boxes, or solution sections)
+4. Do NOT skip any question
+
+FORMATTING RULES:
+- Chemical formulas use mhchem: $\\ce{O2^+}$  $\\ce{CH4}$  $\\ce{H2O}$  $\\ce{SO4^{2-}}$  $\\ce{K4[Fe(CN)6]}$  $\\ce{Fe^{3+}}$
+- Reactions: $\\ce{A -> B}$  $\\ce{A + B -> C + D}$  $\\ce{A <=> B}$
+- Math expressions: $x^2$  $\\frac{a}{b}$  $\\sqrt{x}$  $\\Delta H$
+- Inline math: $...$   Display math: $$...$$
+- In JSON strings use 4 backslashes: "$$\\\\frac{a}{b}$$"  "$\\\\ce{H2O}$"
+- Marks: 4, NegativeMarks: 1 (JEE) or 0 (NEET) unless stated otherwise
+- Output ONLY the JSON object, no markdown fences
+
+JSON FORMAT:
+{
+  "questions": [
+    {
+      "prompt": "Question text with $\\\\ce{O2^+}$ formulas",
+      "difficulty": "medium",
+      "marks": 4,
+      "negativeMarks": 1,
+      "options": [
+        { "label": "A", "value": "option text", "isCorrect": false },
+        { "label": "B", "value": "correct option", "isCorrect": true },
+        { "label": "C", "value": "option text", "isCorrect": false },
+        { "label": "D", "value": "option text", "isCorrect": false }
+      ],
+      "explanation": "Why option B is correct"
+    }
+  ]
+}`;
+
+  let rawResponse = "";
+  let repaired = "";
+  try {
+    rawResponse = await generateContentWithVision(prompt, pdfBase64);
+    const startIdx = rawResponse.indexOf("{");
+    const endIdx = rawResponse.lastIndexOf("}");
+    if (startIdx !== -1 && endIdx !== -1) {
+      rawResponse = rawResponse.substring(startIdx, endIdx + 1);
+    }
+    repaired = repairJsonString(rawResponse);
+    const parsedObj = JSON.parse(repaired);
+    const allParsedQuestions: any[] = parsedObj.questions || [];
+    console.log(`[Vision] Gemini returned ${allParsedQuestions.length} raw questions.`);
+
+    return allParsedQuestions.map((q: any, i: number) => {
+      const correctOptionIds: string[] = [];
+      const options: QuestionOption[] = (q.options || []).map((o: any, idx: number) => {
+        const oId = `opt-vis-${Date.now()}-${i}-${idx}-${Math.random().toString(36).substr(2, 4)}`;
+        if (o.isCorrect) correctOptionIds.push(oId);
+        return { id: oId, label: o.label || String.fromCharCode(65 + idx), value: o.value || "" };
+      });
+
+      let promptText = q.prompt || "";
+      const pageNum = q.pageNumber as number | undefined;
+
+      if (pageNum && params.diagrams) {
+        const urlPageCount: Record<string, Set<number>> = {};
+        for (const d of params.diagrams) {
+          if (!urlPageCount[d.url]) urlPageCount[d.url] = new Set();
+          urlPageCount[d.url].add(d.page);
+        }
+        const watermarkUrls = new Set(
+          Object.entries(urlPageCount).filter(([, pages]) => pages.size >= 3).map(([url]) => url)
+        );
+        const pageDiagrams = params.diagrams.filter(d => {
+          if (d.page !== pageNum) return false;
+          if (watermarkUrls.has(d.url)) return false;
+          if (Array.isArray(d.bbox) && d.bbox.length === 4) {
+            const [y1, x1, y2, x2] = d.bbox;
+            const area = Math.abs(x2 - x1) * Math.abs(y2 - y1);
+            return area >= 0.005 && area <= 0.50;
+          }
+          return true;
+        });
+        pageDiagrams.sort((a, b) => {
+          const areaA = Array.isArray(a.bbox) && a.bbox.length === 4 ? Math.abs(a.bbox[3] - a.bbox[1]) * Math.abs(a.bbox[2] - a.bbox[0]) : 0;
+          const areaB = Array.isArray(b.bbox) && b.bbox.length === 4 ? Math.abs(b.bbox[3] - b.bbox[1]) * Math.abs(b.bbox[2] - b.bbox[0]) : 0;
+          return areaB - areaA;
+        });
+        if (pageDiagrams.length > 0) {
+          const lowerPrompt = promptText.toLowerCase();
+          if (
+            (lowerPrompt.includes("figure") || lowerPrompt.includes("diagram") || lowerPrompt.includes("image")) &&
+            !promptText.includes("[IMAGE:")
+          ) {
+            promptText += `\n[IMAGE: ${pageDiagrams[0].url}]`;
+          }
+        }
+      }
+
+      const normalizedPrompt = promptText.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const promptHash = crypto.createHash("sha256").update(normalizedPrompt).digest("hex").substring(0, 16);
+      const qId = `que-vis-${params.bookId || "book"}-${promptHash}`;
+
+      return {
+        id: qId,
+        subjectId: params.subjectId,
+        topicId: params.topicId,
+        type: correctOptionIds.length > 1 ? "multi_correct" : "single_correct",
+        prompt: promptText,
+        difficulty: q.difficulty || "medium",
+        marks: q.marks ?? 4,
+        negativeMarks: q.negativeMarks ?? 1,
+        correctOptionIds,
+        options,
+        explanation: q.explanation || "",
+        sourceType: params.sourceType,
+        bookId: params.bookId,
+        isVerified: true,
+        pageNumber: pageNum
+      };
+    });
+  } catch (e: any) {
+    console.error("[Vision] Extraction failed:", e.message);
+    try {
+      fs.writeFileSync("scratch/vision_failed_raw.json", rawResponse, "utf8");
+      fs.writeFileSync("scratch/vision_failed_repaired.json", repaired, "utf8");
+    } catch {}
+    return [];
+  }
 }

@@ -1,6 +1,10 @@
 # Stage 1: Build the backend and frontend
-FROM node:18-bookworm AS builder
+FROM node:18-bookworm-slim AS builder
 WORKDIR /app
+
+# Install build essentials for native modules if needed
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+
 COPY package*.json ./
 COPY backend/package*.json ./backend/
 COPY frontend/package*.json ./frontend/
@@ -10,17 +14,19 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Runtime image
-FROM node:18-bookworm
+FROM node:18-bookworm-slim
 WORKDIR /app
 
 # Install system dependencies: python3, pip, tesseract-ocr, chromium, and all runtime deps
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     python3 \
     python3-pip \
     python3-venv \
     tesseract-ocr \
     tesseract-ocr-eng \
     chromium \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy package files and install production dependencies
