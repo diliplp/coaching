@@ -62,6 +62,20 @@ apiRouter.post("/admin/upload-image", requireRole(["super_admin"]), uploadImage.
   res.json({ url: `/uploads/diagrams/${req.file.filename}` });
 });
 
+apiRouter.post("/admin/create-users", requireRole(["super_admin"]), async (req, res) => {
+  const { users } = req.body as { users: Array<{ name: string; email: string; password: string; role: string; studentId?: string; classId?: string; streamId?: string; batchId?: string }> };
+  if (!Array.isArray(users)) { res.status(400).json({ message: "users[] required" }); return; }
+  const bcrypt = await import("bcryptjs");
+  const created = [];
+  for (const u of users) {
+    const passwordHash = await bcrypt.hash(u.password, 10);
+    const user = { id: `usr-${Date.now()}-${Math.random().toString(36).slice(2,7)}`, name: u.name, email: u.email, passwordHash, role: u.role, studentId: u.studentId ?? u.email.split("@")[0], classId: u.classId ?? "", streamId: u.streamId ?? "", batchId: u.batchId ?? "" };
+    await upsertRecord("users", user);
+    created.push({ id: user.id, email: user.email, name: user.name, role: user.role });
+  }
+  res.status(201).json({ created });
+});
+
 apiRouter.get("/health", async (_req, res) => {
   const state = await getAppState();
   const referencePapers = await listReferencePapers();
