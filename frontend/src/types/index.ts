@@ -37,6 +37,13 @@ export interface Question {
   bookId?: string;
 }
 
+export interface ExamSection {
+  subjectId: string;
+  label: string;
+  questionCount: number;
+  startIndex: number;
+}
+
 export interface ExamPayload {
   exam: {
     id: string;
@@ -44,6 +51,7 @@ export interface ExamPayload {
     durationMinutes: number;
     generationMode?: "blueprint" | "adaptive" | "custom";
     adaptiveSummary?: string;
+    sections?: ExamSection[];
     scheduledStartTime?: string;
     scheduledEndTime?: string;
   };

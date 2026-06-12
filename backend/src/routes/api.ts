@@ -2,7 +2,8 @@ import fs from "node:fs/promises";
 import { Router, Request, Response } from "express";
 import multer from "multer";
 import { getAppState, upsertRecord, deleteRecord } from "../data/database.js";
-import { booksUploadsRoot } from "../utils/paths.js";
+import { booksUploadsRoot, diagramsUploadsRoot } from "../utils/paths.js";
+import fsNative from "node:fs";
 import {
   buildAdaptiveExamPlan,
   buildBatchAdaptivePlan,
@@ -258,6 +259,71 @@ apiRouter.post("/exams/self-generate", requireRole(["student", "super_admin", "t
   } catch (error) {
     console.error("Error in self-generate:", error);
     res.status(500).json({ message: "Internal server error during exam generation" });
+  }
+});
+
+apiRouter.post("/exams/create-competitive", requireRole(["super_admin", "teacher"]), async (req, res) => {
+  try {
+    const { name, durationMinutes, sections: sectionRequests, classId, streamId, batchId, scheduledStartTime, scheduledEndTime } = req.body as {
+      name: string;
+      durationMinutes: number;
+      sections: Array<{ subjectId: string; questionCount: number; label: string }>;
+      classId?: string;
+      streamId?: string;
+      batchId?: string;
+      scheduledStartTime?: string;
+      scheduledEndTime?: string;
+    };
+
+    if (!name || !durationMinutes || !Array.isArray(sectionRequests) || sectionRequests.length === 0) {
+      return res.status(400).json({ message: "name, durationMinutes, and sections[] are required" });
+    }
+
+    const state = await getAppState();
+    const allQuestions: Question[] = [];
+    const examSections = [];
+    let startIndex = 0;
+
+    for (const section of sectionRequests) {
+      const { subjectId, questionCount, label } = section;
+      const pool = state.questions.filter(q => q.subjectId === subjectId);
+      if (pool.length < questionCount) {
+        return res.status(400).json({
+          message: `Not enough questions for section "${label}": need ${questionCount}, have ${pool.length}`
+        });
+      }
+      const picked = pool.sort(() => 0.5 - Math.random()).slice(0, questionCount);
+      examSections.push({ subjectId, label, questionCount, startIndex });
+      allQuestions.push(...picked);
+      startIndex += questionCount;
+    }
+
+    const exam = {
+      id: `comp-${Date.now()}`,
+      blueprintId: "competitive",
+      name,
+      classId: classId || "",
+      streamId: streamId || "",
+      batchId: batchId || "",
+      subjectId: "multi-subject",
+      durationMinutes: Number(durationMinutes),
+      generatedAt: new Date().toISOString(),
+      generationMode: "custom" as const,
+      sections: examSections,
+      scheduledStartTime: scheduledStartTime || undefined,
+      scheduledEndTime: scheduledEndTime || undefined,
+      questions: allQuestions.map((q, i) => ({
+        questionId: q.id,
+        order: i + 1,
+        optionOrderIds: q.options.map(o => o.id).sort(() => 0.5 - Math.random())
+      }))
+    };
+
+    await upsertRecord("exams", exam);
+    res.status(201).json({ exam, questions: allQuestions });
+  } catch (error) {
+    console.error("Error in create-competitive:", error);
+    res.status(500).json({ message: "Internal server error during competitive exam creation" });
   }
 });
 
@@ -547,11 +613,42 @@ apiRouter.delete("/subject-books/:id", requireRole(["super_admin"]), async (req,
   try {
     const { id } = req.params;
     const state = await getAppState();
+    
+    // 1. Delete associated questions from DB
     const bookQuestions = state.questions.filter(q => q.bookId === id);
     console.log(`Deleting ${bookQuestions.length} questions associated with book ${id}...`);
     for (const q of bookQuestions) {
       await deleteRecord("questions", q.id);
     }
+
+    // 2. Find the book record to get the file path
+    const book = state.subjectBooks.find(b => b.id === id);
+    if (book) {
+      // Delete PDF file
+      const pdfPath = path.join(booksUploadsRoot, book.fileName);
+      try {
+        await fs.unlink(pdfPath);
+        console.log(`Deleted PDF file: ${pdfPath}`);
+      } catch (e) {
+        console.warn(`Could not delete PDF file ${pdfPath}:`, e);
+      }
+
+      // Delete associated diagrams
+      try {
+        if (fsNative.existsSync(diagramsUploadsRoot)) {
+          const files = await fs.readdir(diagramsUploadsRoot);
+          const bookDiagrams = files.filter(f => f.startsWith(`${id}_`));
+          for (const file of bookDiagrams) {
+            await fs.unlink(path.join(diagramsUploadsRoot, file));
+          }
+          console.log(`Deleted ${bookDiagrams.length} diagram files for book ${id}.`);
+        }
+      } catch (e) {
+        console.warn(`Could not cleanup diagrams for book ${id}:`, e);
+      }
+    }
+
+    // 3. Delete book record from DB
     await deleteRecord("subjectBooks", id as string);
     res.status(204).end();
   } catch (error) {

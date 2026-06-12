@@ -141,6 +141,13 @@ export interface GeneratedExamQuestion {
   optionOrderIds?: string[];
 }
 
+export interface ExamSection {
+  subjectId: string;
+  label: string;
+  questionCount: number;
+  startIndex: number;
+}
+
 export interface Exam {
   id: string;
   blueprintId: string;
@@ -156,6 +163,7 @@ export interface Exam {
   adaptiveSummary?: string;
   sourceSignature?: string;
   questions: GeneratedExamQuestion[];
+  sections?: ExamSection[];
   scheduledStartTime?: string;
   scheduledEndTime?: string;
 }

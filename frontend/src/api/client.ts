@@ -87,6 +87,16 @@ export const apiClient = {
   getExam: (id: string) => request<ExamPayload>(`/exams/${id}`),
   selfGenerateExam: (payload: { topicId?: string; topicIds?: string[]; questionCount?: number; allowedSourceTypes?: string[] }) =>
     request<ExamPayload>("/exams/self-generate", { method: "POST", body: JSON.stringify(payload) }),
+  createCompetitiveExam: (payload: {
+    name: string;
+    durationMinutes: number;
+    sections: Array<{ subjectId: string; questionCount: number; label: string }>;
+    classId?: string;
+    streamId?: string;
+    batchId?: string;
+    scheduledStartTime?: string;
+    scheduledEndTime?: string;
+  }) => request<ExamPayload>("/exams/create-competitive", { method: "POST", body: JSON.stringify(payload) }),
   deleteExam: (id: string) => request<void>(`/exams/${id}`, { method: "DELETE" }),
   updateExam: (id: string, payload: { name?: string; durationMinutes?: number; scheduledStartTime?: string; scheduledEndTime?: string; batchId?: string }) =>
     request<any>(`/exams/${id}`, { method: "PUT", body: JSON.stringify(payload) }),

@@ -461,6 +461,25 @@ export function LiveExamPage() {
               </div>
 
               <h3>Question Palette</h3>
+              {generatedExam.exam.sections ? (
+                generatedExam.exam.sections.map((section: any) => (
+                  <div key={section.subjectId} style={{ marginBottom: "12px" }}>
+                    <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-primary)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>{section.label}</div>
+                    <div className="palette-grid">
+                      {generatedExam.questions.slice(section.startIndex, section.startIndex + section.questionCount).map((question: any, i: number) => {
+                        const index = section.startIndex + i;
+                        const rev = latestResult?.review?.[index];
+                        const unanswered = !rev || !rev.selectedOptionIds || rev.selectedOptionIds.length === 0;
+                        const isCorrect = rev?.isCorrect === true;
+                        let statusClass = unanswered ? "review-unanswered" : (isCorrect ? "review-correct" : "review-incorrect");
+                        return (
+                          <button type="button" key={question.id} className={`palette-button ${statusClass} ${currentIndex === index ? "active" : ""}`} onClick={() => setCurrentIndex(index)} title={unanswered ? "Unanswered" : (isCorrect ? "Correct" : "Incorrect")}>{index + 1}</button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))
+              ) : (
               <div className="palette-grid">
                 {generatedExam.questions.map((question: any, index: number) => {
                   const rev = latestResult?.review?.[index];
@@ -491,10 +510,27 @@ export function LiveExamPage() {
                   );
                 })}
               </div>
+              )}
             </>
           ) : (
             <>
               <h3>Question Palette</h3>
+              {generatedExam.exam.sections ? (
+                generatedExam.exam.sections.map((section: any) => (
+                  <div key={section.subjectId} style={{ marginBottom: "12px" }}>
+                    <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-primary)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>{section.label}</div>
+                    <div className="palette-grid">
+                      {generatedExam.questions.slice(section.startIndex, section.startIndex + section.questionCount).map((question: any, i: number) => {
+                        const index = section.startIndex + i;
+                        const attempted = (answers[question.id] ?? []).length > 0;
+                        return (
+                          <button type="button" key={question.id} className={`palette-button ${attempted ? "answered" : ""} ${currentIndex === index ? "active" : ""}`} onClick={() => setCurrentIndex(index)}>{index + 1}</button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))
+              ) : (
               <div className="palette-grid">
                 {generatedExam.questions.map((question: any, index: number) => {
                   const attempted = (answers[question.id] ?? []).length > 0;
@@ -511,6 +547,7 @@ export function LiveExamPage() {
                   );
                 })}
               </div>
+              )}
 
               <button 
                 className="primary-button full-width" 
@@ -527,6 +564,7 @@ export function LiveExamPage() {
               Back to Dashboard
             </button>
           )}
+        </aside>
       </section>
 
       {isReviewMode && (
