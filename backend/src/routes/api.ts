@@ -19,6 +19,7 @@ import { extractPdfText, extractPdfDiagrams } from "../utils/pdf.js";
 import { generateQuestionsFromText, ensureEnoughQuestions, parseExamPrompt, detectCurriculumFromText, generateOfflineBoardPaper, extractQuestionsFromPdfText, extractQuestionsFromPdfVision } from "../utils/ai-generator.js";
 import { listReferencePapers } from "../utils/reference-papers.js";
 import { findUserByEmail, requireAuth, requireRole, signAuthToken, verifyPassword } from "../utils/auth.js";
+import bcrypt from "bcryptjs";
 import type { AuthenticatedRequest, Question, QuestionSource, SubjectBook } from "../types.js";
 
 export const apiRouter = Router();
@@ -65,7 +66,6 @@ apiRouter.post("/admin/upload-image", requireRole(["super_admin"]), uploadImage.
 apiRouter.post("/admin/create-users", requireRole(["super_admin"]), async (req, res) => {
   const { users } = req.body as { users: Array<{ name: string; email: string; password: string; role: string; studentId?: string; classId?: string; streamId?: string; batchId?: string }> };
   if (!Array.isArray(users)) { res.status(400).json({ message: "users[] required" }); return; }
-  const bcrypt = await import("bcryptjs");
   const created = [];
   for (const u of users) {
     const passwordHash = await bcrypt.hash(u.password, 10);
