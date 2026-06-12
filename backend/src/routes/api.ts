@@ -46,6 +46,22 @@ const upload = multer({
   }
 });
 
+const imageStorage = multer.diskStorage({
+  destination: (_req, _file, callback) => {
+    callback(null, diagramsUploadsRoot);
+  },
+  filename: (_req, file, callback) => {
+    const safeName = file.originalname.replace(/\s+/g, "-");
+    callback(null, `${Date.now()}-${safeName}`);
+  }
+});
+const uploadImage = multer({ storage: imageStorage, limits: { fileSize: 10 * 1024 * 1024 } });
+
+apiRouter.post("/admin/upload-image", requireRole(["super_admin"]), uploadImage.single("image"), async (req, res) => {
+  if (!req.file) { res.status(400).json({ message: "No image file provided" }); return; }
+  res.json({ url: `/uploads/diagrams/${req.file.filename}` });
+});
+
 apiRouter.get("/health", async (_req, res) => {
   const state = await getAppState();
   const referencePapers = await listReferencePapers();
@@ -767,6 +783,7 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
   const state = await getAppState();
   const bookId = req.params.bookId;
   const chapterId = getSingleFormValue(req.body.chapterId) as string | undefined;
+  const solutionBookId = getSingleFormValue(req.body.solutionBookId) as string | undefined;
   const rawTopicIds = req.body.topicIds;
   let topicIds: string[] = [];
 
@@ -832,12 +849,34 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
   }
 
   const parsedText = book.parsedText || "";
+  const solutionBook = solutionBookId ? state.subjectBooks.find((b) => b.id === solutionBookId) : undefined;
+  if (solutionBookId && !solutionBook) {
+    res.status(404).json({ message: "Solution PDF book not found" });
+    return;
+  }
 
   // Start the extraction process in the background to avoid 524 Cloudflare Gateway Timeout
   (async () => {
     try {
       const filename = book.fileUrl.split("/").pop() || "";
       const pdfPath = path.join(booksUploadsRoot, filename);
+      const solutionFilename = solutionBook?.fileUrl.split("/").pop() || "";
+      const solutionPdfPath = solutionFilename ? path.join(booksUploadsRoot, solutionFilename) : undefined;
+      let solutionText = solutionBook?.parsedText || "";
+
+      if (solutionBook && !solutionText && solutionPdfPath) {
+        try {
+          const parsedSolution = await extractPdfText(solutionPdfPath);
+          solutionText = parsedSolution.extractedText;
+          solutionBook.parsedText = solutionText;
+          solutionBook.previewText = parsedSolution.previewText;
+          solutionBook.pageCount = parsedSolution.pageCount;
+          solutionBook.extractedAt = new Date().toISOString();
+          await upsertRecord("subjectBooks", solutionBook);
+        } catch (solutionError) {
+          console.warn(`[Background] Could not parse solution PDF ${solutionBook.id}; continuing without solution text.`, solutionError);
+        }
+      }
 
       console.log(`[Background] Extracting diagrams first for book ${book.id} at ${pdfPath}...`);
       const diagrams = await extractPdfDiagrams(pdfPath, book.id);
@@ -852,8 +891,22 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
           topicId: topicIds[0],
           sourceType: book.bookType || "reference",
           bookId: book.id,
-          diagrams
+          diagrams,
+          solutionPdfPath,
+          solutionText
         });
+        if (extracted.length === 0 && parsedText) {
+          console.warn(`[Background] Vision extraction returned 0 questions for book ${book.id}; falling back to parsed text extraction${process.env.OPENROUTER_API_KEY ? " with OpenRouter available" : ""}.`);
+          extracted = await extractQuestionsFromPdfText({
+            text: parsedText,
+            subjectId: book.subjectId,
+            topicId: topicIds[0],
+            sourceType: book.bookType || "reference",
+            bookId: book.id,
+            diagrams,
+            solutionText
+          });
+        }
       } else {
         extracted = await extractQuestionsFromPdfText({
           text: parsedText,
@@ -861,7 +914,8 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
           topicId: topicIds[0],
           sourceType: book.bookType || "reference",
           bookId: book.id,
-          diagrams
+          diagrams,
+          solutionText
         });
       }
 
