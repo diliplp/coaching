@@ -1,4 +1,4 @@
-import puppeteer from "puppeteer";
+import puppeteer from "puppeteer-core";
 import { getAppState } from "../data/database.js";
 
 export async function generateStudentReportPDF(studentId: string): Promise<Buffer> {
@@ -589,8 +589,9 @@ export async function generateStudentReportPDF(studentId: string): Promise<Buffe
 
   // Start puppeteer and print page to PDF buffer
   const browser = await puppeteer.launch({
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium",
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
     headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"]
   });
 
   try {

@@ -321,7 +321,9 @@ export function LiveExamPage() {
                     }}
                   >
                     <strong>{option.label}</strong>
-                    <span><RichText content={option.value} /></span>
+                    {option.value && option.value !== option.label && (
+                      <span><RichText content={option.value} /></span>
+                    )}
                     {isReviewMode && isCorrect && <span style={{ marginLeft: "auto" }}>✓</span>}
                   </button>
                 );
