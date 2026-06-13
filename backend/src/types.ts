@@ -66,6 +66,9 @@ export interface SubjectBook {
   previewText?: string;
   pageCount?: number;
   extractedAt?: string;
+  extractionStatus?: "idle" | "running" | "done" | "error";
+  extractionProgress?: string;
+  extractionQuestionCount?: number;
 }
 
 export interface UserAccount {
@@ -75,6 +78,7 @@ export interface UserAccount {
   role: UserRole;
   passwordHash?: string;
   studentId?: string;
+  sessionId?: string;
 }
 
 export interface AuthTokenPayload {
@@ -82,6 +86,7 @@ export interface AuthTokenPayload {
   email: string;
   role: UserRole;
   studentId: string | null;
+  sessionId: string;
 }
 
 export interface AuthenticatedRequest extends Request {
@@ -109,6 +114,7 @@ export interface Question {
   sourceType?: QuestionSource;
   isVerified?: boolean;
   bookId?: string;
+  questionNumber?: number;
 }
 
 export interface ExamBlueprintTopicRule {
@@ -244,4 +250,14 @@ export interface BatchAdaptivePlan {
   durationMinutes: number;
   topics: AdaptiveExamPlanTopic[];
   summary: string;
+}
+
+export interface ExamSession {
+  id: string;
+  examId: string;
+  studentId: string;
+  startedAt: string;
+  answers: Record<string, string[]>;
+  currentQuestionIndex: number;
+  status: "in_progress" | "submitted";
 }

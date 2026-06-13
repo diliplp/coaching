@@ -9,12 +9,28 @@ import type {
   ExamSubmissionResult,
   GeneratedExamQuestion,
   Question,
+  QuestionSource,
   StudentAnswerInput,
   TeacherCustomExamRequest,
   Topic,
   TopicInsight,
   WeightedExamRule
 } from "../types.js";
+
+export interface SubjectAllocationRule {
+  subjectId: string;
+  questionCount: number;
+}
+
+export interface CombinedExamRequest {
+  name: string;
+  batchId: string;
+  durationMinutes: number;
+  subjectAllocations: SubjectAllocationRule[];
+  scheduledStartTime?: string;
+  scheduledEndTime?: string;
+  allowedSourceTypes?: QuestionSource[];
+}
 
 function sortedIds(values: string[]) {
   return [...values].sort();
@@ -378,6 +394,60 @@ export async function generateCustomExam(request: TeacherCustomExamRequest): Pro
       generationMode: "custom",
       adaptiveSummary: `${request.selectionMode === "chapter" ? "Chapter-wise" : "Topic-wise"} weighted paper: ${coverageText}`,
       sourceSignature,
+      scheduledStartTime: request.scheduledStartTime,
+      scheduledEndTime: request.scheduledEndTime
+    },
+    questions: selectedQuestions
+  });
+
+  await upsertRecord("exams", exam);
+  return exam;
+}
+
+export async function generateCombinedExam(request: CombinedExamRequest): Promise<Exam | { error: string } | null> {
+  const state = await getAppState();
+  const batch = state.batches.find((b) => b.id === request.batchId);
+  if (!batch) return { error: "Batch not found" };
+
+  const allocations = request.subjectAllocations;
+  if (!allocations?.length) return { error: "No subject allocations provided" };
+
+  const selectedQuestions: Question[] = [];
+  const allocationSummary: string[] = [];
+
+  for (const alloc of allocations) {
+    let pool = state.questions.filter((q) => q.subjectId === alloc.subjectId);
+    if (request.allowedSourceTypes?.length) {
+      pool = pool.filter((q) => request.allowedSourceTypes!.includes((q.sourceType || "custom") as QuestionSource));
+    }
+    const picked = randomize(pool).slice(0, alloc.questionCount);
+    selectedQuestions.push(...picked);
+    const subjectName = state.subjects.find((s) => s.id === alloc.subjectId)?.name ?? alloc.subjectId;
+    allocationSummary.push(`${subjectName}: ${picked.length}Q`);
+  }
+
+  if (selectedQuestions.length === 0) {
+    return { error: "No questions available for the selected subjects" };
+  }
+
+  const subjectIds = allocations.map((a) => a.subjectId);
+  const subjectCounts = new Map<string, number>();
+  selectedQuestions.forEach((q) => subjectCounts.set(q.subjectId, (subjectCounts.get(q.subjectId) || 0) + 1));
+  let primarySubjectId = subjectIds[0];
+  let maxCount = -1;
+  subjectCounts.forEach((count, subId) => { if (count > maxCount) { maxCount = count; primarySubjectId = subId; } });
+
+  const exam = createExamFromQuestions({
+    exam: {
+      blueprintId: `combined-${subjectIds.join("-")}`,
+      name: request.name,
+      classId: batch.classId,
+      streamId: batch.streamId,
+      batchId: batch.id,
+      subjectId: primarySubjectId,
+      durationMinutes: request.durationMinutes,
+      generationMode: "custom",
+      adaptiveSummary: `Combined: ${allocationSummary.join(" | ")}`,
       scheduledStartTime: request.scheduledStartTime,
       scheduledEndTime: request.scheduledEndTime
     },

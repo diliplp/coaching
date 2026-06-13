@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { apiClient, buildPublicAssetUrl } from "../api/client";
 import type { QuestionBankResponse, SubjectBook } from "../types";
 import { RichText } from "../components/RichText";
+import { MathTextarea } from "../components/MathTextarea";
 import { getStoredSession } from "../auth";
 
 export function QuestionBankPage() {
@@ -268,54 +269,59 @@ export function QuestionBankPage() {
               </select>
             </label>
 
-            <label className="field">
+            <div className="field">
               <span>Question Prompt (Supports LaTeX and SMILES)</span>
-              <textarea 
-                rows={4} 
-                value={formData.prompt} 
-                onChange={e => setFormData({...formData, prompt: e.target.value})}
+              <MathTextarea
+                rows={4}
+                value={formData.prompt}
+                onChange={v => setFormData({...formData, prompt: v})}
+                placeholder="Type question here. Use $...$ for inline math, $$...$$ for block math."
                 required
               />
-            </label>
+            </div>
 
             <div>
               <span>Options (Select correct ones)</span>
               <div className="stack" style={{ marginTop: "10px" }}>
                 {formData.options.map((opt, index) => (
-                  <div key={opt.id} style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                    <input 
-                      type={formData.type === "single_correct" ? "radio" : "checkbox"}
-                      name="correct-opt"
-                      checked={formData.correctOptionIds.includes(opt.id)}
-                      onChange={() => toggleOption(opt.id)}
-                    />
-                    <strong>{opt.label}</strong>
-                    <input 
-                      type="text" 
-                      placeholder={`Option ${opt.label} value`}
-                      value={opt.value}
-                      onChange={e => {
-                        const newOpts = formData.options.map((item, idx) => 
-                          idx === index ? { ...item, value: e.target.value } : item
-                        );
-                        setFormData({...formData, options: newOpts});
-                      }}
-                      style={{ flex: 1 }}
-                      required
-                    />
+                  <div key={opt.id} style={{ display: "flex", gap: "10px", alignItems: "flex-start", marginBottom: "8px" }}>
+                    <div style={{ paddingTop: "10px" }}>
+                      <input
+                        type={formData.type === "single_correct" ? "radio" : "checkbox"}
+                        name="correct-opt"
+                        checked={formData.correctOptionIds.includes(opt.id)}
+                        onChange={() => toggleOption(opt.id)}
+                      />
+                    </div>
+                    <strong style={{ paddingTop: "10px", minWidth: "16px" }}>{opt.label}</strong>
+                    <div style={{ flex: 1 }}>
+                      <MathTextarea
+                        rows={2}
+                        value={opt.value}
+                        onChange={v => {
+                          const newOpts = formData.options.map((item, idx) =>
+                            idx === index ? { ...item, value: v } : item
+                          );
+                          setFormData({...formData, options: newOpts});
+                        }}
+                        placeholder={`Option ${opt.label}`}
+                        required
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
 
-            <label className="field">
+            <div className="field">
               <span>Explanation</span>
-              <textarea 
-                rows={2} 
-                value={formData.explanation} 
-                onChange={e => setFormData({...formData, explanation: e.target.value})}
+              <MathTextarea
+                rows={3}
+                value={formData.explanation}
+                onChange={v => setFormData({...formData, explanation: v})}
+                placeholder="Optional explanation with LaTeX support"
               />
-            </label>
+            </div>
 
             <div className="row-between" style={{ marginTop: "20px" }}>
               <button type="button" className="secondary-button" onClick={() => setIsFormOpen(false)}>Cancel</button>
@@ -452,14 +458,20 @@ export function QuestionBankPage() {
             />
           </div>
 
-          {/* Right Pane: Questions List */}
+          {/* Right Pane: Questions List — sorted by page number to match PDF order */}
           <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "15px", paddingRight: "5px" }}>
             {filteredQuestions.length === 0 ? (
               <div style={{ textAlign: "center", padding: "40px", color: "var(--color-text-muted)" }}>
                 <p>No questions generated for this document yet.</p>
               </div>
             ) : (
-              filteredQuestions.map((question: any) => {
+              [...filteredQuestions]
+                .sort((a: any, b: any) => {
+                  const aN = a.questionNumber ?? (a.pageNumber != null ? a.pageNumber * 1000 : 999999);
+                  const bN = b.questionNumber ?? (b.pageNumber != null ? b.pageNumber * 1000 : 999999);
+                  return aN - bN;
+                })
+                .map((question: any) => {
                 const isActive = activeQuestionIdForPdf === question.id;
                 return (
                   <article 
@@ -491,13 +503,18 @@ export function QuestionBankPage() {
                             VERIFIED
                           </span>
                         )}
+                        {(!question.correctOptionIds || question.correctOptionIds.length === 0) && (
+                          <span className="tag" style={{ marginLeft: "5px", background: "#f8d7da", color: "#721c24", borderColor: "#f5c6cb" }}>
+                            NO ANSWER
+                          </span>
+                        )}
                       </div>
                       {isTeacher && (
                         <div style={{ display: "flex", gap: "10px" }} onClick={(e) => e.stopPropagation()}>
                           {!question.isVerified && (
-                            <button 
-                              className="secondary-button" 
-                              style={{ padding: "4px 8px", fontSize: "0.8rem", color: "#155724", borderColor: "#155724" }} 
+                            <button
+                              className="secondary-button"
+                              style={{ padding: "4px 8px", fontSize: "0.8rem", color: "#155724", borderColor: "#155724" }}
                               onClick={() => handleVerify(question.id)}
                             >
                               Verify
@@ -557,13 +574,18 @@ export function QuestionBankPage() {
                       VERIFIED
                     </span>
                   )}
+                  {(!question.correctOptionIds || question.correctOptionIds.length === 0) && (
+                    <span className="tag" style={{ marginLeft: "5px", background: "#f8d7da", color: "#721c24", borderColor: "#f5c6cb" }}>
+                      NO ANSWER
+                    </span>
+                  )}
                 </div>
                 {isTeacher && (
                   <div style={{ display: "flex", gap: "10px" }}>
                     {!question.isVerified && (
-                      <button 
-                        className="secondary-button" 
-                        style={{ padding: "4px 8px", fontSize: "0.8rem", color: "#155724", borderColor: "#155724" }} 
+                      <button
+                        className="secondary-button"
+                        style={{ padding: "4px 8px", fontSize: "0.8rem", color: "#155724", borderColor: "#155724" }}
                         onClick={() => handleVerify(question.id)}
                       >
                         Verify

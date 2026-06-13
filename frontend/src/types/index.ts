@@ -78,6 +78,16 @@ export interface TeacherCustomExamRequest {
   allowedSourceTypes?: QuestionSource[];
 }
 
+export interface CombinedExamRequest {
+  name: string;
+  batchId: string;
+  durationMinutes: number;
+  subjectAllocations: Array<{ subjectId: string; questionCount: number }>;
+  scheduledStartTime?: string;
+  scheduledEndTime?: string;
+  allowedSourceTypes?: QuestionSource[];
+}
+
 export interface SubjectBook {
   id: string;
   subjectId: string;
@@ -90,6 +100,7 @@ export interface SubjectBook {
   previewText?: string;
   pageCount?: number;
   extractedAt?: string;
+  answerKey?: string;
 }
 
 export interface SubjectBooksResponse {

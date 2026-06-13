@@ -3,6 +3,7 @@ import type {
   AuthResponse,
   BatchAdaptivePlan,
   BlueprintSummary,
+  CombinedExamRequest,
   ExamPayload,
   ExamResult,
   OverviewResponse,
@@ -128,12 +129,22 @@ export const apiClient = {
     return response.json() as Promise<SubjectBook>;
   },
   deleteSubjectBook: (id: string) => request<void>(`/subject-books/${id}`, { method: "DELETE" }),
+  applyAnswerKey: (bookId: string, answerKey: string) =>
+    request<{ message: string; updatedCount: number; total: number; applied: string[] }>(
+      `/subject-books/${bookId}/apply-answer-key`,
+      { method: "POST", body: JSON.stringify({ answerKey }) }
+    ),
   generateExam: (blueprintId: string) =>
     request<ExamPayload>(`/exams/generate/${blueprintId}`, {
       method: "POST"
     }),
   generateCustomExam: (payload: TeacherCustomExamRequest) =>
     request<ExamPayload>("/exams/generate-custom", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  generateCombinedExam: (payload: CombinedExamRequest) =>
+    request<ExamPayload>("/exams/generate-combined", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
@@ -155,6 +166,24 @@ export const apiClient = {
     request<{ status: string }>(`/exams/${examId}/heartbeat`, {
       method: "POST",
       body: JSON.stringify(payload)
+    }),
+  getExamSession: (examId: string) =>
+    request<{ id: string; examId: string; answers: Record<string, string[]>; startedAt: string; status: string; timeRemainingSeconds: number; currentQuestionIndex: number }>(
+      `/exams/${examId}/session`
+    ),
+  createExamSession: (examId: string) =>
+    request<{ id: string; examId: string; answers: Record<string, string[]>; startedAt: string; status: string; timeRemainingSeconds: number; currentQuestionIndex: number }>(
+      `/exams/${examId}/session`, { method: "POST" }
+    ),
+  saveExamSessionAnswer: (examId: string, payload: { questionId: string; selectedOptionIds: string[] }) =>
+    request<{ status: string }>(`/exams/${examId}/session/answer`, {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    }),
+  saveExamSessionIndex: (examId: string, currentQuestionIndex: number) =>
+    request<{ status: string }>(`/exams/${examId}/session/index`, {
+      method: "PATCH",
+      body: JSON.stringify({ currentQuestionIndex })
     }),
   getLiveExamStatus: (examId: string) =>
     request<{
@@ -195,6 +224,10 @@ export const apiClient = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
+  getExtractionStatus: (bookId: string) =>
+    request<{ extractionStatus: string; extractionProgress: string; extractionQuestionCount: number }>(
+      `/subject-books/${bookId}/extraction-status`
+    ),
   detectCurriculumFromBook: (bookId: string) =>
     request<{ chapters: { name: string; topics: string[] }[] }>(`/subject-books/${bookId}/detect-curriculum`, {
       method: "POST"

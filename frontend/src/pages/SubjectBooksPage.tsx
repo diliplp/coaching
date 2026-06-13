@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, useRef, type FormEvent } from "react";
 import { apiClient, buildPublicAssetUrl } from "../api/client";
 import type { SubjectBooksResponse } from "../types";
 import { StatusModal } from "../components/StatusModal";
@@ -24,6 +24,40 @@ export function SubjectBooksPage() {
   const [selectedChapters, setSelectedChapters] = useState<Record<string, string>>({});
   const [selectedTopicsMap, setSelectedTopicsMap] = useState<Record<string, string[]>>({});
   const [questionCount, setQuestionCount] = useState(5);
+
+  // Answer key state
+  const [answerKeyInputs, setAnswerKeyInputs] = useState<Record<string, string>>({});
+  const [applyingAnswerKey, setApplyingAnswerKey] = useState<string | null>(null);
+
+  // Extraction progress polling
+  const [extractionProgress, setExtractionProgress] = useState<Record<string, { status: string; message: string; count: number }>>({});
+  const pollingRef = useRef<Record<string, ReturnType<typeof setInterval>>>({});
+
+  const startPolling = (bookId: string) => {
+    if (pollingRef.current[bookId]) return;
+    pollingRef.current[bookId] = setInterval(async () => {
+      try {
+        const res = await apiClient.getExtractionStatus(bookId);
+        setExtractionProgress(prev => ({
+          ...prev,
+          [bookId]: { status: res.extractionStatus, message: res.extractionProgress, count: res.extractionQuestionCount }
+        }));
+        if (res.extractionStatus === "done" || res.extractionStatus === "error") {
+          clearInterval(pollingRef.current[bookId]);
+          delete pollingRef.current[bookId];
+          setExtractingForBook(null);
+          if (res.extractionStatus === "done") {
+            setStatus(`Done! ${res.extractionQuestionCount} questions extracted.`);
+            await loadData();
+          } else {
+            setStatus(`Extraction failed: ${res.extractionProgress}`);
+          }
+        }
+      } catch {
+        // silently ignore transient errors
+      }
+    }, 3000);
+  };
 
   // Curriculum Detection State
   const [detectingForBook, setDetectingForBook] = useState<string | null>(null);
@@ -86,19 +120,20 @@ export function SubjectBooksPage() {
 
   const handleExtractQuestions = async (bookId: string) => {
     setExtractingForBook(bookId);
-    setStatus("AI is reading the PDF and extracting all multiple-choice questions into the Question Bank... Please wait.");
+    setExtractionProgress(prev => ({ ...prev, [bookId]: { status: "running", message: "Starting...", count: 0 } }));
+    setStatus("Extraction started. Progress will appear on the book card below.");
     try {
       const bookChapterId = selectedChapters[bookId] || "";
       const bookTopicIds = selectedTopicsMap[bookId] || [];
-      const result = await apiClient.extractQuestionsFromBook(bookId, {
+      await apiClient.extractQuestionsFromBook(bookId, {
         chapterId: bookChapterId || undefined,
         topicIds: bookTopicIds.length > 0 ? bookTopicIds : undefined
       });
-      setStatus(`Success: ${result.message}`);
-      setExtractingForBook(null);
+      // Backend returns immediately — start polling for live progress
+      startPolling(bookId);
     } catch (error: any) {
       console.error(error);
-      setStatus(`Failed to extract questions: ${error.message || "Unknown error"}`);
+      setStatus(`Failed to start extraction: ${error.message || "Unknown error"}`);
       setExtractingForBook(null);
     }
   };
@@ -143,6 +178,20 @@ export function SubjectBooksPage() {
     } catch (error: any) {
       console.error(error);
       setStatus(`Import failed: ${error.message || "Unknown error"}`);
+    }
+  };
+
+  const handleApplyAnswerKey = async (bookId: string) => {
+    const key = (answerKeyInputs[bookId] || "").trim();
+    if (!key) { setStatus("Please enter the answer key before applying."); return; }
+    setApplyingAnswerKey(bookId);
+    try {
+      const result = await apiClient.applyAnswerKey(bookId, key);
+      setStatus(`${result.message}. Applied: ${result.applied.join(", ")}`);
+    } catch (error: any) {
+      setStatus(`Failed to apply answer key: ${error.message || "Unknown error"}`);
+    } finally {
+      setApplyingAnswerKey(null);
     }
   };
 
@@ -459,16 +508,89 @@ export function SubjectBooksPage() {
                         </div>
 
                         <div style={{ marginTop: "10px" }}>
-                          <button 
-                            className="secondary-button" 
-                            disabled={extractingForBook === book.id} 
-                            onClick={() => void handleExtractQuestions(book.id)}
-                            style={{ width: "100%", height: "42px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
-                          >
-                            <span>📥</span>
-                            <span>{extractingForBook === book.id ? "Extracting MCQs..." : "Extract PDF MCQs directly to Bank"}</span>
-                          </button>
+                          {(() => {
+                            const prog = extractionProgress[book.id];
+                            const isRunning = extractingForBook === book.id || prog?.status === "running";
+                            const isDone = prog?.status === "done";
+                            const isError = prog?.status === "error";
+                            return (
+                              <>
+                                {(isRunning || isDone || isError) && (
+                                  <div style={{
+                                    marginBottom: "8px",
+                                    padding: "10px 14px",
+                                    borderRadius: "8px",
+                                    fontSize: "0.82rem",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "10px",
+                                    background: isError ? "#fff0f0" : isDone ? "#f0fff4" : "#f0f7ff",
+                                    border: `1px solid ${isError ? "#ffcccc" : isDone ? "#b2dfdb" : "#b3d4f5"}`,
+                                    color: isError ? "#c0392b" : isDone ? "#1a6b45" : "#1a4a7a"
+                                  }}>
+                                    {isRunning && (
+                                      <span style={{ display: "inline-block", width: "14px", height: "14px", border: "2px solid #1a4a7a", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+                                    )}
+                                    {isDone && <span style={{ fontSize: "1rem" }}>✓</span>}
+                                    {isError && <span style={{ fontSize: "1rem" }}>✗</span>}
+                                    <span style={{ flex: 1 }}>
+                                      {prog?.message || "Starting..."}
+                                      {isDone && prog?.count ? ` (${prog.count} questions)` : ""}
+                                    </span>
+                                  </div>
+                                )}
+                                <button
+                                  className="secondary-button"
+                                  disabled={isRunning}
+                                  onClick={() => void handleExtractQuestions(book.id)}
+                                  style={{ width: "100%", height: "42px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
+                                >
+                                  <span>📥</span>
+                                  <span>{isRunning ? "Extracting MCQs..." : "Extract PDF MCQs directly to Bank"}</span>
+                                </button>
+                              </>
+                            );
+                          })()}
                         </div>
+                      </div>
+                    </div>
+
+                    {/* Answer Key Section */}
+                    <div style={{
+                      background: "var(--color-bg-secondary)",
+                      padding: "1.25rem",
+                      borderRadius: "10px",
+                      border: "1px solid var(--color-border)",
+                      marginTop: "1rem"
+                    }}>
+                      <div style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem", marginBottom: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <strong style={{ fontSize: "0.9rem" }}>Answer Key</strong>
+                        <span className="tag muted" style={{ fontSize: "0.7rem" }}>OVERRIDE AI ANSWERS</span>
+                      </div>
+                      {(book as any).answerKey && (
+                        <p style={{ fontSize: "0.78rem", color: "var(--color-primary)", marginBottom: "10px", wordBreak: "break-all" }}>
+                          Saved: {(book as any).answerKey}
+                        </p>
+                      )}
+                      <div style={{ display: "flex", gap: "8px", alignItems: "flex-end" }}>
+                        <label className="field" style={{ flex: 1, marginBottom: 0 }}>
+                          <span style={{ fontSize: "0.82rem" }}>Enter key (e.g. D,A,C,B,A or DACBA)</span>
+                          <input
+                            type="text"
+                            placeholder="D,A,C,B,A,D,..."
+                            value={answerKeyInputs[book.id] || ""}
+                            onChange={e => setAnswerKeyInputs(prev => ({ ...prev, [book.id]: e.target.value }))}
+                            style={{ background: "white", fontFamily: "monospace", letterSpacing: "0.05em" }}
+                          />
+                        </label>
+                        <button
+                          className="primary-button"
+                          disabled={applyingAnswerKey === book.id}
+                          onClick={() => void handleApplyAnswerKey(book.id)}
+                          style={{ height: "42px", whiteSpace: "nowrap" }}
+                        >
+                          {applyingAnswerKey === book.id ? "Applying..." : "Apply Key"}
+                        </button>
                       </div>
                     </div>
 

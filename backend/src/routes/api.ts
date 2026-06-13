@@ -1,24 +1,25 @@
 import fs from "node:fs/promises";
 import { Router, Request, Response } from "express";
 import multer from "multer";
-import { getAppState, upsertRecord, deleteRecord } from "../data/database.js";
+import { getAppState, getRecord, upsertRecord, deleteRecord } from "../data/database.js";
 import { booksUploadsRoot } from "../utils/paths.js";
 import {
   buildAdaptiveExamPlan,
   buildBatchAdaptivePlan,
   evaluateExamSubmission,
   generateAdaptiveExam,
+  generateCombinedExam,
   generateCustomExam,
   generateExamFromBlueprint,
   getExamQuestions,
   listBatchAdaptivePlans
 } from "../utils/exam-engine.js";
 import path from "node:path";
-import { extractPdfText, extractPdfDiagrams } from "../utils/pdf.js";
+import { extractPdfText, extractPdfDiagrams, extractPdfQuestionCrops } from "../utils/pdf.js";
 import { generateQuestionsFromText, ensureEnoughQuestions, parseExamPrompt, detectCurriculumFromText, generateOfflineBoardPaper, extractQuestionsFromPdfText } from "../utils/ai-generator.js";
 import { listReferencePapers } from "../utils/reference-papers.js";
-import { findUserByEmail, requireAuth, requireRole, signAuthToken, verifyPassword } from "../utils/auth.js";
-import type { AuthenticatedRequest, Question, QuestionSource, SubjectBook } from "../types.js";
+import { findUserByEmail, generateSessionId, requireAuth, requireRole, signAuthToken, verifyPassword } from "../utils/auth.js";
+import type { AuthenticatedRequest, ExamSession, Question, QuestionSource, SubjectBook } from "../types.js";
 
 export const apiRouter = Router();
 
@@ -80,13 +81,18 @@ apiRouter.post("/auth/login", async (req, res) => {
     return;
   }
 
-  const token = signAuthToken(user);
+  // Rotate session — invalidates any existing active session for this user
+  const sessionId = generateSessionId();
+  const updatedUser = { ...user, sessionId };
+  await upsertRecord("users", updatedUser);
+
+  const token = signAuthToken(updatedUser);
   const safeUser = {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    studentId: user.studentId ?? null
+    id: updatedUser.id,
+    name: updatedUser.name,
+    email: updatedUser.email,
+    role: updatedUser.role,
+    studentId: updatedUser.studentId ?? null
   };
 
   res.json({ token, user: safeUser });
@@ -212,9 +218,11 @@ apiRouter.post("/exams/self-generate", requireRole(["student", "super_admin", "t
     const subjectId = validTopics[0].subjectId;
     const targetCount = Number(questionCount) || 10;
     
-    // Re-fetch questions
-    let questions = state.questions.filter(q => targetTopicIds.includes(q.topicId));
-    
+    // Re-fetch questions — exclude any with no correct answer (garbled OCR / pending review)
+    let questions = state.questions.filter(q =>
+      targetTopicIds.includes(q.topicId) && q.correctOptionIds && q.correctOptionIds.length > 0
+    );
+
     // Filter by source if specified
     if (Array.isArray(allowedSourceTypes) && allowedSourceTypes.length > 0) {
       questions = questions.filter(q => allowedSourceTypes.includes(q.sourceType || "custom"));
@@ -496,6 +504,18 @@ apiRouter.get("/subject-books", async (_req: Request, res: Response) => {
   });
 });
 
+apiRouter.get("/subject-books/:id/extraction-status", requireAuth, async (req, res) => {
+  const { getRecord } = await import("../data/database.js");
+  const bookId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const book = await getRecord<any>("books", bookId);
+  if (!book) return res.status(404).json({ message: "Book not found" });
+  res.json({
+    extractionStatus: book.extractionStatus ?? "idle",
+    extractionProgress: book.extractionProgress ?? "",
+    extractionQuestionCount: book.extractionQuestionCount ?? 0
+  });
+});
+
 apiRouter.post("/subject-books", requireRole(["super_admin"]), upload.single("pdf"), async (req, res) => {
   const state = await getAppState();
   const subjectId = getSingleFormValue(req.body.subjectId) as string | undefined;
@@ -541,6 +561,66 @@ apiRouter.post("/subject-books", requireRole(["super_admin"]), upload.single("pd
 
   await upsertRecord("subjectBooks", newBook);
   res.status(201).json(newBook);
+});
+
+apiRouter.post("/subject-books/:id/apply-answer-key", requireRole(["super_admin"]), async (req, res) => {
+  const { id } = req.params;
+  const { answerKey } = req.body as { answerKey: string };
+
+  if (!answerKey || typeof answerKey !== "string") {
+    res.status(400).json({ message: "answerKey string required (e.g. 'D,A,C,B,A' or 'DACBA')" });
+    return;
+  }
+
+  // Accept "D,A,C,B" or "DACBA" or "D A C B"
+  const letters = answerKey
+    .toUpperCase()
+    .split(/[,\s]+/)
+    .flatMap(token => (token.length > 1 ? token.split("") : [token]))
+    .filter(l => /^[A-D]$/.test(l));
+
+  if (letters.length === 0) {
+    res.status(400).json({ message: "No valid answer letters found. Use A, B, C, D." });
+    return;
+  }
+
+  const state = await getAppState();
+  const book = state.subjectBooks.find(b => b.id === id);
+  if (!book) {
+    res.status(404).json({ message: "Book not found" });
+    return;
+  }
+
+  // Persist the answer key on the book for future reference
+  (book as any).answerKey = letters.join(",");
+  await upsertRecord("subjectBooks", book);
+
+  // Sort book questions by questionNumber (the PDF question number stored during extraction)
+  const bookQuestions = state.questions
+    .filter((q: any) => q.bookId === id)
+    .sort((a: any, b: any) => (a.questionNumber ?? 9999) - (b.questionNumber ?? 9999));
+
+  let updatedCount = 0;
+  for (let i = 0; i < bookQuestions.length && i < letters.length; i++) {
+    const q = bookQuestions[i] as any;
+    const correctLabel = letters[i];
+    const matchingOpt = (q.options || []).find((o: any) =>
+      (o.label || "").toUpperCase() === correctLabel
+    );
+    if (matchingOpt) {
+      q.correctOptionIds = [matchingOpt.id];
+      q.isVerified = true;
+      await upsertRecord("questions", q);
+      updatedCount++;
+    }
+  }
+
+  res.json({
+    message: `Answer key applied to ${updatedCount} of ${bookQuestions.length} questions`,
+    updatedCount,
+    total: bookQuestions.length,
+    applied: letters.slice(0, bookQuestions.length)
+  });
 });
 
 apiRouter.delete("/subject-books/:id", requireRole(["super_admin"]), async (req, res) => {
@@ -730,15 +810,35 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
 
   const parsedText = book.parsedText;
 
+  // Helper: write extraction status back to the book record in DB
+  const updateExtractionStatus = async (status: string, progress: string, questionCount = 0) => {
+    try {
+      await upsertRecord("books", { ...book, extractionStatus: status, extractionProgress: progress, extractionQuestionCount: questionCount });
+    } catch (e) {
+      console.warn("[Progress] Failed to write extraction status:", e);
+    }
+  };
+
   // Start the extraction process in the background to avoid 524 Cloudflare Gateway Timeout
   (async () => {
     try {
+      await updateExtractionStatus("running", "Starting extraction...");
+
       const filename = book.fileUrl.split("/").pop() || "";
       const pdfPath = path.join(booksUploadsRoot, filename);
-      
-      console.log(`[Background] Extracting diagrams first for book ${book.id} at ${pdfPath}...`);
-      const diagrams = await extractPdfDiagrams(pdfPath, book.id);
-      console.log(`[Background] Found ${diagrams.length} diagrams for book ${book.id}.`);
+
+      // Extract high-res question crops (primary visual content) and legacy diagrams in parallel
+      await updateExtractionStatus("running", "Extracting question images...");
+      const [crops, diagrams] = await Promise.all([
+        extractPdfQuestionCrops(pdfPath, book.id),
+        extractPdfDiagrams(pdfPath, book.id),
+      ]);
+      console.log(`[Background] Crops: ${crops.length}, Diagrams: ${diagrams.length}`);
+
+      // Build a fast lookup: questionNumber -> cropUrl
+      const cropMap = new Map<number, string>(
+        crops.map(c => [c.questionNumber, c.cropUrl])
+      );
 
       const extracted = await extractQuestionsFromPdfText({
         text: parsedText,
@@ -746,12 +846,32 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
         topicId: topicIds[0],
         sourceType: book.bookType || "reference",
         bookId: book.id,
-        diagrams
+        pdfPath,
+        diagrams,
+        onProgress: (msg) => {
+          void updateExtractionStatus("running", msg);
+        }
       });
+
+      // Embed crop URL into every question that has a known question number.
+      // The crop replaces any image previously assigned by the heuristic matcher.
+      for (const q of extracted) {
+        const qNum = (q as any).questionNumber;
+        if (typeof qNum === "number" && cropMap.has(qNum)) {
+          const cropUrl = cropMap.get(qNum)!;
+          // Replace existing [IMAGE:] tag if present, otherwise append
+          if ((q.prompt || "").includes("[IMAGE:")) {
+            q.prompt = q.prompt.replace(/\[IMAGE:[^\]]+\]/g, `[IMAGE: ${cropUrl}]`);
+          } else {
+            q.prompt = (q.prompt || "") + `\n[IMAGE: ${cropUrl}]`;
+          }
+        }
+      }
 
       const stateBefore = await getAppState();
       const existingBookQs = stateBefore.questions.filter(q => q.bookId === book.id);
-      console.log(`[Background] Clearing ${existingBookQs.length} existing questions for book ${book.id} to prevent duplicates/leftovers...`);
+      await updateExtractionStatus("running", `Saving ${extracted.length} questions...`);
+      console.log(`[Background] Clearing ${existingBookQs.length} existing questions for book ${book.id}...`);
       for (const q of existingBookQs) {
         await deleteRecord("questions", q.id);
       }
@@ -760,9 +880,12 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
       for (const q of extracted) {
         await upsertRecord("questions", q);
       }
+
+      await updateExtractionStatus("done", `Done! ${extracted.length} questions extracted.`, extracted.length);
       console.log(`[Background] Successfully extracted and saved ${extracted.length} questions for book ${book.id}.`);
     } catch (bgError: any) {
       console.error(`[Background] Error during question extraction for book ${book.id}:`, bgError);
+      await updateExtractionStatus("error", `Error: ${bgError.message || "Unknown error"}`);
     }
   })();
 
@@ -809,6 +932,22 @@ apiRouter.post("/exams/generate-custom", requireRole(["super_admin", "teacher"])
     return;
   }
 
+  res.status(201).json({
+    exam: generated,
+    questions: await getExamQuestions(generated.id)
+  });
+});
+
+apiRouter.post("/exams/generate-combined", requireRole(["super_admin", "teacher"]), async (req, res) => {
+  const generated = await generateCombinedExam(req.body);
+  if (!generated) {
+    res.status(404).json({ message: "Unable to generate combined exam" });
+    return;
+  }
+  if ("error" in generated) {
+    res.status(400).json({ message: generated.error });
+    return;
+  }
   res.status(201).json({
     exam: generated,
     questions: await getExamQuestions(generated.id)
@@ -976,10 +1115,27 @@ apiRouter.get("/exams/:examId", async (req, res) => {
     return;
   }
 
-  res.json({
-    exam,
-    questions: await getExamQuestions(exam.id)
-  });
+  const auth = (req as AuthenticatedRequest).auth;
+  const authUser = state.users.find(u => u.id === auth?.sub);
+  const questions = await getExamQuestions(exam.id);
+
+  // Shuffle question order per student so each student sees a different sequence
+  if (authUser?.role === "student") {
+    const effectiveStudentId = authUser.studentId ?? auth?.sub ?? "";
+    const seed = hashSeed(exam.id + effectiveStudentId);
+    const shuffledOrder = seededShuffle(exam.questions, seed);
+    const orderedQuestions = shuffledOrder
+      .map(gq => questions.find(q => q.id === gq.questionId))
+      .filter(Boolean);
+
+    res.json({
+      exam: { ...exam, questions: shuffledOrder },
+      questions: orderedQuestions
+    });
+    return;
+  }
+
+  res.json({ exam, questions });
 });
 
 apiRouter.post("/exams/:examId/submit", async (req, res) => {
@@ -1000,7 +1156,7 @@ apiRouter.post("/exams/:examId/submit", async (req, res) => {
     return;
   }
 
-  // When submitting, also update live tracker to submitted
+  // Update live tracker to submitted
   try {
     const tracker = {
       id: `${req.params.examId}-${effectiveStudentId}`,
@@ -1016,6 +1172,17 @@ apiRouter.post("/exams/:examId/submit", async (req, res) => {
     await upsertRecord("liveTrackers", tracker);
   } catch (err) {
     console.error("Failed to update tracker on submit:", err);
+  }
+
+  // Mark exam session as submitted so it won't be restored on refresh
+  try {
+    const sessionId = `session-${req.params.examId}-${effectiveStudentId}`;
+    const existingSession = await getRecord<ExamSession>("examSessions", sessionId);
+    if (existingSession) {
+      await upsertRecord("examSessions", { ...existingSession, status: "submitted" });
+    }
+  } catch (err) {
+    console.error("Failed to mark session as submitted:", err);
   }
 
   res.json(result);
@@ -1055,6 +1222,133 @@ apiRouter.post("/exams/:examId/heartbeat", async (req, res) => {
   };
 
   await upsertRecord("liveTrackers", tracker);
+  res.json({ status: "ok" });
+});
+
+// ── Exam Session Persistence ──────────────────────────────────────────────────
+
+apiRouter.get("/exams/:examId/session", requireAuth, async (req, res) => {
+  const { examId } = req.params;
+  const authUserId = (req as AuthenticatedRequest).auth?.sub;
+  const state = await getAppState();
+  const authUser = state.users.find((u) => u.id === authUserId);
+  const effectiveStudentId = authUser?.studentId ?? authUserId;
+
+  if (!effectiveStudentId) {
+    res.status(400).json({ message: "Student authentication required" });
+    return;
+  }
+
+  const sessionId = `session-${examId}-${effectiveStudentId}`;
+  const session = await getRecord<ExamSession>("examSessions", sessionId);
+
+  if (!session || session.status === "submitted") {
+    res.status(404).json({ message: "No active session" });
+    return;
+  }
+
+  const exam = state.exams.find((e) => e.id === examId);
+  const elapsedSeconds = exam
+    ? Math.floor((Date.now() - new Date(session.startedAt).getTime()) / 1000)
+    : 0;
+  const timeRemainingSeconds = exam
+    ? Math.max(0, exam.durationMinutes * 60 - elapsedSeconds)
+    : 0;
+
+  res.json({ ...session, timeRemainingSeconds });
+});
+
+apiRouter.post("/exams/:examId/session", requireAuth, async (req, res) => {
+  const { examId } = req.params;
+  const authUserId = (req as AuthenticatedRequest).auth?.sub;
+  const state = await getAppState();
+  const authUser = state.users.find((u) => u.id === authUserId);
+  const effectiveStudentId = authUser?.studentId ?? authUserId;
+
+  if (!effectiveStudentId) {
+    res.status(400).json({ message: "Student authentication required" });
+    return;
+  }
+
+  const exam = state.exams.find((e) => e.id === examId);
+  if (!exam) {
+    res.status(404).json({ message: "Exam not found" });
+    return;
+  }
+
+  const sessionId = `session-${examId}-${effectiveStudentId}`;
+  const existing = await getRecord<ExamSession>("examSessions", sessionId);
+
+  if (existing && existing.status === "in_progress") {
+    const elapsedSeconds = Math.floor((Date.now() - new Date(existing.startedAt).getTime()) / 1000);
+    const timeRemainingSeconds = Math.max(0, exam.durationMinutes * 60 - elapsedSeconds);
+    res.json({ ...existing, timeRemainingSeconds });
+    return;
+  }
+
+  const session: ExamSession = {
+    id: sessionId,
+    examId: examId as string,
+    studentId: effectiveStudentId,
+    startedAt: new Date().toISOString(),
+    answers: {},
+    currentQuestionIndex: 0,
+    status: "in_progress"
+  };
+  await upsertRecord("examSessions", session);
+  res.json({ ...session, timeRemainingSeconds: exam.durationMinutes * 60 });
+});
+
+apiRouter.patch("/exams/:examId/session/answer", requireAuth, async (req, res) => {
+  const { examId } = req.params;
+  const { questionId, selectedOptionIds } = req.body as { questionId: string; selectedOptionIds: string[] };
+  const authUserId = (req as AuthenticatedRequest).auth?.sub;
+  const state = await getAppState();
+  const authUser = state.users.find((u) => u.id === authUserId);
+  const effectiveStudentId = authUser?.studentId ?? authUserId;
+
+  if (!effectiveStudentId || !questionId) {
+    res.status(400).json({ message: "Invalid request" });
+    return;
+  }
+
+  const sessionId = `session-${examId}-${effectiveStudentId}`;
+  const session = await getRecord<ExamSession>("examSessions", sessionId);
+
+  if (!session || session.status === "submitted") {
+    res.status(404).json({ message: "No active session" });
+    return;
+  }
+
+  await upsertRecord("examSessions", {
+    ...session,
+    answers: { ...session.answers, [questionId]: selectedOptionIds ?? [] }
+  });
+  res.json({ status: "ok" });
+});
+
+apiRouter.patch("/exams/:examId/session/index", requireAuth, async (req, res) => {
+  const { examId } = req.params;
+  const { currentQuestionIndex } = req.body as { currentQuestionIndex: number };
+  const authUserId = (req as AuthenticatedRequest).auth?.sub;
+  const state = await getAppState();
+  const authUser = state.users.find((u) => u.id === authUserId);
+  const effectiveStudentId = authUser?.studentId ?? authUserId;
+
+  if (!effectiveStudentId || typeof currentQuestionIndex !== "number") {
+    res.status(400).json({ message: "Invalid request" });
+    return;
+  }
+
+  const sessionId = `session-${examId}-${effectiveStudentId}`;
+  const session = await getRecord<ExamSession>("examSessions", sessionId);
+
+  if (!session || session.status === "submitted") {
+    res.status(404).json({ message: "No active session" });
+    return;
+  }
+
+  await upsertRecord("examSessions", { ...session, currentQuestionIndex });
   res.json({ status: "ok" });
 });
 
@@ -1196,4 +1490,24 @@ apiRouter.post("/offline-exams/generate", requireAuth, requireRole(["teacher", "
 
 function getSingleFormValue(value: unknown) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function hashSeed(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (Math.imul(31, hash) + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+function seededShuffle<T>(arr: T[], seed: number): T[] {
+  const result = [...arr];
+  let s = seed;
+  for (let i = result.length - 1; i > 0; i--) {
+    // Linear congruential generator step
+    s = (Math.imul(s, 1664525) + 1013904223) | 0;
+    const j = Math.abs(s) % (i + 1);
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
 }

@@ -6,3 +6,5 @@ frontend/dist/
 .DS_Store
 backend/uploads/
 books-papers/
+*.pdf
+backend/scratch/

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { getStoredSession } from "../auth";
@@ -45,19 +45,41 @@ export function LiveExamPage() {
   const [timeLeft, setTimeLeft] = useState<number | null>(generatedExam ? generatedExam.exam.durationMinutes * 60 : null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
+  const answersRef = useRef<Record<string, string[]>>({});
   const [isReviewMode, setIsReviewMode] = useState(false);
   const [resultVersion, setResultVersion] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Keep answersRef in sync so toggleOption can read current answers without stale closure
+  answersRef.current = answers;
 
   useEffect(() => {
     if (!generatedExam) {
       return;
     }
 
-    setTimeLeft(generatedExam.exam.durationMinutes * 60);
-    setCurrentIndex(0);
-    setAnswers({});
     setIsReviewMode(false);
+
+    const initSession = async () => {
+      try {
+        // Try to restore an existing in-progress session
+        const session = await apiClient.getExamSession(generatedExam.exam.id);
+        setAnswers(session.answers ?? {});
+        setCurrentIndex(session.currentQuestionIndex ?? 0);
+        setTimeLeft(session.timeRemainingSeconds);
+      } catch {
+        // No existing session — create a fresh one and start the timer from full duration
+        try {
+          const session = await apiClient.createExamSession(generatedExam.exam.id);
+          setTimeLeft(session.timeRemainingSeconds);
+        } catch {
+          setTimeLeft(generatedExam.exam.durationMinutes * 60);
+        }
+        setAnswers({});
+      }
+    };
+
+    void initSession();
   }, [generatedExam]);
 
   useEffect(() => {
@@ -99,6 +121,12 @@ export function LiveExamPage() {
     const interval = setInterval(sendHeartbeat, 5000);
     return () => clearInterval(interval);
   }, [generatedExam, isReviewMode, answers, currentIndex]);
+
+  // Persist current question index whenever student navigates
+  useEffect(() => {
+    if (!generatedExam || isReviewMode) return;
+    apiClient.saveExamSessionIndex(generatedExam.exam.id, currentIndex).catch(() => {});
+  }, [currentIndex, generatedExam, isReviewMode]);
 
   const formattedTime = useMemo(() => {
     if (timeLeft === null) return "00:00";
@@ -205,22 +233,20 @@ export function LiveExamPage() {
 
   const toggleOption = (questionId: string, optionId: string, multiCorrect: boolean) => {
     if (isReviewMode) return;
-    setAnswers((current) => {
-      const existing = current[questionId] ?? [];
-      const hasOption = existing.includes(optionId);
-      let nextValues: string[];
 
-      if (multiCorrect) {
-        nextValues = hasOption ? existing.filter((id) => id !== optionId) : [...existing, optionId];
-      } else {
-        nextValues = hasOption ? [] : [optionId];
-      }
+    // Compute new selection from current ref (avoids stale closure in updater)
+    const existing = answersRef.current[questionId] ?? [];
+    const hasOption = existing.includes(optionId);
+    const nextValues = multiCorrect
+      ? hasOption ? existing.filter((id) => id !== optionId) : [...existing, optionId]
+      : hasOption ? [] : [optionId];
 
-      return {
-        ...current,
-        [questionId]: nextValues
-      };
-    });
+    setAnswers((current) => ({ ...current, [questionId]: nextValues }));
+
+    // Persist to DB immediately (fire-and-forget)
+    if (generatedExam) {
+      apiClient.saveExamSessionAnswer(generatedExam.exam.id, { questionId, selectedOptionIds: nextValues }).catch(() => {});
+    }
   };
 
 
@@ -527,6 +553,7 @@ export function LiveExamPage() {
               Back to Dashboard
             </button>
           )}
+        </aside>
       </section>
 
       {isReviewMode && (

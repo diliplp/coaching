@@ -116,7 +116,7 @@ export async function extractPdfText(filePath: string, runOcr?: boolean) {
 export async function extractPdfDiagrams(
   filePath: string,
   bookId: string
-): Promise<Array<{ page: number; url: string; bbox: number[] }>> {
+): Promise<Array<{ page: number; url: string; bbox: number[]; isQuestionImage?: boolean }>> {
   const defaultPython = process.platform === "win32" ? "python" : "python3";
   const pythonPath = process.env.PDF_PYTHON_PATH || defaultPython;
   const scriptPath = path.join(scriptsRoot, "extract_diagrams.py");
@@ -141,3 +141,31 @@ export async function extractPdfDiagrams(
   }
 }
 
+export async function extractPdfQuestionCrops(
+  filePath: string,
+  bookId: string
+): Promise<Array<{ questionNumber: number; page: number; cropUrl: string }>> {
+  const defaultPython = process.platform === "win32" ? "python" : "python3";
+  const pythonPath = process.env.PDF_PYTHON_PATH || defaultPython;
+  const scriptPath = path.join(scriptsRoot, "extract_question_crops.py");
+  const outputDir = path.join(uploadsRoot, "crops");
+
+  try {
+    await fs.mkdir(outputDir, { recursive: true });
+    console.log(`[Crops] Extracting question crops for book ${bookId}`);
+    const { stdout } = await execPromise(
+      `"${pythonPath}" "${scriptPath}" "${filePath}" "${outputDir}" "${bookId}"`
+    );
+    const startIdx = stdout.indexOf("[");
+    const endIdx = stdout.lastIndexOf("]");
+    if (startIdx !== -1 && endIdx !== -1) {
+      const result = JSON.parse(stdout.substring(startIdx, endIdx + 1));
+      console.log(`[Crops] Extracted ${result.length} question crops`);
+      return result;
+    }
+    return [];
+  } catch (err: any) {
+    console.error("[Crops] Question crop extraction failed:", err);
+    return [];
+  }
+}

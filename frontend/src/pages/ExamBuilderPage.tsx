@@ -26,6 +26,9 @@ export function ExamBuilderPage() {
   const [allowedSources, setAllowedSources] = useState<string[]>(["pyq", "reference", "textbook", "ai_generated", "custom"]);
   const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [combinedExamName, setCombinedExamName] = useState("PCM/PCB Combined Test");
+  const [combinedDuration, setCombinedDuration] = useState(180);
+  const [subjectAllocations, setSubjectAllocations] = useState<Record<string, string>>({});
 
   useEffect(() => {
     Promise.all([apiClient.getBlueprints(), apiClient.getQuestionBank(), apiClient.getOverview()])
@@ -141,6 +144,14 @@ export function ExamBuilderPage() {
   const weightedEntities = selectionMode === "chapter" ? availableChapters : availableTopics;
   const weightageTotal = Object.values(weightages).reduce((sum, value) => sum + (Number(value) || 0), 0);
 
+  const questionCountBySubject = useMemo(() => {
+    const counts = new Map<string, number>();
+    questionBank?.questions.forEach(q => {
+      counts.set(q.subjectId, (counts.get(q.subjectId) || 0) + 1);
+    });
+    return counts;
+  }, [questionBank]);
+
   const createExam = async (blueprintId: string) => {
     setStatus("Generating exam...");
     try {
@@ -215,6 +226,33 @@ export function ExamBuilderPage() {
     } catch (error) {
       console.error(error);
       setStatus("Unable to generate adaptive exam. The student may need past submissions first.");
+    }
+  };
+
+  const createCombinedExam = async () => {
+    const allocations = Object.entries(subjectAllocations)
+      .map(([subjectId, count]) => ({ subjectId, questionCount: Number(count) || 0 }))
+      .filter(a => a.questionCount > 0);
+
+    if (!selectedBatchId || allocations.length === 0) {
+      setStatus("Select a batch and set question counts for at least one subject.");
+      return;
+    }
+
+    setStatus("Generating combined exam...");
+    try {
+      const payload = await apiClient.generateCombinedExam({
+        name: combinedExamName,
+        batchId: selectedBatchId,
+        durationMinutes: combinedDuration,
+        subjectAllocations: allocations
+      });
+      liveExamState.generatedExam = payload;
+      liveExamState.latestResult = null;
+      const total = payload.questions?.length ?? 0;
+      setStatus(`Combined exam "${payload.exam.name}" created with ${total} questions. Open Live Exam page to attempt it.`);
+    } catch (e: any) {
+      setStatus(e.message || "Failed to generate combined exam.");
     }
   };
 
@@ -555,6 +593,81 @@ export function ExamBuilderPage() {
         <div className="action-row">
           <button className="primary-button" disabled={weightageTotal !== 100} onClick={() => void createCustomExam()}>
             Generate Weighted Exam
+          </button>
+        </div>
+      </article>
+
+      <article className="panel">
+        <div className="row-between adaptive-header">
+          <div>
+            <p className="eyebrow">PCM / PCB Combined Exam</p>
+            <h3>Set per-subject question counts for a multi-subject paper</h3>
+            <p className="muted-copy" style={{ fontSize: "0.85rem" }}>JEE: 25+25+25 = 75Q | NEET: 45+45+90 = 180Q</p>
+          </div>
+        </div>
+
+        <div className="adaptive-form-grid" style={{ marginBottom: "20px" }}>
+          <label className="field">
+            <span>Exam Name</span>
+            <input value={combinedExamName} onChange={(e) => setCombinedExamName(e.target.value)} />
+          </label>
+          <label className="field">
+            <span>Duration (minutes)</span>
+            <input type="number" min="5" value={combinedDuration} onChange={(e) => setCombinedDuration(Number(e.target.value) || 5)} />
+          </label>
+        </div>
+
+        <h4 style={{ marginBottom: "12px" }}>Questions per Subject</h4>
+        <div style={{ display: "grid", gap: "10px" }}>
+          {availableSubjects.length === 0 ? (
+            <p className="muted-copy">Select a batch above to see available subjects.</p>
+          ) : availableSubjects.map(subject => {
+            const available = questionCountBySubject.get(subject.id) || 0;
+            const requested = Number(subjectAllocations[subject.id] || 0);
+            const overLimit = requested > 0 && requested > available;
+            return (
+              <div key={subject.id} style={{ display: "flex", alignItems: "center", gap: "16px", padding: "12px 16px", border: `1px solid ${overLimit ? "#f59e0b" : "var(--color-border)"}`, borderRadius: "12px", background: requested > 0 ? "rgba(15,118,110,0.04)" : "" }}>
+                <div style={{ flex: 1 }}>
+                  <strong>{subject.name}</strong>
+                  <span style={{ marginLeft: "10px", fontSize: "0.8rem", color: available === 0 ? "#ef4444" : "var(--color-text-muted)" }}>
+                    {available} available
+                  </span>
+                  {overLimit && (
+                    <span style={{ marginLeft: "8px", fontSize: "0.75rem", color: "#f59e0b" }}>
+                      ⚠ only {available} in bank — will use all
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={subjectAllocations[subject.id] ?? ""}
+                  onChange={(e) => setSubjectAllocations(prev => ({ ...prev, [subject.id]: e.target.value }))}
+                  style={{ width: "80px", padding: "8px 12px", borderRadius: "8px", border: `1px solid ${overLimit ? "#f59e0b" : "#cbd5e1"}`, textAlign: "center", fontSize: "1rem" }}
+                />
+                <span style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", minWidth: "60px" }}>questions</span>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ marginTop: "16px", padding: "12px 16px", background: "var(--color-bg-secondary)", borderRadius: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <strong>
+            Total: {Object.values(subjectAllocations).reduce((sum, v) => sum + (Number(v) || 0), 0)} questions
+          </strong>
+          <span style={{ fontSize: "0.85rem", color: "var(--color-text-muted)" }}>
+            Batch: {overview?.batches.find(b => b.id === selectedBatchId)?.name ?? "—"}
+          </span>
+        </div>
+
+        <div className="action-row" style={{ marginTop: "16px" }}>
+          <button
+            className="primary-button"
+            onClick={() => void createCombinedExam()}
+            disabled={Object.values(subjectAllocations).every(v => !Number(v))}
+          >
+            Generate Combined Exam
           </button>
         </div>
       </article>
