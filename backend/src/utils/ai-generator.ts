@@ -95,51 +95,107 @@ async function generateVisionContent(textPrompt: string, imageBase64: string): P
 }
 
 function repairJsonString(raw: string): string {
+  const CONTROL_ESCAPES: Record<number, string> = {
+    8: '\\b', 9: '\\t', 10: '\\n', 12: '\\f', 13: '\\r'
+  };
+
   let inString = false;
   let result = "";
   let i = 0;
-  
+
   while (i < raw.length) {
     const char = raw[i];
-    
+    const code = char.charCodeAt(0);
+
     if (char === '"') {
+      // Count preceding backslashes to determine if this quote is escaped
       let backslashCount = 0;
       let j = i - 1;
-      while (j >= 0 && raw[j] === '\\') {
-        backslashCount++;
-        j--;
-      }
-      
-      if (backslashCount % 2 === 0) {
-        inString = !inString;
-      }
+      while (j >= 0 && raw[j] === '\\') { backslashCount++; j--; }
+      if (backslashCount % 2 === 0) inString = !inString;
       result += char;
       i++;
     } else if (inString && char === '\\') {
       const nextChar = raw[i + 1] || "";
-      let isValidEscape = false;
-      if (['"', '\\', '/', 'b', 'f', 'n', 'r', 't'].includes(nextChar)) {
-        isValidEscape = true;
-      } else if (nextChar === 'u') {
-        const hex = raw.substring(i + 2, i + 6);
-        if (hex.length === 4 && /^[0-9a-fA-F]{4}$/.test(hex)) {
-          isValidEscape = true;
-        }
-      }
-      
-      if (isValidEscape) {
+
+      // \n is the only control escape we keep — it's genuinely used for newlines in question text.
+      // \b, \f, \r, \t are NEVER intentional in MCQ text — they're almost always LaTeX command
+      // prefixes written with only one backslash (\begin, \frac, \right, \text).
+      // Doubling the backslash makes JSON.parse produce the correct single \ for KaTeX.
+      const keepAsJsonEscape =
+        nextChar === '"' || nextChar === '\\' || nextChar === '/' || nextChar === 'n' ||
+        (nextChar === 'u' && /^[0-9a-fA-F]{4}$/.test(raw.substring(i + 2, i + 6)));
+
+      if (keepAsJsonEscape) {
         result += char + nextChar;
         i += 2;
       } else {
+        // Stray backslash (including LaTeX \text, \frac, \begin, \right) — double it
         result += '\\\\';
         i++;
       }
+    } else if (inString && code < 0x20) {
+      // Literal control character inside a JSON string — must be escaped
+      result += CONTROL_ESCAPES[code] ?? `\\u${code.toString(16).padStart(4, '0')}`;
+      i++;
     } else {
       result += char;
       i++;
     }
   }
-  return result;
+
+  // Remove trailing commas before ] or } (common in AI-generated JSON)
+  return result.replace(/,\s*([\]}])/g, '$1');
+}
+
+/**
+ * Last-resort fallback: extract individual question objects from broken/truncated JSON.
+ * Locates the "questions" array then walks it extracting each balanced {...} object
+ * independently, so one corrupt question doesn't block the rest.
+ */
+function extractQuestionsFromBrokenJson(raw: string): any[] {
+  const questions: any[] = [];
+
+  // Find the opening bracket of the questions array
+  const qKeyIdx = raw.indexOf('"questions"');
+  const arrayStart = qKeyIdx !== -1
+    ? raw.indexOf('[', qKeyIdx)
+    : raw.indexOf('[');
+  if (arrayStart === -1) return questions;
+
+  let depth = 0;
+  let objStart = -1;
+  let inString = false;
+  let escape = false;
+
+  for (let i = arrayStart + 1; i < raw.length; i++) {
+    const c = raw[i];
+
+    // Track escape sequences so \" inside strings don't toggle inString
+    if (escape) { escape = false; continue; }
+    if (c === '\\' && inString) { escape = true; continue; }
+    if (c === '"') { inString = !inString; continue; }
+    if (inString) continue;
+
+    if (c === '{') {
+      if (depth === 0) objStart = i;
+      depth++;
+    } else if (c === '}') {
+      depth--;
+      if (depth === 0 && objStart !== -1) {
+        const fragment = raw.substring(objStart, i + 1);
+        try {
+          const obj = JSON.parse(repairJsonString(fragment));
+          if (obj.prompt || obj.options) questions.push(obj);
+        } catch { /* this individual question is too corrupt to recover */ }
+        objStart = -1;
+      }
+    } else if (c === ']' && depth === 0) {
+      break; // end of questions array
+    }
+  }
+
+  return questions;
 }
 
 function makeGeminiClient(apiKey: string) {
@@ -217,6 +273,26 @@ async function generateContentWithFallback(prompt: string, fallbackJson: string 
   throw new Error("All AI providers failed. Check OPENROUTER_API_KEY in .env");
 }
 
+function findChapterStart(text: string, chapterName: string): number {
+  const lower = text.toLowerCase();
+  const nameLower = chapterName.toLowerCase().trim();
+
+  // Strategy 1: exact "chapter N: <name>" or "chapter: <name>" heading
+  const chapterHeadingRegex = new RegExp(`chapter[^\\n]{0,20}${nameLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+  const headingMatch = chapterHeadingRegex.exec(text);
+  if (headingMatch) return headingMatch.index;
+
+  // Strategy 2: chapter name appears as a standalone line (likely a heading)
+  const escapedName = nameLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const standaloneRegex = new RegExp(`(^|\\n)\\s*${escapedName}\\s*($|\\n)`, 'i');
+  const standaloneMatch = standaloneRegex.exec(text);
+  if (standaloneMatch) return standaloneMatch.index;
+
+  // Strategy 3: simple substring match (case insensitive)
+  const idx = lower.indexOf(nameLower);
+  return idx;
+}
+
 /**
  * Vision extraction via Gemini SDK (primary) — retries on 429 instead of falling back
  * to a lower-quality model.
@@ -228,8 +304,10 @@ export async function generateQuestionsFromText(params: {
   subjectId: string;
   subject?: string;
   questionCount?: number;
+  chapterName?: string;
+  topicNames?: string[];
 }): Promise<Question[]> {
-  const { text, topicId, subjectId, subject, questionCount = 5 } = params;
+  const { text, topicId, subjectId, subject, questionCount = 5, chapterName, topicNames } = params;
 
   if (!process.env.GEMINI_API_KEY && !process.env.OPENROUTER_API_KEY) {
     throw new Error("Neither GEMINI_API_KEY nor OPENROUTER_API_KEY is configured.");
@@ -288,25 +366,49 @@ export async function generateQuestionsFromText(params: {
         ? `\nIMPORTANT: Do NOT repeat, rephrase, or generate questions similar to these existing ones:\n- ${previousPrompts}\n\nGenerate COMPLETELY NEW and UNIQUE questions that cover different concepts or use different values.` 
         : "";
 
-      const maxChunkSize = 25000;
+      const maxChunkSize = 30000;
       let textChunk = text;
-      if (text.length > maxChunkSize) {
-         const maxStart = text.length - maxChunkSize;
-         const startIdx = Math.floor(Math.random() * maxStart);
-         textChunk = text.substring(startIdx, startIdx + maxChunkSize);
+      if (chapterName) {
+        // Find where this chapter starts in the book text
+        const chapterStart = findChapterStart(text, chapterName);
+        if (chapterStart !== -1) {
+          console.log(`[Generate] Found chapter "${chapterName}" at position ${chapterStart} in book text`);
+          textChunk = text.substring(chapterStart, chapterStart + maxChunkSize);
+        } else if (text.length > maxChunkSize) {
+          // Chapter not found by name — fall back to random chunk
+          const maxStart = text.length - maxChunkSize;
+          const startIdx = Math.floor(Math.random() * maxStart);
+          textChunk = text.substring(startIdx, startIdx + maxChunkSize);
+        }
+      } else if (text.length > maxChunkSize) {
+        const maxStart = text.length - maxChunkSize;
+        const startIdx = Math.floor(Math.random() * maxStart);
+        textChunk = text.substring(startIdx, startIdx + maxChunkSize);
       }
 
+      const chapterFocusInstruction = chapterName
+        ? `\nFOCUS: Generate questions EXCLUSIVELY about the chapter "${chapterName}"${topicNames?.length ? `, covering these topics: ${topicNames.join(', ')}` : ''}. Do NOT generate questions about any other chapter or unrelated content.\n`
+        : "";
+
       const prompt = `
-You are an expert educator. Generate exactly ${currentBatchCount} NEW multiple-choice questions from the text below.
+You are an expert educator creating exam questions from a textbook. Generate exactly ${currentBatchCount} NEW multiple-choice questions from the textbook content below.
+${chapterFocusInstruction}
 ${exampleInstruction}
 ${avoidanceInstruction}
 
 STRICT STEM AND MATHEMATICAL RULES:
-1. LaTeX: Use $...$ for inline and $$...$$ for blocks.
-2. JSON ESCAPING: In the JSON, use FOUR backslashes for LaTeX (e.g., "\\\\frac").
-3. Chemistry: Use [SMILES: notation] for chemical structures (e.g. [SMILES: CC(=O)O] for acetic acid).
-   IMPORTANT: A SMILES string is NOT a chemical formula. Never use placeholders like '?' or chemical formulas inside [SMILES: ] tags.
-4. Chemical Formulas and Equations (Subscripts/Superscripts): You MUST format ALL chemical formulas (e.g., H2O, CO2, NaCl, K2SO4, Al2(SO4)3) and chemical equations in standard LaTeX using subscripts and superscripts (e.g., use $\\text{H}_2\\text{O}$ or $\\text{K}_2\\text{SO}_4$). Never output plain text chemical formulas like H2O or K2SO4.
+1. LaTeX: Use $...$ for inline math and $$...$$ for display/block math.
+2. JSON ESCAPING: Inside a JSON string, every LaTeX backslash must be written as TWO backslashes. Examples:
+   - \\frac{1}{2}   (renders as \frac)
+   - \\sqrt{x}      (renders as \sqrt)
+   - \\text{H}_2\\text{O}  (renders as \text{H}_2\text{O})
+   - \\alpha, \\beta, \\theta, \\Delta
+   - \\begin{cases} ... \\end{cases}
+3. Chemistry structures: Use [SMILES: notation] for any drawn chemical structure (e.g. [SMILES: CC(=O)O] for acetic acid, [SMILES: c1ccccc1] for benzene).
+   IMPORTANT: SMILES notation is NOT a chemical formula. Never put atomic symbols like H2O inside [SMILES:].
+4. Chemical Formulas and Equations: Format ALL chemical formulas in LaTeX with subscripts/superscripts:
+   - $\\text{H}_2\\text{O}$, $\\text{CO}_2$, $\\text{K}_2\\text{SO}_4$, $\\text{Al}_2(\\text{SO}_4)_3$
+   - Never write plain text like H2O or K2SO4 — always use LaTeX.
 5. Colligative Properties & van't Hoff Factor (i):
    - For questions on colligative properties (freezing point depression, boiling point elevation, vapour pressure lowering, osmotic pressure) of electrolytes (e.g. NaCl, KCl, CaCl2, Na2SO4, etc.), you MUST calculate and include the van't Hoff factor (i) assuming complete dissociation (unless degree of dissociation is given).
    - E.g., for NaCl, i = 2; for KCl, i = 2; for Na2SO4, i = 3; for MgSO4, i = 2.
@@ -365,8 +467,20 @@ ${textChunk}
           }
 
           const repaired = repairJsonString(rawResponse);
-          let parsedObj = JSON.parse(repaired);
-          let parsedArr = parsedObj.questions || (Array.isArray(parsedObj) ? parsedObj : []);
+          let parsedArr: any[];
+          try {
+            const parsedObj = JSON.parse(repaired);
+            parsedArr = parsedObj.questions || (Array.isArray(parsedObj) ? parsedObj : []);
+          } catch (parseErr: any) {
+            // Full parse failed (e.g. truncated response) — extract individual question objects
+            parsedArr = extractQuestionsFromBrokenJson(rawResponse);
+            if (parsedArr.length === 0) {
+              console.warn(`Batch ${batchIndex + 1}: full JSON parse failed and fragment extraction found nothing. Parse error: ${parseErr.message}`);
+              console.warn(`Raw response preview (first 500 chars): ${rawResponse.substring(0, 500)}`);
+            } else {
+              console.warn(`Batch ${batchIndex + 1}: full JSON parse failed, recovered ${parsedArr.length} questions via fragment extraction`);
+            }
+          }
 
           const mappedQuestions = parsedArr.map((item: any, idx: number) => {
             const qId = `q-ai-${Date.now()}-${batchIndex}-${idx}`;
@@ -381,7 +495,7 @@ ${textChunk}
               id: qId,
               subjectId,
               topicId,
-              type: correctOptionIds.length > 1 ? "multi_correct" : "single_correct",
+              type: (correctOptionIds.length > 1 ? "multi_correct" : "single_correct") as "multi_correct" | "single_correct",
               prompt: item.prompt,
               difficulty: item.difficulty,
               marks: item.marks || 2,
@@ -986,10 +1100,11 @@ RULES:
 - If the page has two columns (questions left, solutions/answers right) — extract ONLY the left column questions.
 - If the page is single-column — extract all questions on the page.
 - Extract each question with its exact number, full text, and all 4 options (A, B, C, D) exactly as written.
-- For mathematical expressions, format in LaTeX: use $...$ for inline math, $$...$$ for block math. Use four backslashes in JSON strings (e.g. "\\frac{a}{b}").
-- For chemical formulas use LaTeX subscripts/superscripts: $\\text{H}_2\\text{O}$, $\\text{K}_2\\text{SO}_4$.
-- For structural formula images or diagrams visible in options: write the IUPAC name or a short description (e.g. "benzene ring with OH group at position 1").
-- Set hasDiagram: true if ANY drawn structural formula, chemical structure, graph, geometric figure, or embedded image appears in the question stem OR in the options (actual drawn images, not just text descriptions).
+- LaTeX math: use $...$ for inline, $$...$$ for block. In JSON strings write EVERY backslash as TWO backslashes: \\frac, \\sqrt, \\text, \\alpha, \\begin, \\right, \\left.
+- Chemical formulas: use LaTeX with subscripts/superscripts — $\\text{H}_2\\text{O}$, $\\text{K}_2\\text{SO}_4$, $\\text{CO}_2$.
+- Chemical structures drawn as diagrams: output [SMILES: ...] notation (e.g. [SMILES: c1ccccc1] for benzene, [SMILES: CC(=O)O] for acetic acid).
+- Graphs and geometric figures: describe the axes and key features concisely in the question text (e.g. "The graph shows concentration on y-axis vs time on x-axis, with an exponential decay curve.").
+- Set hasDiagram: true if ANY drawn structural formula, graph, geometric figure, or chemical structure image appears in the question stem OR in the options.
 - Do NOT invent questions. If a page has no MCQ questions, return {"questions": []}.
 - NEVER leave an option value empty.
 - Output ONLY valid JSON, no markdown fences.
@@ -1023,7 +1138,9 @@ const TEXT_PROMPT = (chunk: string) => `You are extracting MCQ questions from ex
 RULES:
 - The text may be from a two-column PDF and can appear scrambled — use question numbers to identify boundaries.
 - Do NOT invent questions. If no MCQs are present return {"questions": []}.
-- Format math in LaTeX ($...$), chemical formulas with subscripts ($\\\\text{H}_2\\\\text{O}$).
+- Format math in LaTeX ($...$ for inline, $$...$$ for block). In JSON strings write EVERY backslash as TWO backslashes: \\frac, \\sqrt, \\text, \\alpha, \\begin, \\right.
+- Chemical formulas: $\\text{H}_2\\text{O}$, $\\text{CO}_2$, $\\text{K}_2\\text{SO}_4$.
+- Chemical structures (SMILES or structural): output [SMILES: ...] notation.
 - Leave isCorrect: false for all options — the answer key is applied separately.
 - Output ONLY valid JSON.
 
@@ -1058,8 +1175,14 @@ async function extractFromChunkText(chunkText: string, pageImageBase64?: string)
     if (startIdx !== -1 && endIdx !== -1) rawResponse = rawResponse.substring(startIdx, endIdx + 1);
 
     repaired = repairJsonString(rawResponse);
-    const parsedObj = JSON.parse(repaired);
-    const questions: any[] = parsedObj.questions || (Array.isArray(parsedObj) ? parsedObj : []);
+    let questions: any[];
+    try {
+      const parsedObj = JSON.parse(repaired);
+      questions = parsedObj.questions || (Array.isArray(parsedObj) ? parsedObj : []);
+    } catch {
+      questions = extractQuestionsFromBrokenJson(rawResponse);
+      console.warn(`[Extract] Full JSON parse failed, recovered ${questions.length} questions via fragment extraction`);
+    }
     return questions.map(q => ({
       ...q,
       _questionNumber: (typeof q.questionNumber === "number" && q.questionNumber > 0) ? q.questionNumber : undefined,

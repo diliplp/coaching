@@ -713,13 +713,18 @@ apiRouter.post("/subject-books/:bookId/generate-questions", requireRole(["super_
 
   try {
     const subject = state.subjects.find(s => s.id === book.subjectId);
-    
+    const chapter = chapterId ? state.chapters.find(c => c.id === chapterId) : undefined;
+    const chapterName = chapter?.name;
+    const topicNames = topicIds.map(tid => state.topics.find(t => t.id === tid)?.name).filter(Boolean) as string[];
+
     const generated = await generateQuestionsFromText({
       text: book.parsedText,
       topicId: topicIds[0],
       subjectId: book.subjectId,
       subject: subject?.name,
       questionCount,
+      chapterName,
+      topicNames: topicNames.length > 0 ? topicNames : undefined,
     });
 
     // Tag questions with topics cyclically
