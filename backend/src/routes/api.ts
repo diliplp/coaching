@@ -93,14 +93,16 @@ apiRouter.post("/auth/login", async (req, res) => {
     }
   }
 
-  // Block parallel sessions — if an active session exists (started within 24h), reject the new login.
-  // This protects students mid-exam from being kicked out by a second device.
-  const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-  if (user.sessionId && user.sessionStartedAt) {
-    const sessionAge = Date.now() - new Date(user.sessionStartedAt).getTime();
-    if (sessionAge < SESSION_TTL_MS) {
-      res.status(409).json({ message: "Another device is already logged in with this account. Please log out from the other device first." });
-      return;
+  // Block parallel sessions for students only — protects exam integrity.
+  // Teachers and admins may log in from multiple devices simultaneously.
+  if (user.role === "student") {
+    const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+    if (user.sessionId && user.sessionStartedAt) {
+      const sessionAge = Date.now() - new Date(user.sessionStartedAt).getTime();
+      if (sessionAge < SESSION_TTL_MS) {
+        res.status(409).json({ message: "Another device is already logged in with this account. Please log out from the other device first." });
+        return;
+      }
     }
   }
 
