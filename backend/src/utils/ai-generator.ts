@@ -246,20 +246,22 @@ async function generateContentWithFallback(prompt: string, fallbackJson: string 
     }
   }
 
-  // 2. Gemini — capable STEM model, preferred over free 8B fallbacks
-  const clients = getGeminiClients();
-  for (const { client, name } of clients) {
-    try {
-      console.log(`[Gemini] ${name} trying...`);
-      const result = await client.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
-      });
-      const text = result.text;
-      if (text) { console.log(`[Gemini] ${name} succeeded.`); return text; }
-    } catch (e: any) {
-      console.warn(`[Gemini] ${name} failed:`, e?.message ?? e);
+  // 2. Gemini — capable STEM model, preferred over free 8B fallbacks (skipped when SKIP_GEMINI=true)
+  if (process.env.SKIP_GEMINI !== "true") {
+    const clients = getGeminiClients();
+    for (const { client, name } of clients) {
+      try {
+        console.log(`[Gemini] ${name} trying...`);
+        const result = await client.models.generateContent({
+          model: GEMINI_MODEL,
+          contents: prompt,
+          config: { responseMimeType: "application/json" }
+        });
+        const text = result.text;
+        if (text) { console.log(`[Gemini] ${name} succeeded.`); return text; }
+      } catch (e: any) {
+        console.warn(`[Gemini] ${name} failed:`, e?.message ?? e);
+      }
     }
   }
 
@@ -622,32 +624,35 @@ ${textChunk}
   return allQuestions.slice(0, questionCount);
 }
 
-/** Calls Gemini directly for critic validation — Gemini is far more reliable at STEM math
- *  than free OpenRouter models and is already configured via GEMINI_API_KEY. */
 async function generateContentForCritic(prompt: string): Promise<string> {
-  // 1. Try Gemini primary then backup — best at mathematical reasoning
-  const geminiClients = getGeminiClients();
-  for (const { client, name } of geminiClients) {
-    try {
-      console.log(`[Critic] Using Gemini ${name}...`);
-      const result = await client.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: { responseMimeType: "application/json", maxOutputTokens: 16384 }
-      });
-      const text = result.text;
-      if (text) { console.log(`[Critic] Gemini ${name} responded.`); return text; }
-    } catch (e: any) {
-      console.warn(`[Critic] Gemini ${name} failed:`, e?.message ?? e);
+  const skipGemini = process.env.SKIP_GEMINI === "true";
+
+  // 1. Gemini — best at STEM math reasoning (skipped when SKIP_GEMINI=true)
+  if (!skipGemini) {
+    const geminiClients = getGeminiClients();
+    for (const { client, name } of geminiClients) {
+      try {
+        console.log(`[Critic] Using Gemini ${name}...`);
+        const result = await client.models.generateContent({
+          model: GEMINI_MODEL,
+          contents: prompt,
+          config: { responseMimeType: "application/json", maxOutputTokens: 16384 }
+        });
+        const text = result.text;
+        if (text) { console.log(`[Critic] Gemini ${name} responded.`); return text; }
+      } catch (e: any) {
+        console.warn(`[Critic] Gemini ${name} failed:`, e?.message ?? e);
+      }
     }
+  } else {
+    console.log("[Critic] SKIP_GEMINI=true — skipping Gemini, using OpenRouter only.");
   }
 
-  // 2. If Gemini unavailable, fall back to paid OpenRouter model only (not free tier models)
+  // 2. OpenRouter paid model
   if (process.env.OPENROUTER_API_KEY) {
     const criticModel = process.env.OPENROUTER_CRITIC_MODEL || process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini";
-    // Only use the configured/paid model — skip free 8B models which cannot verify STEM math
     try {
-      console.log(`[Critic] Falling back to OpenRouter ${criticModel}...`);
+      console.log(`[Critic] Using OpenRouter ${criticModel}...`);
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -660,7 +665,7 @@ async function generateContentForCritic(prompt: string): Promise<string> {
           model: criticModel,
           messages: [{ role: "user", content: prompt }],
           response_format: { type: "json_object" },
-          max_tokens: 8192
+          max_tokens: 16384
         })
       });
       if (response.ok) {
