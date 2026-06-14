@@ -70,7 +70,11 @@ async function generateVisionContent(textPrompt: string, imageBase64: string): P
     }
   }
 
-  // Gemini fallback
+  // Gemini vision fallback (skipped when SKIP_GEMINI=true)
+  if (process.env.SKIP_GEMINI === "true") {
+    console.warn("[Vision] SKIP_GEMINI=true — Gemini vision skipped, no further fallback available.");
+    return null;
+  }
   const clients = getGeminiClients();
   for (const { client, name } of clients) {
     try {
