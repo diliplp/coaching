@@ -1,6 +1,14 @@
+# PDF processing
 pypdf
-python-docx
-pytesseract
 pymupdf
-numpy
+
+# OCR
+pytesseract
+Pillow
+
+# Image processing
 opencv-python-headless
+numpy
+
+# Document parsing
+python-docx
