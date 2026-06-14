@@ -230,6 +230,21 @@ adminRouter.delete("/questions/clear-all", async (req, res) => {
   }
 });
 
+adminRouter.delete("/questions/by-subject/:subjectId", async (req, res) => {
+  try {
+    const { subjectId } = req.params;
+    const state = await getAppState();
+    const toDelete = state.questions.filter((q: Question) => q.subjectId === subjectId);
+    for (const q of toDelete) {
+      await deleteRecord("questions", q.id);
+    }
+    res.json({ message: `Deleted ${toDelete.length} question${toDelete.length !== 1 ? "s" : ""}.`, count: toDelete.length });
+  } catch (error: any) {
+    console.error("Error deleting subject questions:", error);
+    res.status(500).json({ message: "Failed to delete subject questions" });
+  }
+});
+
 // --- Users ---
 adminRouter.get("/users", async (_req: Request, res: Response) => {
   const users = await listRecords<UserAccount>("users");

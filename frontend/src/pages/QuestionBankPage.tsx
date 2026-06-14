@@ -152,7 +152,7 @@ export function QuestionBankPage() {
   const handleClearAll = async () => {
     const confirmation = prompt("This will PERMANENTLY delete ALL questions in the bank. Type 'DELETE ALL' to confirm.");
     if (confirmation !== "DELETE ALL") return;
-    
+
     try {
       await apiClient.admin.clearAllQuestions();
       refreshData();
@@ -160,6 +160,25 @@ export function QuestionBankPage() {
     } catch (error) {
       console.error(error);
       alert("Failed to clear question bank.");
+    }
+  };
+
+  const handleClearSubject = async () => {
+    if (!selectedSubjectId) {
+      alert("Please select a subject from the filter below first.");
+      return;
+    }
+    const subject = data?.subjects.find((s: any) => s.id === selectedSubjectId);
+    const subjectName = subject?.name ?? "this subject";
+    const confirmation = prompt(`This will PERMANENTLY delete all questions for "${subjectName}". Type 'DELETE' to confirm.`);
+    if (confirmation !== "DELETE") return;
+    try {
+      const result = await apiClient.admin.clearSubjectQuestions(selectedSubjectId);
+      refreshData();
+      alert(result.message);
+    } catch (error: any) {
+      console.error(error);
+      alert(error?.message ?? "Failed to delete subject questions.");
     }
   };
 
@@ -185,13 +204,21 @@ export function QuestionBankPage() {
             <h2>Subject and topic organized MCQ library</h2>
           </div>
           {isTeacher && (
-            <div style={{ display: "flex", gap: "10px" }}>
-              <button 
-                className="secondary-button" 
-                style={{ color: "red", borderColor: "red" }} 
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+              <button
+                className="secondary-button"
+                style={{ color: "#b45309", borderColor: "#b45309" }}
+                onClick={handleClearSubject}
+                title={selectedSubjectId ? `Delete all questions for the selected subject` : "Select a subject filter first"}
+              >
+                Delete Subject MCQs{selectedSubjectId && data ? ` (${data.subjects.find((s: any) => s.id === selectedSubjectId)?.name ?? ""})` : ""}
+              </button>
+              <button
+                className="secondary-button"
+                style={{ color: "red", borderColor: "red" }}
                 onClick={handleClearAll}
               >
-                Clear Entire Bank
+                Delete Entire Bank
               </button>
               <button className="primary-button" onClick={() => handleOpenForm()}>
                 + Add Question

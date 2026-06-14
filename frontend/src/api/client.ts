@@ -277,6 +277,7 @@ export const apiClient = {
     deleteTopic: (id: string) => request<void>(`/admin/topics/${id}`, { method: "DELETE" }),
     verifyQuestion: (id: string) => request<any>(`/admin/questions/${id}/verify`, { method: "POST" }),
     clearAllQuestions: () => request<void>("/admin/questions/clear-all", { method: "DELETE" }),
+    clearSubjectQuestions: (subjectId: string) => request<{ message: string; count: number }>(`/admin/questions/by-subject/${subjectId}`, { method: "DELETE" }),
     
     getUsers: () => request<any[]>("/admin/users"),
     createUser: (payload: any) => request<any>("/admin/users", { method: "POST", body: JSON.stringify(payload) }),
