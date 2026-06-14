@@ -1,6 +1,20 @@
 import fs from 'node:fs/promises';
 import { getAppState } from './src/data/database.js';
 
+function extractSmiles(text: string): string {
+  const tagStart = text.indexOf('[SMILES:');
+  if (tagStart === -1) return '';
+  const contentStart = tagStart + 8;
+  let depth = 1;
+  let i = contentStart;
+  while (i < text.length && depth > 0) {
+    if (text[i] === '[') depth++;
+    else if (text[i] === ']') depth--;
+    i++;
+  }
+  return depth === 0 ? text.slice(contentStart, i - 1).trim() : '';
+}
+
 async function generateHTML() {
   const state = await getAppState();
   
@@ -34,9 +48,7 @@ async function generateHTML() {
 `;
 
   questions.forEach((q, index) => {
-    // Extract SMILES from prompt using regex
-    const promptSmilesMatch = q.prompt.match(/\[SMILES:\s*(.*?)\s*\]/);
-    const promptSmiles = promptSmilesMatch ? promptSmilesMatch[1] : '';
+    const promptSmiles = extractSmiles(q.prompt);
 
     htmlContent += `
   <div class="question">
@@ -51,13 +63,12 @@ async function generateHTML() {
 `;
 
     q.options.forEach(opt => {
-      const optSmilesMatch = opt.value.match(/\[SMILES:\s*(.*?)\s*\]/);
-      const optSmiles = optSmilesMatch ? optSmilesMatch[1] : opt.value;
-      
+      const optSmiles = extractSmiles(opt.value);
+
       htmlContent += `
       <div class="option">
         <strong>Option ${opt.label}</strong>
-        ${optSmilesMatch ? `
+        ${optSmiles ? `
         <canvas data-smiles="${optSmiles}" width="150" height="150"></canvas>
         <span class="smiles-text">${optSmiles}</span>
         ` : `<p>${opt.value}</p>`}

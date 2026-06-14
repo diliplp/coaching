@@ -430,9 +430,12 @@ STRICT STEM AND MATHEMATICAL RULES:
    - Each of the 4 options is ALSO a [SMILES: ...] value showing a different structure, with only one matching the question.
    - Example option values: "[SMILES: c1ccccc1O]", "[SMILES: c1ccccc1]", "[SMILES: CC(=O)O]", "[SMILES: CCO]"
    - Use only valid, complete SMILES strings. Never leave a SMILES string truncated or unclosed.` : "For non-chemistry subjects, skip SMILES structure questions entirely."}
-4. Chemical Formulas and Equations: Format ALL chemical formulas in LaTeX with subscripts/superscripts:
-   - $\\text{H}_2\\text{O}$, $\\text{CO}_2$, $\\text{K}_2\\text{SO}_4$, $\\text{Al}_2(\\text{SO}_4)_3$
-   - Never write plain text like H2O or K2SO4 — always use LaTeX.
+4. Chemical Formulas and Equations: Format ALL chemical formulas using mhchem $\\ce{formula}$ notation:
+   - $\\ce{H2O}$, $\\ce{CO2}$, $\\ce{K2SO4}$, $\\ce{Al2(SO4)3}$, $\\ce{NaCl}$, $\\ce{CaCl2}$
+   - For ionic equations: $\\ce{Al4C3 + 12H2O -> 4Al(OH)3 + 3CH4}$
+   - For ions: $\\ce{Al^{3+}}$, $\\ce{Cl^{-}}$, $\\ce{SO4^{2-}}$, $\\ce{NH4^{+}}$
+   - ALWAYS wrap \\ce inside $...$. Never write bare \\ce without $ delimiters.
+   - Never write plain text like H2O or K2SO4 — always use $\\ce{...}$.
 5. Colligative Properties & van't Hoff Factor (i):
    - For questions on colligative properties (freezing point depression, boiling point elevation, vapour pressure lowering, osmotic pressure) of electrolytes (e.g. NaCl, KCl, CaCl2, Na2SO4, etc.), you MUST calculate and include the van't Hoff factor (i) assuming complete dissociation (unless degree of dissociation is given).
    - E.g., for NaCl, i = 2; for KCl, i = 2; for Na2SO4, i = 3; for MgSO4, i = 2.
@@ -456,6 +459,7 @@ STRICT QUESTION LOGIC RULES:
 1. Unique Option Values: All option values MUST be completely unique. Never generate duplicate options.
 2. Correct Answer Consistency: The option marked "isCorrect": true MUST be the mathematically correct value.
 3. Mathematical Verification: You must calculate the answer step-by-step in the "calculation_scratchpad" field BEFORE outputting the prompt, options, and explanation.
+4. RANDOMIZE CORRECT ANSWER POSITION: The correct option must NOT always be "A". Vary the correct answer position — sometimes A, sometimes B, sometimes C, sometimes D. Aim for roughly equal distribution across all four options in a batch.
 
 JSON RULES:
 1. NO markdown wrappers (no \`\`\`json).
@@ -473,10 +477,10 @@ JSON STRUCTURE:
       "marks": 2,
       "negativeMarks": 0,
       "options": [
-        { "label": "A", "value": "Option 1", "isCorrect": true },
-        { "label": "B", "value": "Option 2", "isCorrect": false },
-        { "label": "C", "value": "Option 3", "isCorrect": false },
-        { "label": "D", "value": "Option 4", "isCorrect": false }
+        { "label": "A", "value": "Wrong distractor 1", "isCorrect": false },
+        { "label": "B", "value": "Wrong distractor 2", "isCorrect": false },
+        { "label": "C", "value": "The mathematically correct answer", "isCorrect": true },
+        { "label": "D", "value": "Wrong distractor 3", "isCorrect": false }
       ],
       "explanation": "Detailed step-by-step explanation for the student, verifying the calculation."
     }
@@ -520,11 +524,25 @@ ${textChunk}
 
           const mappedQuestions = parsedArr.map((item: any, idx: number) => {
             const qId = `q-ai-${Date.now()}-${batchIndex}-${idx}`;
+
+            // Assign IDs first, preserving isCorrect flag, then shuffle to randomize answer position
+            const rawOptions: Array<{ id: string; value: any; isCorrect: boolean }> =
+              (item.options || []).map((opt: any, optIndex: number) => ({
+                id: `opt-${Date.now()}-${batchIndex}-${idx}-${optIndex}`,
+                value: opt.value,
+                isCorrect: !!opt.isCorrect,
+              }));
+
+            // Fisher-Yates shuffle — prevents AI's bias of always placing the answer in position A
+            for (let si = rawOptions.length - 1; si > 0; si--) {
+              const sj = Math.floor(Math.random() * (si + 1));
+              [rawOptions[si], rawOptions[sj]] = [rawOptions[sj], rawOptions[si]];
+            }
+
             const correctOptionIds: string[] = [];
-            const options: QuestionOption[] = (item.options || []).map((opt: any, optIndex: number) => {
-              const oId = `opt-${Date.now()}-${batchIndex}-${idx}-${optIndex}`;
-              if (opt.isCorrect) correctOptionIds.push(oId);
-              return { id: oId, label: opt.label || String.fromCharCode(65 + optIndex), value: opt.value };
+            const options: QuestionOption[] = rawOptions.map((opt, optIndex) => {
+              if (opt.isCorrect) correctOptionIds.push(opt.id);
+              return { id: opt.id, label: String.fromCharCode(65 + optIndex), value: opt.value };
             });
 
             return {
@@ -659,8 +677,8 @@ Output JSON ONLY:
       "correctedQuestion": {
         "prompt": "Corrected prompt here",
         "options": [
-          { "label": "A", "value": "Correct value", "isCorrect": true },
-          { "label": "B", "value": "Distractor", "isCorrect": false },
+          { "label": "A", "value": "Distractor 1", "isCorrect": false },
+          { "label": "B", "value": "Correct value", "isCorrect": true },
           { "label": "C", "value": "Distractor 2", "isCorrect": false },
           { "label": "D", "value": "Distractor 3", "isCorrect": false }
         ],

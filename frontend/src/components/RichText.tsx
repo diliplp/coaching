@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import katex from "katex";
 import "katex/dist/katex.min.css";
+import "katex/contrib/mhchem";
 // @ts-ignore
 import SmiDrawer from "smiles-drawer";
 import { buildPublicAssetUrl } from "../api/client";
@@ -154,11 +155,30 @@ function SmilesRenderer({ smiles }: { smiles: string }) {
           return;
         }
 
-        const drawer = new DrawerConstructor({ width: 200, height: 200, terminalCarbons: true });
+        const drawer = new DrawerConstructor({
+          width: 200,
+          height: 200,
+          terminalCarbons: true,
+          themes: {
+            custom: {
+              C: "#555555",
+              O: "#cc2200",
+              N: "#1a5cb4",
+              H: "#999999",
+              S: "#bb8800",
+              P: "#cc6600",
+              F: "#009999",
+              Cl: "#007700",
+              Br: "#884400",
+              I: "#550099",
+              BACKGROUND: "#f9f9f9",
+            },
+          },
+        });
         parseFunc(
           cleanSmiles,
           (tree: any) => {
-            drawer.draw(tree, canvasRef.current, "light", false);
+            drawer.draw(tree, canvasRef.current, "custom", false);
           },
           (err: any) => {
             console.error("Failed to parse/render smiles:", cleanSmiles, err);
