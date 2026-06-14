@@ -15,12 +15,12 @@ export function LoginPage() {
     setStatus("Signing in...");
 
     try {
-      const session = await apiClient.login({ email, password });
+      const session = await apiClient.login({ email, password, role });
       storeSession(session);
       navigate("/", { replace: true });
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setStatus("Unable to sign in. Check credentials or backend connection.");
+      setStatus(error?.message || "Unable to sign in. Check credentials or backend connection.");
     }
   };
 

@@ -79,6 +79,7 @@ export interface UserAccount {
   passwordHash?: string;
   studentId?: string;
   sessionId?: string;
+  sessionStartedAt?: string | null;
 }
 
 export interface AuthTokenPayload {

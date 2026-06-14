@@ -62,7 +62,7 @@ apiRouter.get("/health", async (_req, res) => {
 });
 
 apiRouter.post("/auth/login", async (req, res) => {
-  const { email, password } = req.body as { email?: string; password?: string };
+  const { email, password, role: requestedRole } = req.body as { email?: string; password?: string; role?: string };
 
   if (!email || !password) {
     res.status(400).json({ message: "Email and password are required" });
@@ -81,9 +81,31 @@ apiRouter.post("/auth/login", async (req, res) => {
     return;
   }
 
-  // Rotate session — invalidates any existing active session for this user
+  // Validate that the selected role matches the account's actual role
+  if (requestedRole) {
+    // Map frontend role labels to DB roles
+    const roleMap: Record<string, string> = { admin: "super_admin", teacher: "teacher", student: "student" };
+    const expectedDbRole = roleMap[requestedRole] ?? requestedRole;
+    if (user.role !== expectedDbRole) {
+      const roleLabel = requestedRole.charAt(0).toUpperCase() + requestedRole.slice(1);
+      res.status(403).json({ message: `This account is not registered as a ${roleLabel}. Please select the correct login role.` });
+      return;
+    }
+  }
+
+  // Block parallel sessions — if an active session exists (started within 24h), reject the new login.
+  // This protects students mid-exam from being kicked out by a second device.
+  const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+  if (user.sessionId && user.sessionStartedAt) {
+    const sessionAge = Date.now() - new Date(user.sessionStartedAt).getTime();
+    if (sessionAge < SESSION_TTL_MS) {
+      res.status(409).json({ message: "Another device is already logged in with this account. Please log out from the other device first." });
+      return;
+    }
+  }
+
   const sessionId = generateSessionId();
-  const updatedUser = { ...user, sessionId };
+  const updatedUser = { ...user, sessionId, sessionStartedAt: new Date().toISOString() };
   await upsertRecord("users", updatedUser);
 
   const token = signAuthToken(updatedUser);
@@ -96,6 +118,16 @@ apiRouter.post("/auth/login", async (req, res) => {
   };
 
   res.json({ token, user: safeUser });
+});
+
+apiRouter.post("/auth/logout", requireAuth, async (req, res) => {
+  const auth = (req as AuthenticatedRequest).auth;
+  const state = await getAppState();
+  const user = state.users.find(u => u.id === auth?.sub);
+  if (user) {
+    await upsertRecord("users", { ...user, sessionId: "", sessionStartedAt: null });
+  }
+  res.status(204).end();
 });
 
 apiRouter.get("/debug-env", async (req, res) => {

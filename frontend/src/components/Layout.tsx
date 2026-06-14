@@ -2,6 +2,7 @@ import type { AuthUser } from "../types";
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { clearSession, getStoredSession } from "../auth";
+import { apiClient } from "../api/client";
 
 const navItems = [
   { to: "/", label: "Dashboard", roles: ["super_admin", "teacher", "student"], icon: "🏠" },
@@ -55,8 +56,10 @@ export function Layout() {
               type="button"
               className="secondary-button"
               onClick={() => {
-                clearSession();
-                navigate("/login", { replace: true });
+                apiClient.logout().catch(() => {}).finally(() => {
+                  clearSession();
+                  navigate("/login", { replace: true });
+                });
               }}
             >
               {isCollapsed ? "🚪" : "Logout"}

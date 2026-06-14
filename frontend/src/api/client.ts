@@ -76,11 +76,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const apiClient = {
-  login: (payload: { email: string; password: string }) =>
+  login: (payload: { email: string; password: string; role?: string }) =>
     request<AuthResponse>("/auth/login", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
+  logout: () =>
+    request<void>("/auth/logout", { method: "POST" }),
   getMe: () => request<AuthResponse["user"]>("/me"),
   getOverview: () => request<OverviewResponse>("/overview"),
   getAnalytics: () => request<any>("/analytics"),
