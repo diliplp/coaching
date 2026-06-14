@@ -441,19 +441,23 @@ STRICT STEM AND MATHEMATICAL RULES:
    - E.g., for NaCl, i = 2; for KCl, i = 2; for Na2SO4, i = 3; for MgSO4, i = 2.
    - Do not ignore/neglect dissociation for strong/weak electrolytes.
 5. Absolute Self-Containment:
-   - Do NOT refer to external figures, tables, graphs, "above calculations", "provided text", or "given table". Each question must contain all the numerical parameters and context required to solve it, and be completely standalone.
-6. ${(isPhysics || isMath) ? `Graphs (REQUIRED for physics/math): For questions that involve interpreting a graph (v-t, x-t, F-x, P-V, sine wave, parabola, etc.), embed the graph directly in the question prompt using this format:
-   [GRAPH: line;x=<space-separated x values>;y=<space-separated y values>;xl=<x-axis label>;yl=<y-axis label>;title=<graph title>]
-   Rules:
-   - Use semicolons (;) between fields, spaces between numbers in x/y arrays. No quotes, no JSON, no brackets inside.
-   - x and y must have the same number of values (at least 3, at most 10 data points).
-   - For two traces: [GRAPH: line;x=0 1 2 3;y1=0 5 10 15;y2=0 2 4 6;n1=Body A;n2=Body B;xl=Time (s);yl=Velocity (m/s);title=Comparison]
-   Examples:
+   - Do NOT say "refer to the figure", "see the graph above", "from the table provided", "from the given text", or "as shown above". Never reference anything outside the question itself.
+   - Every number, formula, and diagram a student needs MUST be written directly inside the question prompt.
+   - For graph-based questions: embed the graph using [GRAPH: ...] directly in the prompt (see rule 6). Never say "the graph shows X" without including the actual [GRAPH: ...] token.
+6. ${(isPhysics || isMath) ? `Graphs (REQUIRED for physics/math — you MUST generate these):
+   For any question involving a graph (v-t, x-t, F-x, P-V, sine wave, parabola, distance-time, etc.), embed the graph directly inside the prompt string using this exact format:
+   [GRAPH: line;x=<values>;y=<values>;xl=<x label>;yl=<y label>;title=<title>]
+   CRITICAL FORMAT RULES:
+   - Separate fields with semicolons (;). Separate numbers with spaces. No quotes. No extra brackets inside the spec.
+   - x and y must have the same count of values (3–10 points).
+   - For two traces use y1= and y2= (plus optional n1= n2= for names).
+   EXAMPLES (copy this style exactly):
    - v-t graph: [GRAPH: line;x=0 1 2 3 4 5;y=0 4 8 12 12 8;xl=Time (s);yl=Velocity (m/s);title=v-t Graph]
    - P-V diagram: [GRAPH: line;x=1 2 3 4 5;y=10 5 3.3 2.5 2;xl=Volume (L);yl=Pressure (atm);title=Isothermal Process]
    - Sine wave: [GRAPH: line;x=0 1 2 3 4 5 6;y=0 1 0 -1 0 1 0;xl=t (s);yl=y (m);title=Simple Harmonic Motion]
-   - Math parabola: [GRAPH: line;x=-3 -2 -1 0 1 2 3;y=9 4 1 0 1 4 9;xl=x;yl=y;title=y = x²]
-   Generate at least 1 graph-based question per batch when the chapter involves motion, waves, thermodynamics, coordinate geometry, or calculus.` : "Graphs: Not applicable for this subject — do not use [GRAPH: ...]."}
+   - Math parabola: [GRAPH: line;x=-3 -2 -1 0 1 2 3;y=9 4 1 0 1 4 9;xl=x;yl=y;title=y = x^2]
+   - Two-trace comparison: [GRAPH: line;x=0 1 2 3;y1=0 5 10 15;y2=0 2 4 6;n1=Body A;n2=Body B;xl=Time (s);yl=Velocity (m/s);title=Comparison]
+   YOU MUST generate at least 1 graph-based question per batch for chapters involving motion, waves, thermodynamics, coordinate geometry, or calculus.` : "Graphs: Not applicable for this subject — do not use [GRAPH: ...]."}
 
 STRICT QUESTION LOGIC RULES:
 1. Unique Option Values: All option values MUST be completely unique. Never generate duplicate options.
