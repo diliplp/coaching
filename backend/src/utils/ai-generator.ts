@@ -214,17 +214,61 @@ function getGeminiClients(): Array<{ client: GoogleGenAI; name: string }> {
 
 /** Text generation: OpenRouter primary, Gemini fallback. */
 async function generateContentWithFallback(prompt: string, fallbackJson: string = "{}"): Promise<string> {
-  // OpenRouter text models — tried in order
+  // 1. Primary paid OpenRouter model (best for long structured outputs)
   if (process.env.OPENROUTER_API_KEY) {
-    const models = [
-      process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini",
-      "deepseek/deepseek-chat:free",
-      "meta-llama/llama-3-8b-instruct:free",
-    ].filter((v, i, a) => a.indexOf(v) === i);
+    const primaryModel = process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini";
+    try {
+      console.log(`[OpenRouter] Trying ${primaryModel}...`);
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://railway.app",
+          "X-Title": "Coaching Portal Exam Gen"
+        },
+        body: JSON.stringify({
+          model: primaryModel,
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+          max_tokens: 8000
+        })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const text = data.choices?.[0]?.message?.content;
+        if (text) { console.log(`[OpenRouter] ${primaryModel} succeeded.`); return text; }
+      } else {
+        console.warn(`[OpenRouter] ${primaryModel} failed (${response.status}): ${(await response.text()).slice(0, 200)}`);
+      }
+    } catch (e: any) {
+      console.warn(`[OpenRouter] ${primaryModel} threw:`, e.message);
+    }
+  }
 
-    for (const model of models) {
+  // 2. Gemini — capable STEM model, preferred over free 8B fallbacks
+  const clients = getGeminiClients();
+  for (const { client, name } of clients) {
+    try {
+      console.log(`[Gemini] ${name} trying...`);
+      const result = await client.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: prompt,
+        config: { responseMimeType: "application/json" }
+      });
+      const text = result.text;
+      if (text) { console.log(`[Gemini] ${name} succeeded.`); return text; }
+    } catch (e: any) {
+      console.warn(`[Gemini] ${name} failed:`, e?.message ?? e);
+    }
+  }
+
+  // 3. Free fallback models — last resort only; accuracy will be lower for STEM
+  if (process.env.OPENROUTER_API_KEY) {
+    const freeModels = ["deepseek/deepseek-chat:free"];
+    for (const model of freeModels) {
       try {
-        console.log(`[OpenRouter] Trying ${model}...`);
+        console.warn(`[OpenRouter] WARNING: falling back to free model ${model} — STEM accuracy may be reduced.`);
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -243,30 +287,11 @@ async function generateContentWithFallback(prompt: string, fallbackJson: string 
         if (response.ok) {
           const data = await response.json();
           const text = data.choices?.[0]?.message?.content;
-          if (text) { console.log(`[OpenRouter] ${model} succeeded.`); return text; }
-        } else {
-          console.warn(`[OpenRouter] ${model} failed (${response.status}): ${(await response.text()).slice(0, 200)}`);
+          if (text) return text;
         }
       } catch (e: any) {
         console.warn(`[OpenRouter] ${model} threw:`, e.message);
       }
-    }
-  }
-
-  // Gemini fallback
-  const clients = getGeminiClients();
-  for (const { client, name } of clients) {
-    try {
-      console.log(`[Gemini] ${name} fallback...`);
-      const result = await client.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
-      });
-      const text = result.text;
-      if (text) return text;
-    } catch (e: any) {
-      console.warn(`[Gemini] ${name} fallback failed:`, e?.message ?? e);
     }
   }
 
@@ -440,7 +465,7 @@ STRICT STEM AND MATHEMATICAL RULES:
    - For questions on colligative properties (freezing point depression, boiling point elevation, vapour pressure lowering, osmotic pressure) of electrolytes (e.g. NaCl, KCl, CaCl2, Na2SO4, etc.), you MUST calculate and include the van't Hoff factor (i) assuming complete dissociation (unless degree of dissociation is given).
    - E.g., for NaCl, i = 2; for KCl, i = 2; for Na2SO4, i = 3; for MgSO4, i = 2.
    - Do not ignore/neglect dissociation for strong/weak electrolytes.
-5. Absolute Self-Containment:
+6. Absolute Self-Containment:
    - Do NOT say "refer to the figure", "see the graph above", "from the table provided", "from the given text", or "as shown above". Never reference anything outside the question itself.
    - Every number, formula, and diagram a student needs MUST be written directly inside the question prompt.
    - For graph-based questions: embed the graph using [GRAPH: ...] directly in the prompt (see rule 6). Never say "the graph shows X" without including the actual [GRAPH: ...] token.
@@ -461,9 +486,18 @@ STRICT STEM AND MATHEMATICAL RULES:
 
 STRICT QUESTION LOGIC RULES:
 1. Unique Option Values: All option values MUST be completely unique. Never generate duplicate options.
-2. Correct Answer Consistency: The option marked "isCorrect": true MUST be the mathematically correct value.
-3. Mathematical Verification: You must calculate the answer step-by-step in the "calculation_scratchpad" field BEFORE outputting the prompt, options, and explanation.
-4. RANDOMIZE CORRECT ANSWER POSITION: The correct option must NOT always be "A". Vary the correct answer position — sometimes A, sometimes B, sometimes C, sometimes D. Aim for roughly equal distribution across all four options in a batch.
+2. Correct Answer Consistency: The option marked "isCorrect": true MUST be the mathematically correct value derived from your scratchpad calculation.
+3. Mandatory Calculation Scratchpad: You MUST fill in "calculation_scratchpad" FIRST before writing the options or explanation. Use it to:
+   ${isPhysics ? `- State the law/formula used (e.g. F = ma, v² = u² + 2as, E = ½mv²).
+   - Substitute values WITH UNITS at every step.
+   - Verify the unit of the final answer matches what the question asks for.
+   - For vector quantities, track direction/sign explicitly.` : ""}
+   ${isMath ? `- Write out every algebraic or calculus step.
+   - Verify the result by substituting back or using a sanity check.` : ""}
+   ${isChemistry ? `- Apply the van't Hoff factor (i) for electrolytes.
+   - Balance equations before computing stoichiometry.` : ""}
+   - Only AFTER the scratchpad is correct, write the prompt, options, and explanation.
+4. RANDOMIZE CORRECT ANSWER POSITION: The correct option must NOT always be "A". Vary the position — sometimes A, sometimes B, sometimes C, sometimes D. Aim for roughly equal distribution across a batch.
 
 JSON RULES:
 1. NO markdown wrappers (no \`\`\`json).
@@ -599,7 +633,7 @@ async function generateContentForCritic(prompt: string): Promise<string> {
       const result = await client.models.generateContent({
         model: GEMINI_MODEL,
         contents: prompt,
-        config: { responseMimeType: "application/json", maxOutputTokens: 8192 }
+        config: { responseMimeType: "application/json", maxOutputTokens: 16384 }
       });
       const text = result.text;
       if (text) { console.log(`[Critic] Gemini ${name} responded.`); return text; }
@@ -650,13 +684,42 @@ async function validateQuestionsBatch(
 ): Promise<Question[]> {
   if (questions.length === 0) return [];
 
+  const isPhysicsCritic = subjectName?.toLowerCase().includes("physics") ?? false;
+  const isChemistryCritic = subjectName?.toLowerCase().includes("chemistry") ?? false;
+  const isMathCritic = subjectName?.toLowerCase().includes("math") ?? false;
+
   const criticPrompt = `
-You are an elite academic validator for JEE/NEET STEM questions. Review the following questions for absolute correctness:
-1. Double-check all math calculations step-by-step.
-2. Verify that electrolyte solutions (e.g. NaCl, KCl, BaCl2, etc.) correctly use the van't Hoff factor (i) in colligative property calculations. If a question neglects dissociation, mark it invalid.
-3. Ensure no duplicate option values exist.
-4. Ensure the correct option is mathematically correct and matches the step-by-step derivation.
-5. Ensure the question is completely standalone (no references to "above calculations", "provided chart", etc.).
+You are an elite academic validator for JEE/NEET ${subjectName ? `${subjectName} ` : "STEM "}questions. Your job is to CATCH ERRORS that the generator made. Be strict — a wrong answer reaching a student is a serious failure.
+
+VALIDATION RULES (check ALL of these):
+1. Recalculate the answer independently from scratch. Do NOT trust the generator's answer — derive it yourself and verify the option marked isCorrect matches YOUR derivation.
+2. Check units at every step. A velocity answer in m/s is wrong if the question works in km/h without conversion.
+3. Ensure no two options have the same value (even if formatted differently, e.g. "2 m/s" vs "2.0 m/s" are duplicates).
+4. Ensure the question is fully standalone — no "from the graph above", "as shown", "from the table", etc.
+${isPhysicsCritic ? `
+PHYSICS-SPECIFIC CHECKS:
+- Verify kinematic equations are applied correctly (v=u+at, s=ut+½at², v²=u²+2as).
+- Verify energy/work: KE=½mv², PE=mgh, W=Fd·cosθ.
+- For circuits: verify Ohm's law, series/parallel resistance formulas.
+- For waves: verify v=fλ, correct use of n for harmonics.
+- Check sign conventions for direction-dependent quantities (displacement, velocity, force).
+- Verify Newton's laws: net force = ma (don't forget to subtract friction, tension, etc.).
+- For rotational motion: verify τ=Iα, L=Iω.
+- Check projectile motion: horizontal and vertical components must be solved independently.` : ""}
+${isChemistryCritic ? `
+CHEMISTRY-SPECIFIC CHECKS:
+- Verify van't Hoff factor (i) for ALL electrolytes in colligative property questions.
+  NaCl→i=2, KCl→i=2, BaCl2→i=3, Na2SO4→i=3, AlCl3→i=4, CaCl2→i=3.
+- Balance chemical equations before computing molar ratios.
+- Verify oxidation states in redox reactions.
+- For pH calculations: verify Ka/Kb expressions and equilibrium setup.` : ""}
+${isMathCritic ? `
+MATHEMATICS-SPECIFIC CHECKS:
+- Verify algebraic manipulation step by step.
+- For calculus: verify differentiation/integration rules and limits.
+- For coordinate geometry: verify distance, slope, and intersection formulas.
+- For probability: verify sample space and event definitions.` : ""}
+5. If a question is wrong AND you can correct it, provide the correctedQuestion. If you cannot derive the correct answer with certainty, set isValid=false with no correctedQuestion (it will be dropped).
 
 Input Questions:
 ${JSON.stringify(questions.map((q, idx) => ({
@@ -727,11 +790,22 @@ Output JSON ONLY:
         correctedCount++;
         console.log(`[Critic] Corrected Q${idx}: ${evalItem.reason}`);
         const cq = evalItem.correctedQuestion;
+
+        // Assign IDs then shuffle, same as generator — prevents critic answer-position bias
+        const rawCorrected: Array<{ id: string; value: any; isCorrect: boolean }> =
+          (cq.options || []).map((opt: any, optIndex: number) => ({
+            id: `opt-${Date.now()}-corrected-${idx}-${optIndex}`,
+            value: opt.value,
+            isCorrect: !!opt.isCorrect,
+          }));
+        for (let si = rawCorrected.length - 1; si > 0; si--) {
+          const sj = Math.floor(Math.random() * (si + 1));
+          [rawCorrected[si], rawCorrected[sj]] = [rawCorrected[sj], rawCorrected[si]];
+        }
         const correctOptionIds: string[] = [];
-        const options = (cq.options || []).map((opt: any, optIndex: number) => {
-          const oId = `opt-${Date.now()}-corrected-${idx}-${optIndex}`;
-          if (opt.isCorrect) correctOptionIds.push(oId);
-          return { id: oId, label: opt.label || String.fromCharCode(65 + optIndex), value: opt.value };
+        const options = rawCorrected.map((opt, optIndex) => {
+          if (opt.isCorrect) correctOptionIds.push(opt.id);
+          return { id: opt.id, label: String.fromCharCode(65 + optIndex), value: opt.value };
         });
         finalQuestions.push({
           ...q,
