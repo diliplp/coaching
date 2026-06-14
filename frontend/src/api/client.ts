@@ -101,6 +101,11 @@ export const apiClient = {
   getBatchAdaptivePlans: (subjectId?: string) =>
     request<BatchAdaptivePlan[]>(`/adaptive-plan/batches${subjectId ? `?subjectId=${encodeURIComponent(subjectId)}` : ""}`),
   getMyAdaptiveSuggestion: () => request<AdaptivePlan>("/students/me/adaptive-suggestion"),
+  getMySubmissions: () =>
+    request<{ id: string; examId: string; examName: string; submittedAt: string; totalMarks: number; obtainedMarks: number; percentage: number; correctAnswers: number; incorrectAnswers: number; unattemptedAnswers: number }[]>(
+      "/students/me/submissions"
+    ),
+  getMySubmission: (submissionId: string) => request<any>(`/students/me/submissions/${submissionId}`),
   getSubjectBooks: () => request<SubjectBooksResponse>("/subject-books"),
   uploadSubjectBook: async (payload: { subjectId: string; title: string; file: File; bookType?: string; ocr?: boolean }) => {
     const session = getStoredSession();

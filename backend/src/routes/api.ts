@@ -470,6 +470,60 @@ apiRouter.get("/adaptive-plan/:studentId", requireRole(["super_admin", "teacher"
   res.json(plan);
 });
 
+apiRouter.get("/students/me/submissions", requireRole(["student"]), async (req, res) => {
+  const auth = (req as AuthenticatedRequest).auth;
+  const studentId = auth?.studentId ?? undefined;
+  if (!studentId) {
+    res.status(400).json({ message: "This account is not linked to a student profile" });
+    return;
+  }
+
+  const state = await getAppState();
+  const submissions = state.submissions
+    .filter((s: any) => s.studentId === studentId)
+    .sort((a: any, b: any) => b.id.localeCompare(a.id))
+    .map((s: any) => {
+      const exam = state.exams.find((e) => e.id === s.examId);
+      return {
+        id: s.id,
+        examId: s.examId,
+        examName: exam?.name || "Unknown Exam",
+        submittedAt: s.id.replace("submission-", ""),
+        totalMarks: s.totalMarks,
+        obtainedMarks: s.obtainedMarks,
+        percentage: s.percentage,
+        correctAnswers: s.correctAnswers,
+        incorrectAnswers: s.incorrectAnswers,
+        unattemptedAnswers: s.unattemptedAnswers,
+      };
+    });
+
+  res.json(submissions);
+});
+
+apiRouter.get("/students/me/submissions/:submissionId", requireRole(["student"]), async (req, res) => {
+  const auth = (req as AuthenticatedRequest).auth;
+  const studentId = auth?.studentId ?? undefined;
+  if (!studentId) {
+    res.status(400).json({ message: "This account is not linked to a student profile" });
+    return;
+  }
+
+  const state = await getAppState();
+  const submission = state.submissions.find((s: any) => s.id === (req.params.submissionId as string));
+  if (!submission) {
+    res.status(404).json({ message: "Submission not found" });
+    return;
+  }
+  if ((submission as any).studentId !== studentId) {
+    res.status(403).json({ message: "Access denied" });
+    return;
+  }
+
+  const exam = state.exams.find((e) => e.id === (submission as any).examId);
+  res.json({ ...submission, examName: exam?.name || "Unknown Exam" });
+});
+
 apiRouter.get("/students/me/adaptive-suggestion", requireRole(["student"]), async (req, res) => {
   const auth = (req as AuthenticatedRequest).auth;
   const studentId = auth?.studentId ?? undefined;

@@ -14,6 +14,7 @@ import { ExamsListPage } from "./pages/ExamsListPage";
 import { CurriculumPage } from "./pages/CurriculumPage";
 import { OfflineExamBuilderPage } from "./pages/OfflineExamBuilderPage";
 import { LiveExamMonitorPage } from "./pages/LiveExamMonitorPage";
+import { MyResultsPage } from "./pages/MyResultsPage";
 import { getStoredSession, clearSession } from "./auth";
 import { apiClient } from "./api/client";
 
@@ -97,6 +98,10 @@ export default function App() {
             element={<ProtectedRoute roles={["super_admin"]}><SubjectBooksPage /></ProtectedRoute>} 
           />
           <Route path="/live-exam" element={<LiveExamPage />} />
+          <Route
+            path="/my-results"
+            element={<ProtectedRoute roles={["student"]}><MyResultsPage /></ProtectedRoute>}
+          />
           <Route 
             path="/analytics" 
             element={<ProtectedRoute roles={["super_admin", "teacher", "student"]}><AnalyticsPage /></ProtectedRoute>} 

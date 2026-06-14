@@ -316,6 +316,12 @@ export async function generateQuestionsFromText(params: {
   const chemKeywords = ["chemistry", "molecule", "reaction", "bond", "acid", "organic", "compound", "structure", "formula", "chemical"];
   const isChemistry = subject?.toLowerCase().includes("chemistry") || chemKeywords.some(k => text.toLowerCase().includes(k));
 
+  const physicsKeywords = ["physics", "force", "velocity", "acceleration", "momentum", "energy", "wave", "optics", "electric", "magnetic", "thermodynamic", "motion", "kinematics", "gravitation", "pressure", "current", "resistance"];
+  const isPhysics = subject?.toLowerCase().includes("physics") || physicsKeywords.some(k => text.toLowerCase().includes(k));
+
+  const mathKeywords = ["mathematics", "calculus", "algebra", "geometry", "trigonometry", "integration", "differentiation", "probability", "matrix", "determinant", "vector", "coordinate", "parabola", "ellipse"];
+  const isMath = subject?.toLowerCase().includes("math") || mathKeywords.some(k => text.toLowerCase().includes(k));
+
   // Fetch existing questions for this topic to avoid duplication
   const allQuestionsInDb = await listRecords<Question>("questions");
   const existingTopicQuestions = allQuestionsInDb.filter(q => q.topicId === topicId);
@@ -402,10 +408,28 @@ STRICT STEM AND MATHEMATICAL RULES:
    - \\frac{1}{2}   (renders as \frac)
    - \\sqrt{x}      (renders as \sqrt)
    - \\text{H}_2\\text{O}  (renders as \text{H}_2\text{O})
-   - \\alpha, \\beta, \\theta, \\Delta
+   - \\alpha, \\beta, \\theta, \\Delta, \\omega, \\lambda, \\mu, \\sigma, \\pi
    - \\begin{cases} ... \\end{cases}
+   - \\vec{F}, \\hat{n}, \\times, \\cdot  (for vectors and cross/dot products)
+2a. Physics Notation Rules:
+   - Vectors: always use $\\vec{F}$, $\\vec{v}$, $\\vec{E}$, $\\vec{B}$ — never plain F, v, E, B for vector quantities.
+   - Unit vectors: $\\hat{i}$, $\\hat{j}$, $\\hat{k}$, $\\hat{n}$
+   - SI Units: write inside \\text{}: $10 \\ \\text{m/s}$, $9.8 \\ \\text{ms}^{-2}$, $1.6 \\times 10^{-19} \\ \\text{C}$
+   - Scientific notation: $6.022 \\times 10^{23}$, $3 \\times 10^8 \\ \\text{m/s}$
+   - Derived formulas: $F = \\frac{mv^2}{r}$, $E = \\frac{1}{2}mv^2$, $P = \\frac{W}{t}$
+2b. Mathematics Notation Rules:
+   - Calculus: $\\frac{dy}{dx}$, $\\frac{d^2y}{dx^2}$, $\\int_a^b f(x)\\,dx$, $\\lim_{x \\to 0}$
+   - Sets and logic: $\\in$, $\\subset$, $\\cup$, $\\cap$, $\\forall$, $\\exists$
+   - Matrices: use \\begin{pmatrix}...\\end{pmatrix} or \\begin{vmatrix}...\\end{vmatrix}
+   - Trigonometry: $\\sin\\theta$, $\\cos\\theta$, $\\tan\\theta$ — never write sin(x) without LaTeX.
 3. Chemistry structures: Use [SMILES: notation] for any drawn chemical structure (e.g. [SMILES: CC(=O)O] for acetic acid, [SMILES: c1ccccc1] for benzene).
    IMPORTANT: SMILES notation is NOT a chemical formula. Never put atomic symbols like H2O inside [SMILES:].
+3a. ${isChemistry ? `Structure-Identification Questions (REQUIRED for chemistry): Generate at least 1–2 questions per batch where:
+   - The question stem shows a molecular structure using [SMILES: ...] and asks the student to identify it, name it, or select a matching property.
+   - Example prompt: "Identify the compound represented by the structure: [SMILES: c1ccccc1O]"
+   - Each of the 4 options is ALSO a [SMILES: ...] value showing a different structure, with only one matching the question.
+   - Example option values: "[SMILES: c1ccccc1O]", "[SMILES: c1ccccc1]", "[SMILES: CC(=O)O]", "[SMILES: CCO]"
+   - Use only valid, complete SMILES strings. Never leave a SMILES string truncated or unclosed.` : "For non-chemistry subjects, skip SMILES structure questions entirely."}
 4. Chemical Formulas and Equations: Format ALL chemical formulas in LaTeX with subscripts/superscripts:
    - $\\text{H}_2\\text{O}$, $\\text{CO}_2$, $\\text{K}_2\\text{SO}_4$, $\\text{Al}_2(\\text{SO}_4)_3$
    - Never write plain text like H2O or K2SO4 — always use LaTeX.
@@ -415,6 +439,18 @@ STRICT STEM AND MATHEMATICAL RULES:
    - Do not ignore/neglect dissociation for strong/weak electrolytes.
 5. Absolute Self-Containment:
    - Do NOT refer to external figures, tables, graphs, "above calculations", "provided text", or "given table". Each question must contain all the numerical parameters and context required to solve it, and be completely standalone.
+6. ${(isPhysics || isMath) ? `Graphs (REQUIRED for physics/math): For questions that involve interpreting a graph (v-t, x-t, F-x, P-V, sine wave, parabola, etc.), embed the graph directly in the question prompt using this format:
+   [GRAPH: line;x=<space-separated x values>;y=<space-separated y values>;xl=<x-axis label>;yl=<y-axis label>;title=<graph title>]
+   Rules:
+   - Use semicolons (;) between fields, spaces between numbers in x/y arrays. No quotes, no JSON, no brackets inside.
+   - x and y must have the same number of values (at least 3, at most 10 data points).
+   - For two traces: [GRAPH: line;x=0 1 2 3;y1=0 5 10 15;y2=0 2 4 6;n1=Body A;n2=Body B;xl=Time (s);yl=Velocity (m/s);title=Comparison]
+   Examples:
+   - v-t graph: [GRAPH: line;x=0 1 2 3 4 5;y=0 4 8 12 12 8;xl=Time (s);yl=Velocity (m/s);title=v-t Graph]
+   - P-V diagram: [GRAPH: line;x=1 2 3 4 5;y=10 5 3.3 2.5 2;xl=Volume (L);yl=Pressure (atm);title=Isothermal Process]
+   - Sine wave: [GRAPH: line;x=0 1 2 3 4 5 6;y=0 1 0 -1 0 1 0;xl=t (s);yl=y (m);title=Simple Harmonic Motion]
+   - Math parabola: [GRAPH: line;x=-3 -2 -1 0 1 2 3;y=9 4 1 0 1 4 9;xl=x;yl=y;title=y = x²]
+   Generate at least 1 graph-based question per batch when the chapter involves motion, waves, thermodynamics, coordinate geometry, or calculus.` : "Graphs: Not applicable for this subject — do not use [GRAPH: ...]."}
 
 STRICT QUESTION LOGIC RULES:
 1. Unique Option Values: All option values MUST be completely unique. Never generate duplicate options.
@@ -508,7 +544,7 @@ ${textChunk}
 
           // Run Critic validation on this batch
           const validatedQuestions = await validateQuestionsBatch(mappedQuestions, subject);
-          
+
           if (validatedQuestions.length > 0) {
             console.log(`Batch ${batchIndex + 1} succeeded and verified on attempt ${batchAttempts}. Yielded ${validatedQuestions.length}/${currentBatchCount} valid questions.`);
             return validatedQuestions;
