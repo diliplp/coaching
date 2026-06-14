@@ -566,6 +566,62 @@ ${textChunk}
   return allQuestions.slice(0, questionCount);
 }
 
+/** Calls Gemini directly for critic validation — Gemini is far more reliable at STEM math
+ *  than free OpenRouter models and is already configured via GEMINI_API_KEY. */
+async function generateContentForCritic(prompt: string): Promise<string> {
+  // 1. Try Gemini primary then backup — best at mathematical reasoning
+  const geminiClients = getGeminiClients();
+  for (const { client, name } of geminiClients) {
+    try {
+      console.log(`[Critic] Using Gemini ${name}...`);
+      const result = await client.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: prompt,
+        config: { responseMimeType: "application/json", maxOutputTokens: 8192 }
+      });
+      const text = result.text;
+      if (text) { console.log(`[Critic] Gemini ${name} responded.`); return text; }
+    } catch (e: any) {
+      console.warn(`[Critic] Gemini ${name} failed:`, e?.message ?? e);
+    }
+  }
+
+  // 2. If Gemini unavailable, fall back to paid OpenRouter model only (not free tier models)
+  if (process.env.OPENROUTER_API_KEY) {
+    const criticModel = process.env.OPENROUTER_CRITIC_MODEL || process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini";
+    // Only use the configured/paid model — skip free 8B models which cannot verify STEM math
+    try {
+      console.log(`[Critic] Falling back to OpenRouter ${criticModel}...`);
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://railway.app",
+          "X-Title": "Coaching Portal Critic"
+        },
+        body: JSON.stringify({
+          model: criticModel,
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+          max_tokens: 8192
+        })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const text = data.choices?.[0]?.message?.content;
+        if (text) return text;
+      } else {
+        console.warn(`[Critic] OpenRouter ${criticModel} failed (${response.status})`);
+      }
+    } catch (e: any) {
+      console.warn(`[Critic] OpenRouter threw:`, e.message);
+    }
+  }
+
+  throw new Error("[Critic] No capable AI model available for validation (need GEMINI_API_KEY or OPENROUTER_API_KEY with a paid model)");
+}
+
 async function validateQuestionsBatch(
   questions: Question[],
   subjectName?: string
@@ -616,30 +672,38 @@ Output JSON ONLY:
 `;
 
   try {
-    console.log(`Validator Critic is reviewing ${questions.length} questions...`);
-    const rawResponse = await generateContentWithFallback(criticPrompt, '{"evaluations": []}');
+    console.log(`[Critic] Reviewing ${questions.length} questions with capable model...`);
+    const rawResponse = await generateContentForCritic(criticPrompt);
     const startIdx = rawResponse.indexOf("{");
     const endIdx = rawResponse.lastIndexOf("}");
-    if (startIdx === -1 || endIdx === -1) return questions; 
-    
+    if (startIdx === -1 || endIdx === -1) {
+      console.warn("[Critic] Response had no valid JSON — passing questions unchanged.");
+      return questions;
+    }
+
     const parsed = JSON.parse(rawResponse.substring(startIdx, endIdx + 1));
-    const evaluations = parsed.evaluations || [];
-    
+    const evaluations: any[] = parsed.evaluations || [];
+
+    let validCount = 0, correctedCount = 0, rejectedCount = 0;
     const finalQuestions: Question[] = [];
-    
+
     for (const q of questions) {
       const idx = questions.indexOf(q);
       const evalItem = evaluations.find((e: any) => e.index === idx);
-      
+
       if (!evalItem) {
+        // Critic didn't cover this question — keep it but log
+        console.warn(`[Critic] No evaluation returned for question ${idx} — keeping as-is.`);
         finalQuestions.push(q);
         continue;
       }
-      
+
       if (evalItem.isValid) {
+        validCount++;
         finalQuestions.push(q);
       } else if (evalItem.correctedQuestion) {
-        console.log(`Critic corrected Question ${idx}: ${evalItem.reason}`);
+        correctedCount++;
+        console.log(`[Critic] Corrected Q${idx}: ${evalItem.reason}`);
         const cq = evalItem.correctedQuestion;
         const correctOptionIds: string[] = [];
         const options = (cq.options || []).map((opt: any, optIndex: number) => {
@@ -647,7 +711,6 @@ Output JSON ONLY:
           if (opt.isCorrect) correctOptionIds.push(oId);
           return { id: oId, label: opt.label || String.fromCharCode(65 + optIndex), value: opt.value };
         });
-        
         finalQuestions.push({
           ...q,
           prompt: cq.prompt || q.prompt,
@@ -657,13 +720,17 @@ Output JSON ONLY:
           explanation: cq.explanation || q.explanation
         });
       } else {
-        console.warn(`Critic rejected Question ${idx} completely: ${evalItem.reason}`);
+        rejectedCount++;
+        console.warn(`[Critic] Rejected Q${idx} (no correction provided): ${evalItem.reason}`);
+        // Drop this question — it's wrong and couldn't be auto-corrected
       }
     }
-    
+
+    console.log(`[Critic] Summary: ${validCount} valid, ${correctedCount} corrected, ${rejectedCount} rejected out of ${questions.length}.`);
     return finalQuestions;
-  } catch (error) {
-    console.error("Critic validation failed, keeping original questions:", error);
+  } catch (error: any) {
+    console.error("[Critic] SKIPPED — validation unavailable:", error.message);
+    console.warn("[Critic] All questions from this batch pass unvalidated. Check GEMINI_API_KEY on Railway.");
     return questions;
   }
 }
