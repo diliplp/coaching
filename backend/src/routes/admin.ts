@@ -367,6 +367,17 @@ adminRouter.delete("/users/:id", async (req, res) => {
   res.status(204).end();
 });
 
+adminRouter.post("/users/:id/reset-session", async (req, res) => {
+  const users = await listRecords<UserAccount>("users");
+  const user = users.find(u => u.id === req.params.id);
+  if (!user) {
+    res.status(404).json({ message: "User not found" });
+    return;
+  }
+  await upsertRecord("users", { ...user, sessionId: "", sessionStartedAt: null });
+  res.json({ message: `Session reset for ${user.name}. They can now log in from a new device.` });
+});
+
 // --- Bulk Curriculum Upload ---
 const upload = multer({ dest: uploadsRoot });
 

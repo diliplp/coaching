@@ -457,14 +457,19 @@ export function AdminPage() {
                           {batches.find(b => b.id === u.batchId)?.name || "No Batch"}
                         </span>
                       )}
+                      {u.sessionId && (
+                        <span className="tag" style={{ marginLeft: "5px", background: "#fef3c7", color: "#92400e", border: "1px solid #fcd34d", fontSize: "0.75rem" }}>
+                          Session Active
+                        </span>
+                      )}
                     </div>
                   )}
                   <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                     {actionButtons(u.id, u, () => handleUpdateUser(u.id), () => handleDeleteUser(u.id))}
                     {editingId !== u.id && (
-                      <button 
-                        className="secondary-button" 
-                        style={{ padding: "4px 8px", fontSize: "0.85rem" }} 
+                      <button
+                        className="secondary-button"
+                        style={{ padding: "4px 8px", fontSize: "0.85rem" }}
                         onClick={() => {
                           const newPass = prompt(`Enter new password for ${u.name}:`);
                           if (newPass) {
@@ -475,6 +480,21 @@ export function AdminPage() {
                         }}
                       >
                         Reset Password
+                      </button>
+                    )}
+                    {editingId !== u.id && (
+                      <button
+                        className="secondary-button"
+                        title={u.sessionId ? `Active session started at ${u.sessionStartedAt ? new Date(u.sessionStartedAt).toLocaleString() : "unknown"}` : "No active session"}
+                        style={{ padding: "4px 8px", fontSize: "0.85rem", color: u.sessionId ? "#b45309" : undefined, borderColor: u.sessionId ? "#b45309" : undefined }}
+                        onClick={() => {
+                          if (!window.confirm(`Reset session for ${u.name}? They will be able to log in from a new device.`)) return;
+                          apiClient.admin.resetUserSession(u.id)
+                            .then(r => { alert(r.message); setUsers(prev => prev.map(x => x.id === u.id ? { ...x, sessionId: "", sessionStartedAt: null } : x)); })
+                            .catch(e => alert(e.message || "Failed to reset session"));
+                        }}
+                      >
+                        {u.sessionId ? "⚠ Reset Session" : "Reset Session"}
                       </button>
                     )}
                   </div>

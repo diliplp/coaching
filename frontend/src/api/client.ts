@@ -282,6 +282,7 @@ export const apiClient = {
     createUser: (payload: any) => request<any>("/admin/users", { method: "POST", body: JSON.stringify(payload) }),
     updateUser: (id: string, payload: any) => request<any>(`/admin/users/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
     deleteUser: (id: string) => request<void>(`/admin/users/${id}`, { method: "DELETE" }),
+    resetUserSession: (id: string) => request<{ message: string }>(`/admin/users/${id}/reset-session`, { method: "POST" }),
     
     parseCurriculumDocx: async (file: File) => {
       // Use raw fetch for FormData
