@@ -16,9 +16,10 @@ import {
 } from "../utils/exam-engine.js";
 import path from "node:path";
 import { extractPdfText, extractPdfDiagrams, extractPdfQuestionCrops } from "../utils/pdf.js";
-import { generateQuestionsFromText, ensureEnoughQuestions, parseExamPrompt, detectCurriculumFromText, generateOfflineBoardPaper, extractQuestionsFromPdfText } from "../utils/ai-generator.js";
+import { generateQuestionsFromText, generateQuestionsFromBiologyFigures, ensureEnoughQuestions, parseExamPrompt, detectCurriculumFromText, generateOfflineBoardPaper, extractQuestionsFromPdfText } from "../utils/ai-generator.js";
 import { listReferencePapers } from "../utils/reference-papers.js";
 import { findUserByEmail, generateSessionId, requireAuth, requireRole, signAuthToken, verifyPassword } from "../utils/auth.js";
+import { createJob, emitJobEvent, subscribeToJob } from "../utils/sse-job-store.js";
 import type { AuthenticatedRequest, ExamSession, Question, QuestionSource, SubjectBook } from "../types.js";
 
 export const apiRouter = Router();
@@ -165,6 +166,17 @@ apiRouter.get("/debug-env", async (req, res) => {
   }
   
   res.json(results);
+});
+
+// SSE stream endpoint — must be before requireAuth because EventSource/fetch can't reliably send
+// Authorization headers. Security: jobId is a cryptographically unguessable token issued only to
+// authenticated users.
+apiRouter.get("/jobs/:jobId/stream", (req, res) => {
+  const jobId = Array.isArray(req.params.jobId) ? req.params.jobId[0] : req.params.jobId;
+  const found = subscribeToJob(jobId, res);
+  if (!found) {
+    res.status(404).json({ message: "Job not found or expired" });
+  }
 });
 
 apiRouter.use(requireAuth);
@@ -799,40 +811,87 @@ apiRouter.post("/subject-books/:bookId/generate-questions", requireRole(["super_
     return;
   }
 
-  try {
-    const subject = state.subjects.find(s => s.id === book.subjectId);
-    const chapter = chapterId ? state.chapters.find(c => c.id === chapterId) : undefined;
-    const chapterName = chapter?.name;
-    const topicNames = topicIds.map(tid => state.topics.find(t => t.id === tid)?.name).filter(Boolean) as string[];
+  const parsedText = book.parsedText; // captured as non-null string for the background closure
+  const subject = state.subjects.find(s => s.id === book.subjectId);
+  const chapter = chapterId ? state.chapters.find(c => c.id === chapterId) : undefined;
+  const chapterName = chapter?.name;
+  const topicNames = topicIds.map(tid => state.topics.find(t => t.id === tid)?.name).filter(Boolean) as string[];
 
-    const generated = await generateQuestionsFromText({
-      text: book.parsedText,
-      topicId: topicIds[0],
-      subjectId: book.subjectId,
-      subject: subject?.name,
-      questionCount,
-      chapterName,
-      topicNames: topicNames.length > 0 ? topicNames : undefined,
-    });
+  // Return job ID immediately — generation runs in the background
+  const jobId = createJob();
+  res.status(202).json({ jobId });
 
-    // Tag questions with topics cyclically
-    const finalizedQuestions = generated.map((q, i) => ({
-      ...q,
-      topicId: topicIds[i % topicIds.length],
-      sourceType: book.bookType || "ai_generated"
-    }));
+  (async () => {
+    try {
+      emitJobEvent(jobId, { type: "progress", message: "Preparing generation context..." });
 
-    for (const q of finalizedQuestions) {
-      await upsertRecord("questions", q);
+      const generated = await generateQuestionsFromText({
+        text: parsedText,
+        topicId: topicIds[0],
+        subjectId: book.subjectId,
+        subject: subject?.name,
+        questionCount,
+        chapterName,
+        topicNames: topicNames.length > 0 ? topicNames : undefined,
+        onProgress: (msg) => emitJobEvent(jobId, { type: "progress", message: msg })
+      });
+
+      const finalizedQuestions = generated.map((q, i) => ({
+        ...q,
+        topicId: topicIds[i % topicIds.length],
+        sourceType: book.bookType || "ai_generated"
+      }));
+
+      emitJobEvent(jobId, { type: "progress", message: `Saving ${finalizedQuestions.length} text question(s) to database...` });
+      for (const q of finalizedQuestions) {
+        await upsertRecord("questions", q);
+      }
+
+      // Biology: also generate diagram-based questions from the PDF figures
+      const bioKeywords = ["biology", "life science", "botany", "zoology", "ecology", "genetics"];
+      const isBiologySubject = !!(subject?.name) && (
+        subject.name.toLowerCase().includes("bio") ||
+        bioKeywords.some(k => subject.name.toLowerCase().includes(k))
+      );
+
+      if (isBiologySubject && book.fileUrl) {
+        const filename = book.fileUrl.split("/").pop() || "";
+        const pdfPath = path.join(booksUploadsRoot, filename);
+        emitJobEvent(jobId, { type: "progress", message: "Biology subject detected — generating diagram-based questions from PDF figures..." });
+        try {
+          const bioQuestions = await generateQuestionsFromBiologyFigures({
+            pdfPath,
+            bookId: bookId as string,
+            topicId: topicIds[0],
+            topicIds,
+            subjectId: book.subjectId,
+            subject: subject?.name,
+            chapterName,
+            onProgress: (msg) => emitJobEvent(jobId, { type: "progress", message: msg })
+          });
+          if (bioQuestions.length > 0) {
+            emitJobEvent(jobId, { type: "progress", message: `Saving ${bioQuestions.length} diagram-based question(s)...` });
+            for (const q of bioQuestions) {
+              await upsertRecord("questions", q);
+            }
+            finalizedQuestions.push(...(bioQuestions as typeof finalizedQuestions));
+          }
+        } catch (bioErr: any) {
+          console.warn("[SSE] Biology figure generation failed:", bioErr?.message);
+          emitJobEvent(jobId, { type: "progress", message: `Diagram generation skipped: ${bioErr?.message}` });
+        }
+      }
+
+      emitJobEvent(jobId, {
+        type: "complete",
+        message: `Done! Generated ${finalizedQuestions.length} question(s) across ${topicIds.length} topic(s).`,
+        data: { count: finalizedQuestions.length }
+      });
+    } catch (err: any) {
+      console.error("[SSE] generate-questions job failed:", err);
+      emitJobEvent(jobId, { type: "error", message: err?.message || "Question generation failed" });
     }
-
-    res.json({
-      message: `Successfully generated ${finalizedQuestions.length} questions across ${topicIds.length} topics.`,
-      count: finalizedQuestions.length
-    });
-  } catch (error: any) {
-    res.status(500).json({ message: error?.message || "Failed to generate questions" });
-  }
+  })();
 });
 
 apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["super_admin"]), async (req, res) => {
@@ -1344,9 +1403,11 @@ apiRouter.get("/exams/:examId/session", requireAuth, async (req, res) => {
   const elapsedSeconds = exam
     ? Math.floor((Date.now() - new Date(session.startedAt).getTime()) / 1000)
     : 0;
-  const timeRemainingSeconds = exam
-    ? Math.max(0, exam.durationMinutes * 60 - elapsedSeconds)
-    : 0;
+  const durationRemaining = exam ? exam.durationMinutes * 60 - elapsedSeconds : 0;
+  const scheduleRemaining = exam?.scheduledEndTime
+    ? Math.floor((new Date(exam.scheduledEndTime).getTime() - Date.now()) / 1000)
+    : Infinity;
+  const timeRemainingSeconds = Math.max(0, Math.min(durationRemaining, scheduleRemaining));
 
   res.json({ ...session, timeRemainingSeconds });
 });
@@ -1374,7 +1435,11 @@ apiRouter.post("/exams/:examId/session", requireAuth, async (req, res) => {
 
   if (existing && existing.status === "in_progress") {
     const elapsedSeconds = Math.floor((Date.now() - new Date(existing.startedAt).getTime()) / 1000);
-    const timeRemainingSeconds = Math.max(0, exam.durationMinutes * 60 - elapsedSeconds);
+    const durationRem = exam.durationMinutes * 60 - elapsedSeconds;
+    const scheduleRem = exam.scheduledEndTime
+      ? Math.floor((new Date(exam.scheduledEndTime).getTime() - Date.now()) / 1000)
+      : Infinity;
+    const timeRemainingSeconds = Math.max(0, Math.min(durationRem, scheduleRem));
     res.json({ ...existing, timeRemainingSeconds });
     return;
   }
@@ -1389,7 +1454,11 @@ apiRouter.post("/exams/:examId/session", requireAuth, async (req, res) => {
     status: "in_progress"
   };
   await upsertRecord("examSessions", session);
-  res.json({ ...session, timeRemainingSeconds: exam.durationMinutes * 60 });
+  const initScheduleRem = exam.scheduledEndTime
+    ? Math.floor((new Date(exam.scheduledEndTime).getTime() - Date.now()) / 1000)
+    : Infinity;
+  const initTimeRemaining = Math.max(0, Math.min(exam.durationMinutes * 60, initScheduleRem));
+  res.json({ ...session, timeRemainingSeconds: initTimeRemaining });
 });
 
 apiRouter.patch("/exams/:examId/session/answer", requireAuth, async (req, res) => {
@@ -1514,6 +1583,9 @@ apiRouter.get("/exams/:examId/live-status", requireRole(["super_admin", "teacher
     examId: exam.id,
     examName: exam.name,
     totalQuestions: exam.questions.length,
+    scheduledStartTime: exam.scheduledStartTime ?? null,
+    scheduledEndTime: exam.scheduledEndTime ?? null,
+    durationMinutes: exam.durationMinutes,
     statistics: {
       totalRegistered: batchStudents.length,
       activeCount,
@@ -1523,6 +1595,106 @@ apiRouter.get("/exams/:examId/live-status", requireRole(["super_admin", "teacher
     },
     students: studentStatuses
   });
+});
+
+apiRouter.get("/exams/:examId/leaderboard", requireRole(["super_admin", "teacher"]), async (req, res) => {
+  const { examId } = req.params;
+  const state = await getAppState();
+
+  const exam = state.exams.find((e) => e.id === examId);
+  if (!exam) {
+    res.status(404).json({ message: "Exam not found" });
+    return;
+  }
+
+  const examSubmissions = state.submissions.filter((s: any) => s.examId === examId);
+  const batchStudents = state.students.filter((s) => s.batchId === exam.batchId);
+
+  const leaderboard = batchStudents.map((student) => {
+    const submission = examSubmissions.find((sub: any) => sub.studentId === student.id);
+    return {
+      studentId: student.id,
+      studentName: student.name,
+      obtainedMarks: submission?.obtainedMarks ?? null,
+      totalMarks: submission?.totalMarks ?? null,
+      percentage: submission?.percentage ?? null,
+      correctAnswers: submission?.correctAnswers ?? null,
+      incorrectAnswers: submission?.incorrectAnswers ?? null,
+      unattemptedAnswers: submission?.unattemptedAnswers ?? null,
+      submittedAt: submission?.id ? submission.id : null,
+      submitted: !!submission
+    };
+  });
+
+  leaderboard.sort((a, b) => {
+    if (!a.submitted && !b.submitted) return 0;
+    if (!a.submitted) return 1;
+    if (!b.submitted) return -1;
+    return (b.obtainedMarks ?? 0) - (a.obtainedMarks ?? 0);
+  });
+
+  const ranked = leaderboard.map((entry, idx) => ({
+    ...entry,
+    rank: entry.submitted ? idx + 1 : null
+  }));
+
+  // Re-rank only submitted students
+  let rank = 1;
+  for (const entry of ranked) {
+    if (entry.submitted) {
+      entry.rank = rank++;
+    }
+  }
+
+  res.json({ examId, examName: exam.name, leaderboard: ranked });
+});
+
+apiRouter.post("/exams/:examId/force-submit-all", requireRole(["super_admin", "teacher"]), async (req, res) => {
+  const { examId } = req.params;
+  const state = await getAppState();
+  const { listRecords } = await import("../data/database.js");
+
+  const exam = state.exams.find((e) => e.id === examId);
+  if (!exam) {
+    res.status(404).json({ message: "Exam not found" });
+    return;
+  }
+
+  const allSessions = await listRecords<ExamSession>("examSessions");
+  const activeSessions = allSessions.filter(
+    (s) => s.examId === examId && s.status === "in_progress"
+  );
+
+  let forceSubmitted = 0;
+  for (const s of activeSessions) {
+    try {
+      const answers = Object.entries(s.answers ?? {}).map(([questionId, selectedOptionIds]) => ({
+        questionId,
+        selectedOptionIds: selectedOptionIds as string[]
+      }));
+      await evaluateExamSubmission(req.params.examId as string, s.studentId, answers);
+      await upsertRecord("examSessions", { ...s, status: "submitted" });
+
+      const studentUser = state.users.find((u) => u.studentId === s.studentId);
+      const student = state.students.find((st) => st.id === s.studentId);
+      await upsertRecord("liveTrackers", {
+        id: `${examId}-${s.studentId}`,
+        examId,
+        studentId: s.studentId,
+        studentName: student?.name || studentUser?.name || "Unknown Student",
+        answeredCount: Object.keys(s.answers ?? {}).length,
+        totalQuestions: exam.questions.length,
+        currentQuestionIndex: 0,
+        status: "submitted",
+        lastActive: new Date().toISOString()
+      });
+      forceSubmitted++;
+    } catch (err) {
+      console.error(`Force-submit failed for session ${s.id}:`, err);
+    }
+  }
+
+  res.json({ message: `Force-submitted ${forceSubmitted} active session(s).`, count: forceSubmitted });
 });
 
 

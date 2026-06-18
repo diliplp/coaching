@@ -5,6 +5,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
+import { uploadsRoot } from "./paths.js";
+import { extractPdfDiagrams } from "./pdf.js";
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 const RENDER_PAGE_SCRIPT = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Z]:)/, "$1")), "../../scripts/render_page.py");
@@ -337,8 +339,9 @@ export async function generateQuestionsFromText(params: {
   questionCount?: number;
   chapterName?: string;
   topicNames?: string[];
+  onProgress?: (message: string) => void;
 }): Promise<Question[]> {
-  const { text, topicId, subjectId, subject, questionCount = 5, chapterName, topicNames } = params;
+  const { text, topicId, subjectId, subject, questionCount = 5, chapterName, topicNames, onProgress } = params;
 
   if (!process.env.GEMINI_API_KEY && !process.env.OPENROUTER_API_KEY) {
     throw new Error("Neither GEMINI_API_KEY nor OPENROUTER_API_KEY is configured.");
@@ -352,6 +355,11 @@ export async function generateQuestionsFromText(params: {
 
   const mathKeywords = ["mathematics", "calculus", "algebra", "geometry", "trigonometry", "integration", "differentiation", "probability", "matrix", "determinant", "vector", "coordinate", "parabola", "ellipse"];
   const isMath = subject?.toLowerCase().includes("math") || mathKeywords.some(k => text.toLowerCase().includes(k));
+
+  const bioKeywords = ["biology", "cell", "organism", "photosynthesis", "respiration", "genetics", "dna", "rna", "enzyme", "ecosystem", "evolution", "hormone", "neuron", "mitosis", "meiosis"];
+  const isBiology = subject?.toLowerCase().includes("bio") || bioKeywords.some(k => text.toLowerCase().includes(k));
+
+  const needsGraph = isPhysics || isMath || isBiology;
 
   // Fetch existing questions for this topic to avoid duplication
   const allQuestionsInDb = await listRecords<Question>("questions");
@@ -387,6 +395,7 @@ export async function generateQuestionsFromText(params: {
     const numBatches = Math.ceil(needed / batchSize);
 
     console.log(`Generation round ${attempts}: Need ${needed} questions. Launching ${numBatches} parallel batches.`);
+    onProgress?.(`Round ${attempts}: generating ${needed} question(s) across ${numBatches} parallel batch(es)...`);
 
     const batchPromises = Array.from({ length: numBatches }).map(async (_, batchIndex) => {
       const currentBatchCount = batchIndex === numBatches - 1
@@ -474,21 +483,22 @@ STRICT STEM AND MATHEMATICAL RULES:
 6. Absolute Self-Containment:
    - Do NOT say "refer to the figure", "see the graph above", "from the table provided", "from the given text", or "as shown above". Never reference anything outside the question itself.
    - Every number, formula, and diagram a student needs MUST be written directly inside the question prompt.
-   - For graph-based questions: embed the graph using [GRAPH: ...] directly in the prompt (see rule 6). Never say "the graph shows X" without including the actual [GRAPH: ...] token.
-6. ${(isPhysics || isMath) ? `Graphs (REQUIRED for physics/math — you MUST generate these):
-   For any question involving a graph (v-t, x-t, F-x, P-V, sine wave, parabola, distance-time, etc.), embed the graph directly inside the prompt string using this exact format:
+   - For graph-based questions: embed the graph using [GRAPH: ...] DIRECTLY in the prompt (see rule 7 below). Never say "the graph shows X" without including the actual [GRAPH: ...] token.
+7. ${needsGraph ? `Graphs (REQUIRED — you MUST generate these for this subject):
+   For any question involving a graph (v-t, x-t, F-x, P-V, sine wave, parabola, distance-time, growth curve, population graph, etc.), embed the graph DIRECTLY inside the prompt string using this exact format:
    [GRAPH: line;x=<values>;y=<values>;xl=<x label>;yl=<y label>;title=<title>]
    CRITICAL FORMAT RULES:
    - Separate fields with semicolons (;). Separate numbers with spaces. No quotes. No extra brackets inside the spec.
    - x and y must have the same count of values (3–10 points).
    - For two traces use y1= and y2= (plus optional n1= n2= for names).
    EXAMPLES (copy this style exactly):
-   - v-t graph: [GRAPH: line;x=0 1 2 3 4 5;y=0 4 8 12 12 8;xl=Time (s);yl=Velocity (m/s);title=v-t Graph]
+   - v-t graph:  [GRAPH: line;x=0 1 2 3 4 5;y=0 4 8 12 12 8;xl=Time (s);yl=Velocity (m/s);title=v-t Graph]
    - P-V diagram: [GRAPH: line;x=1 2 3 4 5;y=10 5 3.3 2.5 2;xl=Volume (L);yl=Pressure (atm);title=Isothermal Process]
    - Sine wave: [GRAPH: line;x=0 1 2 3 4 5 6;y=0 1 0 -1 0 1 0;xl=t (s);yl=y (m);title=Simple Harmonic Motion]
    - Math parabola: [GRAPH: line;x=-3 -2 -1 0 1 2 3;y=9 4 1 0 1 4 9;xl=x;yl=y;title=y = x^2]
-   - Two-trace comparison: [GRAPH: line;x=0 1 2 3;y1=0 5 10 15;y2=0 2 4 6;n1=Body A;n2=Body B;xl=Time (s);yl=Velocity (m/s);title=Comparison]
-   YOU MUST generate at least 1 graph-based question per batch for chapters involving motion, waves, thermodynamics, coordinate geometry, or calculus.` : "Graphs: Not applicable for this subject — do not use [GRAPH: ...]."}
+   - Biology growth: [GRAPH: line;x=0 1 2 3 4 5;y=10 20 40 80 160 320;xl=Time (hours);yl=Population;title=Bacterial Growth Curve]
+   - Two-trace: [GRAPH: line;x=0 1 2 3;y1=0 5 10 15;y2=0 2 4 6;n1=Body A;n2=Body B;xl=Time (s);yl=Velocity (m/s);title=Comparison]
+   YOU MUST generate at least 1 graph-based question per batch for chapters involving motion, waves, thermodynamics, coordinate geometry, calculus, or biological processes.` : "Graphs: Not applicable for this subject — do not use [GRAPH: ...]."}
 
 STRICT QUESTION LOGIC RULES:
 1. Unique Option Values: All option values MUST be completely unique. Never generate duplicate options.
@@ -515,18 +525,18 @@ JSON STRUCTURE:
 {
   "questions": [
     {
-      "calculation_scratchpad": "Write down the step-by-step mathematical calculations, formulas used (especially van't Hoff factor 'i' if applicable), and physical calculations here first.",
-      "prompt": "Question text here",
+      "calculation_scratchpad": "Step-by-step workings here. For physics: state the formula, substitute values with units, verify units in final answer. For chemistry: apply i factor for electrolytes, balance equations.",
+      "prompt": "${needsGraph ? `The velocity-time graph of a body is shown below. [GRAPH: line;x=0 1 2 3 4 5;y=0 4 8 8 4 0;xl=Time (s);yl=Velocity (m/s);title=v-t Graph] What is the total distance covered by the body?` : `A ball is thrown vertically upward with a speed of $20 \\ \\text{m/s}$. What is the maximum height reached? (Take $g = 10 \\ \\text{m/s}^2$)`}",
       "difficulty": "medium",
       "marks": 2,
       "negativeMarks": 0,
       "options": [
-        { "label": "A", "value": "Wrong distractor 1", "isCorrect": false },
-        { "label": "B", "value": "Wrong distractor 2", "isCorrect": false },
-        { "label": "C", "value": "The mathematically correct answer", "isCorrect": true },
-        { "label": "D", "value": "Wrong distractor 3", "isCorrect": false }
+        { "label": "A", "value": "${needsGraph ? `24 m` : `10 m`}", "isCorrect": false },
+        { "label": "B", "value": "${needsGraph ? `28 m` : `20 m`}", "isCorrect": true },
+        { "label": "C", "value": "${needsGraph ? `32 m` : `30 m`}", "isCorrect": false },
+        { "label": "D", "value": "${needsGraph ? `20 m` : `40 m`}", "isCorrect": false }
       ],
-      "explanation": "Detailed step-by-step explanation for the student, verifying the calculation."
+      "explanation": "${needsGraph ? `Area under v-t graph = distance. Triangle (0–2s): ½×2×8=8m. Rectangle (2–3s): 1×8=8m. Triangle (3–5s): ½×2×8=8m. Wait—re-check: trapezoid (0–3s): area=½×(0+8)×2 + 8×1 = 8+8=16m? No: from graph: (0,0)→(2,8) triangle=8m; (2,8)→(3,8) rect=8m; (3,8)→(5,0) triangle=8m. Total=24m.` : `Using v²=u²-2gh at max height v=0: 0=400-20h → h=20 m.`}"
     }
   ]
 }
@@ -605,10 +615,12 @@ ${textChunk}
           });
 
           // Run Critic validation on this batch
+          onProgress?.(`Batch ${batchIndex + 1}: ${mappedQuestions.length} question(s) generated — running critic validation...`);
           const validatedQuestions = await validateQuestionsBatch(mappedQuestions, subject);
 
           if (validatedQuestions.length > 0) {
             console.log(`Batch ${batchIndex + 1} succeeded and verified on attempt ${batchAttempts}. Yielded ${validatedQuestions.length}/${currentBatchCount} valid questions.`);
+            onProgress?.(`Batch ${batchIndex + 1}: ${validatedQuestions.length}/${currentBatchCount} question(s) passed critic ✓`);
             return validatedQuestions;
           }
         } catch (error: any) {
@@ -2107,4 +2119,166 @@ Return JSON:
       questionNumber: q._questionNumber
     };
   });
+}
+
+const BIOLOGY_VISION_PROMPT = `You are a biology exam question generator. You will receive an image of a biological diagram, figure, or illustration from a biology textbook.
+
+Create exactly 1 multiple-choice question based on what you see in the image. The question must:
+- Reference the diagram/figure directly (e.g., "In the figure shown,", "Based on the diagram,", "The structure labeled X in the figure is")
+- Test conceptual understanding, not trivial observation
+- Have exactly 4 options labeled A, B, C, D
+- Have exactly 1 correct answer
+
+Return ONLY a JSON object with this exact structure:
+{
+  "question": "Question text referencing the figure",
+  "options": ["Option A text", "Option B text", "Option C text", "Option D text"],
+  "correctIndex": 0,
+  "explanation": "Brief explanation of the correct answer",
+  "difficulty": "medium"
+}
+
+Rules:
+- correctIndex is 0-based (0=A, 1=B, 2=C, 3=D)
+- difficulty must be one of: "easy", "medium", "hard"
+- Do NOT include option letters (A/B/C/D) inside the option text strings
+- The question must make sense even without labeling, as the image will be shown alongside it`;
+
+/**
+ * Generates biology MCQ questions from diagram images extracted from a PDF.
+ * Each diagram is sent to a vision LLM with a structured prompt to produce one question per figure.
+ */
+export async function generateQuestionsFromBiologyFigures(params: {
+  pdfPath: string;
+  bookId: string;
+  topicId: string;
+  topicIds?: string[];
+  subjectId: string;
+  subject?: string;
+  chapterName?: string;
+  onProgress?: (message: string) => void;
+}): Promise<Question[]> {
+  const { pdfPath, bookId, topicId, topicIds = [topicId], subjectId, subject, chapterName, onProgress } = params;
+
+  onProgress?.("Extracting diagrams from PDF...");
+  let diagrams: Array<{ page: number; url: string; bbox: number[]; isQuestionImage?: boolean }>;
+  try {
+    diagrams = await extractPdfDiagrams(pdfPath, bookId);
+  } catch (e: any) {
+    onProgress?.(`Diagram extraction failed: ${e.message}`);
+    return [];
+  }
+
+  // Filter to diagrams with area > 3% of the page (bbox is [y1,x1,y2,x2] as fractions 0-1)
+  const significant = diagrams.filter(d => {
+    const [y1, x1, y2, x2] = d.bbox;
+    return (y2 - y1) * (x2 - x1) > 0.03;
+  });
+
+  if (significant.length === 0) {
+    onProgress?.("No significant diagrams found in PDF.");
+    return [];
+  }
+
+  // Limit to 6 figures to keep generation time reasonable
+  const toProcess = significant.slice(0, 6);
+  onProgress?.(`Found ${significant.length} diagram(s) — processing up to ${toProcess.length}...`);
+
+  const results: Question[] = [];
+  let topicIndex = 0;
+
+  for (let i = 0; i < toProcess.length; i++) {
+    const fig = toProcess[i];
+    onProgress?.(`Figure ${i + 1}/${toProcess.length}: generating question from diagram (page ${fig.page + 1})...`);
+
+    // Resolve absolute path from the URL like /uploads/diagrams/xxx.png
+    const relPath = fig.url.startsWith("/uploads/") ? fig.url.slice("/uploads/".length) : fig.url;
+    const absPath = path.join(uploadsRoot, relPath);
+
+    let imageBase64: string;
+    try {
+      imageBase64 = fs.readFileSync(absPath).toString("base64");
+    } catch {
+      onProgress?.(`Figure ${i + 1}: file not found at ${absPath}, skipping.`);
+      continue;
+    }
+
+    let raw: string | null = null;
+    try {
+      raw = await generateVisionContent(BIOLOGY_VISION_PROMPT, imageBase64);
+    } catch (e: any) {
+      onProgress?.(`Figure ${i + 1}: vision call failed — ${e.message}`);
+      continue;
+    }
+
+    if (!raw) {
+      onProgress?.(`Figure ${i + 1}: vision model returned no content, skipping.`);
+      continue;
+    }
+
+    let parsed: any;
+    try {
+      const repaired = repairJsonString(raw);
+      // Strip markdown code fences if present
+      const stripped = repaired.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+      parsed = JSON.parse(stripped);
+    } catch {
+      onProgress?.(`Figure ${i + 1}: failed to parse JSON response, skipping.`);
+      continue;
+    }
+
+    const questionText = parsed.question || parsed.questionText;
+    if (!questionText || !Array.isArray(parsed.options) || parsed.options.length !== 4) {
+      onProgress?.(`Figure ${i + 1}: incomplete question structure, skipping.`);
+      continue;
+    }
+
+    const correctIdx: number = typeof parsed.correctIndex === "number" ? parsed.correctIndex : 0;
+    if (correctIdx < 0 || correctIdx >= 4) {
+      onProgress?.(`Figure ${i + 1}: invalid correctIndex ${correctIdx}, skipping.`);
+      continue;
+    }
+
+    // Build options with stable IDs then Fisher-Yates shuffle
+    const labels = ["A", "B", "C", "D"];
+    const rawOptions: QuestionOption[] = parsed.options.map((optText: string, idx: number) => ({
+      id: `opt-bio-${bookId}-${i}-${idx}`,
+      label: labels[idx],
+      value: String(optText)
+    }));
+    const correctOptionId = rawOptions[correctIdx].id;
+
+    // Fisher-Yates shuffle
+    for (let j = rawOptions.length - 1; j > 0; j--) {
+      const k = Math.floor(Math.random() * (j + 1));
+      [rawOptions[j], rawOptions[k]] = [rawOptions[k], rawOptions[j]];
+    }
+
+    const questionId = `que-bio-${bookId}-p${fig.page}-${i}-${crypto.randomBytes(4).toString("hex")}`;
+    const assignedTopicId = topicIds[topicIndex % topicIds.length];
+    topicIndex++;
+
+    const question: Question = {
+      id: questionId,
+      subjectId,
+      topicId: assignedTopicId,
+      type: "single_correct" as QuestionType,
+      prompt: `[IMAGE: ${fig.url}]\n${questionText}`,
+      difficulty: (["easy", "medium", "hard"].includes(parsed.difficulty) ? parsed.difficulty : "medium") as "easy" | "medium" | "hard",
+      marks: 1,
+      negativeMarks: 0,
+      correctOptionIds: [correctOptionId],
+      options: rawOptions,
+      explanation: parsed.explanation || "",
+      sourceType: "ai_generated" as QuestionSource,
+      bookId,
+      isVerified: true
+    };
+
+    results.push(question);
+    onProgress?.(`Figure ${i + 1}: question generated ✓`);
+  }
+
+  onProgress?.(`Biology figures complete: ${results.length} question(s) from ${toProcess.length} diagram(s).`);
+  return results;
 }

@@ -75,6 +75,84 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return text ? (JSON.parse(text) as T) : (null as any);
 }
 
+export interface JobStreamHandlers {
+  onProgress: (message: string) => void;
+  onComplete: (data: { count?: number; [key: string]: any }) => void;
+  onError: (message: string) => void;
+}
+
+/**
+ * Opens an SSE job stream using fetch + ReadableStream.
+ * Using fetch instead of EventSource avoids EventSource's automatic-reconnect onerror
+ * behavior and works correctly through Vite's dev proxy.
+ * Returns a cleanup function to abort the stream.
+ */
+export function openJobStream(jobId: string, handlers: JobStreamHandlers): () => void {
+  const controller = new AbortController();
+  let settled = false;
+
+  const settle = (fn: () => void) => {
+    if (!settled) { settled = true; fn(); }
+  };
+
+  (async () => {
+    try {
+      const url = buildApiUrl(`/jobs/${jobId}/stream`);
+      const response = await fetch(url, {
+        headers: { Accept: "text/event-stream" },
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        settle(() => handlers.onError(`Stream connection failed (HTTP ${response.status})`));
+        return;
+      }
+
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // SSE events are separated by double newline
+        const blocks = buffer.split("\n\n");
+        buffer = blocks.pop()!; // last (possibly incomplete) block stays in buffer
+
+        for (const block of blocks) {
+          for (const line of block.split("\n")) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const event = JSON.parse(line.slice(6)) as { type: string; message: string; data?: any };
+              if (event.type === "progress") {
+                handlers.onProgress(event.message);
+              } else if (event.type === "complete") {
+                settle(() => handlers.onComplete(event.data ?? {}));
+                controller.abort();
+                return;
+              } else if (event.type === "error") {
+                settle(() => handlers.onError(event.message || "Generation failed"));
+                controller.abort();
+                return;
+              }
+            } catch {
+              // ignore malformed SSE data lines
+            }
+          }
+        }
+      }
+    } catch (e: any) {
+      if (e?.name === "AbortError") return; // intentional cleanup, not an error
+      settle(() => handlers.onError("Connection to generation stream lost. Please check your network."));
+    }
+  })();
+
+  return () => { controller.abort(); };
+}
+
 export const apiClient = {
   login: (payload: { email: string; password: string; role?: string }) =>
     request<AuthResponse>("/auth/login", {
@@ -197,6 +275,9 @@ export const apiClient = {
       examId: string;
       examName: string;
       totalQuestions: number;
+      scheduledStartTime: string | null;
+      scheduledEndTime: string | null;
+      durationMinutes: number;
       statistics: {
         totalRegistered: number;
         activeCount: number;
@@ -216,13 +297,34 @@ export const apiClient = {
     }>(`/exams/${examId}/live-status`, {
       method: "GET"
     }),
+  getExamLeaderboard: (examId: string) =>
+    request<{
+      examId: string;
+      examName: string;
+      leaderboard: Array<{
+        rank: number | null;
+        studentId: string;
+        studentName: string;
+        obtainedMarks: number | null;
+        totalMarks: number | null;
+        percentage: number | null;
+        correctAnswers: number | null;
+        incorrectAnswers: number | null;
+        unattemptedAnswers: number | null;
+        submitted: boolean;
+      }>;
+    }>(`/exams/${examId}/leaderboard`),
+  forceSubmitAllExam: (examId: string) =>
+    request<{ message: string; count: number }>(`/exams/${examId}/force-submit-all`, {
+      method: "POST"
+    }),
   generateExamFromPrompt: (prompt: string) =>
     request<ExamPayload>("/exams/generate-from-prompt", {
       method: "POST",
       body: JSON.stringify({ prompt })
     }),
-  generateQuestionsFromBook: (bookId: string, payload: { chapterId?: string; topicId?: string; topicIds?: string[]; questionCount: number }) =>
-    request<{ message: string; questions: any[] }>(`/subject-books/${bookId}/generate-questions`, {
+  startGenerateQuestionsJob: (bookId: string, payload: { chapterId?: string; topicIds?: string[]; questionCount: number }) =>
+    request<{ jobId: string }>(`/subject-books/${bookId}/generate-questions`, {
       method: "POST",
       body: JSON.stringify(payload)
     }),

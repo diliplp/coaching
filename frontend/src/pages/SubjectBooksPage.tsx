@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, type FormEvent } from "react";
-import { apiClient, buildPublicAssetUrl } from "../api/client";
+import { apiClient, buildPublicAssetUrl, openJobStream } from "../api/client";
 import type { SubjectBooksResponse } from "../types";
 import { StatusModal } from "../components/StatusModal";
 
@@ -20,6 +20,8 @@ export function SubjectBooksPage() {
   
   // AI Generation State
   const [generatingForBook, setGeneratingForBook] = useState<string | null>(null);
+  const [generationProgress, setGenerationProgress] = useState<string>("");
+  const generationCleanupRef = useRef<(() => void) | null>(null);
   const [extractingForBook, setExtractingForBook] = useState<string | null>(null);
   const [selectedChapters, setSelectedChapters] = useState<Record<string, string>>({});
   const [selectedTopicsMap, setSelectedTopicsMap] = useState<Record<string, string[]>>({});
@@ -99,22 +101,45 @@ export function SubjectBooksPage() {
   };
 
   const handleGenerateQuestions = async (bookId: string) => {
+    // Close any previous stream
+    generationCleanupRef.current?.();
+    generationCleanupRef.current = null;
+
     setGeneratingForBook(bookId);
-    setStatus("AI is reading the PDF and generating questions with STEM formatting... This may take up to a minute.");
+    setGenerationProgress("Starting AI generation job...");
+    setStatus("");
+
     try {
       const bookChapterId = selectedChapters[bookId] || "";
       const bookTopicIds = selectedTopicsMap[bookId] || [];
-      const result = await apiClient.generateQuestionsFromBook(bookId, {
+      const { jobId } = await apiClient.startGenerateQuestionsJob(bookId, {
         chapterId: bookChapterId || undefined,
         topicIds: bookTopicIds.length > 0 ? bookTopicIds : undefined,
         questionCount
       });
-      setStatus(`Success: ${result.message}`);
-      setGeneratingForBook(null);
+
+      const cleanup = openJobStream(jobId, {
+        onProgress: (msg) => setGenerationProgress(msg),
+        onComplete: async (data) => {
+          generationCleanupRef.current = null;
+          setGeneratingForBook(null);
+          setGenerationProgress("");
+          setStatus(`Done! ${data.count ?? 0} question(s) generated successfully.`);
+          await loadData();
+        },
+        onError: (msg) => {
+          generationCleanupRef.current = null;
+          setGeneratingForBook(null);
+          setGenerationProgress("");
+          setStatus(`Generation failed: ${msg}`);
+        }
+      });
+      generationCleanupRef.current = cleanup;
     } catch (error: any) {
       console.error(error);
-      setStatus(`Failed to generate AI questions: ${error.message || "Unknown error"}`);
       setGeneratingForBook(null);
+      setGenerationProgress("");
+      setStatus(`Failed to start generation: ${error.message || "Unknown error"}`);
     }
   };
 
@@ -497,15 +522,33 @@ export function SubjectBooksPage() {
                               style={{ background: "white" }}
                             />
                           </label>
-                          <button 
-                            className="primary-button" 
-                            disabled={generatingForBook === book.id} 
+                          <button
+                            className="primary-button"
+                            disabled={generatingForBook === book.id}
                             onClick={() => void handleGenerateQuestions(book.id)}
                             style={{ flex: 2, height: "42px" }}
                           >
-                            {generatingForBook === book.id ? "Working..." : "Generate AI Questions"}
+                            {generatingForBook === book.id ? "Generating..." : "Generate AI Questions"}
                           </button>
                         </div>
+
+                        {generatingForBook === book.id && generationProgress && (
+                          <div style={{
+                            marginTop: "10px",
+                            padding: "10px 14px",
+                            borderRadius: "8px",
+                            fontSize: "0.82rem",
+                            background: "#eff6ff",
+                            border: "1px solid #bfdbfe",
+                            color: "#1e40af",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px"
+                          }}>
+                            <span style={{ display: "inline-block", width: "12px", height: "12px", borderRadius: "50%", border: "2px solid #3b82f6", borderTopColor: "transparent", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+                            <span>{generationProgress}</span>
+                          </div>
+                        )}
 
                         <div style={{ marginTop: "10px" }}>
                           {(() => {
