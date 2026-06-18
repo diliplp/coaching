@@ -5,6 +5,7 @@ import json
 import cv2
 import numpy as np
 import fitz  # PyMuPDF
+from PIL import Image
 
 def is_inside(box1, box2):
     x1, y1, w1, h1 = box1
@@ -138,15 +139,59 @@ def extract_embedded_images(doc, output_dir, book_id):
         if (y2 - y1) * (x2 - x1) < 0.005:
             continue
 
+        filename = f"{book_id}_p{page_idx + 1}_d{diagram_idx + 1}.png"
+        filepath = os.path.join(output_dir, filename)
+        saved = False
+
         try:
             pix = fitz.Pixmap(doc, xref)
-            # Convert CMYK / colour-with-alpha to plain RGB
-            if pix.colorspace and pix.colorspace.n > 3:
+
+            # Stencil/mask images have no colorspace — render from page instead
+            if pix.colorspace is None:
+                del pix
+                raise ValueError("stencil")
+
+            # Convert any non-RGB colorspace (CMYK, Gray, etc.) to RGB
+            if pix.colorspace != fitz.csRGB:
                 pix = fitz.Pixmap(fitz.csRGB, pix)
-            filename = f"{book_id}_p{page_idx + 1}_d{diagram_idx + 1}.png"
-            pix.save(os.path.join(output_dir, filename))
-            del pix
+
+            if pix.alpha:
+                # Composite over white background via Pillow so transparent areas
+                # become white instead of black (dropping alpha gives RGB=0 = black)
+                pil_img = Image.frombytes("RGBA", (pix.width, pix.height), pix.samples)
+                del pix
+                bg = Image.new("RGB", pil_img.size, (255, 255, 255))
+                bg.paste(pil_img, mask=pil_img.split()[3])
+                bg.save(filepath)
+            else:
+                # Sanity check before saving: skip near-black images (corrupt decode)
+                raw = np.frombuffer(pix.samples, dtype=np.uint8)
+                is_black = raw.size > 0 and raw.mean() < 12
+                pix.save(filepath)
+                del pix
+                if is_black:
+                    os.remove(filepath)
+                    raise ValueError("black")
+
+            saved = True
         except Exception:
+            pass
+
+        if not saved:
+            # Fallback: render the exact bounding-box region from the page at 2x zoom.
+            # Always produces correct RGB regardless of color space or encoding.
+            try:
+                page = doc[page_idx]
+                pw, ph = page.rect.width, page.rect.height
+                clip = fitz.Rect(x1 * pw, y1 * ph, x2 * pw, y2 * ph)
+                render_pix = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0), clip=clip, alpha=False)
+                render_pix.save(filepath)
+                del render_pix
+                saved = True
+            except Exception:
+                pass
+
+        if not saved:
             continue
 
         ans_pos = page_ans_positions.get(page_idx, [])
