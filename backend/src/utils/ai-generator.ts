@@ -2248,12 +2248,6 @@ export async function generateQuestionsFromBiologyFigures(params: {
     }));
     const correctOptionId = rawOptions[correctIdx].id;
 
-    // Fisher-Yates shuffle
-    for (let j = rawOptions.length - 1; j > 0; j--) {
-      const k = Math.floor(Math.random() * (j + 1));
-      [rawOptions[j], rawOptions[k]] = [rawOptions[k], rawOptions[j]];
-    }
-
     const questionId = `que-bio-${bookId}-p${fig.page}-${i}-${crypto.randomBytes(4).toString("hex")}`;
     const assignedTopicId = topicIds[topicIndex % topicIds.length];
     topicIndex++;
