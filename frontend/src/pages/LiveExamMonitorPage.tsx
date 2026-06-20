@@ -15,6 +15,13 @@ export function LiveExamMonitorPage() {
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [forceSubmitting, setForceSubmitting] = useState(false);
   const [forceSubmitMsg, setForceSubmitMsg] = useState<string | null>(null);
+  const [expandedViolations, setExpandedViolations] = useState<Set<string>>(new Set());
+  const toggleViolations = (studentId: string) =>
+    setExpandedViolations(prev => {
+      const next = new Set(prev);
+      next.has(studentId) ? next.delete(studentId) : next.add(studentId);
+      return next;
+    });
 
   const fetchStatus = useCallback(async () => {
     if (!examId) return;
@@ -238,6 +245,14 @@ export function LiveExamMonitorPage() {
           <div style={{ fontSize: "2rem", fontWeight: "800", color: "#64748b", margin: "8px 0" }}>{stats.offlineCount + stats.notStartedCount}</div>
           <div style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>Not currently in exam</div>
         </div>
+
+        <div style={{ background: students.some((s: any) => (s.violations?.length ?? 0) > 0) ? "#fff5f5" : "white", padding: "20px", borderRadius: "18px", border: `1px solid ${students.some((s: any) => (s.violations?.length ?? 0) > 0) ? "#fca5a5" : "var(--color-border)"}`, textAlign: "center" }}>
+          <div className="muted-copy" style={{ fontSize: "0.85rem", fontWeight: 600 }}>🚨 INTEGRITY FLAGS</div>
+          <div style={{ fontSize: "2rem", fontWeight: "800", color: "#dc2626", margin: "8px 0" }}>
+            {students.filter((s: any) => (s.violations?.length ?? 0) > 0).length}
+          </div>
+          <div style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>Students with violations</div>
+        </div>
       </div>
 
       {/* Progress Bar */}
@@ -376,31 +391,73 @@ export function LiveExamMonitorPage() {
 
                 const progress = student.totalQuestions > 0 ? Math.round((student.answeredCount / student.totalQuestions) * 100) : 0;
 
+                const violations: { type: string; timestamp: string }[] = student.violations ?? [];
+                const violationCount = violations.length;
+                const isExpanded = expandedViolations.has(student.studentId);
+
+                const violationLabel = (type: string) => {
+                  if (type === "tab_switch") return "Tab Switch";
+                  if (type === "window_blur") return "Window Switch";
+                  return type.replace(/_/g, " ");
+                };
+
                 return (
-                  <div key={student.studentId} className="row-between" style={{ padding: "16px", borderRadius: "14px", border: "1px solid var(--color-border)", background: "white" }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        <strong style={{ fontSize: "1.05rem" }}>{student.studentName}</strong>
-                        <span style={{ padding: "2px 8px", borderRadius: "20px", fontSize: "0.75rem", fontWeight: "bold", color: badgeColor, background: badgeBg }}>
-                          {label}
-                        </span>
+                  <div key={student.studentId} style={{ borderRadius: "14px", border: `1px solid ${violationCount > 0 ? "#fca5a5" : "var(--color-border)"}`, background: violationCount >= 3 ? "#fff5f5" : "white", overflow: "hidden" }}>
+                    <div className="row-between" style={{ padding: "16px" }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                          <strong style={{ fontSize: "1.05rem" }}>{student.studentName}</strong>
+                          <span style={{ padding: "2px 8px", borderRadius: "20px", fontSize: "0.75rem", fontWeight: "bold", color: badgeColor, background: badgeBg }}>
+                            {label}
+                          </span>
+                          {violationCount > 0 && (
+                            <button
+                              onClick={() => toggleViolations(student.studentId)}
+                              style={{ display: "flex", alignItems: "center", gap: "4px", padding: "2px 8px", borderRadius: "20px", fontSize: "0.75rem", fontWeight: 700, color: violationCount >= 3 ? "#fff" : "#b91c1c", background: violationCount >= 3 ? "#dc2626" : "#fee2e2", border: "none", cursor: "pointer" }}
+                            >
+                              🚨 {violationCount} Violation{violationCount !== 1 ? "s" : ""} {isExpanded ? "▲" : "▼"}
+                            </button>
+                          )}
+                        </div>
+                        <div className="muted-copy" style={{ fontSize: "0.85rem", marginTop: "6px" }}>
+                          {student.status === "active" && `Currently on Question ${student.currentQuestionIndex + 1}`}
+                          {student.status === "submitted" && "Completed and submitted answers"}
+                          {student.status === "offline" && `Left / Disconnected (last active: ${student.lastActive ? new Date(student.lastActive).toLocaleTimeString() : "N/A"})`}
+                          {student.status === "not_started" && "Has not opened the exam link yet"}
+                        </div>
                       </div>
-                      <div className="muted-copy" style={{ fontSize: "0.85rem", marginTop: "6px" }}>
-                        {student.status === "active" && `Currently on Question ${student.currentQuestionIndex + 1}`}
-                        {student.status === "submitted" && "Completed and submitted answers"}
-                        {student.status === "offline" && `Left / Disconnected (last active: ${student.lastActive ? new Date(student.lastActive).toLocaleTimeString() : "N/A"})`}
-                        {student.status === "not_started" && "Has not opened the exam link yet"}
+
+                      <div style={{ textAlign: "right", minWidth: "140px", marginLeft: "16px" }}>
+                        <div style={{ fontSize: "0.85rem", fontWeight: "600", marginBottom: "4px" }}>
+                          {student.answeredCount} / {student.totalQuestions} Questions
+                        </div>
+                        <div style={{ width: "100%", height: "6px", background: "#f1f5f9", borderRadius: "3px", overflow: "hidden" }}>
+                          <div style={{ width: `${progress}%`, height: "100%", background: student.status === "submitted" ? "#0284c7" : "#22c55e", transition: "width 0.3s ease" }} />
+                        </div>
                       </div>
                     </div>
 
-                    <div style={{ textAlign: "right", minWidth: "140px", marginLeft: "16px" }}>
-                      <div style={{ fontSize: "0.85rem", fontWeight: "600", marginBottom: "4px" }}>
-                        {student.answeredCount} / {student.totalQuestions} Questions
+                    {/* Violation log — expanded on click */}
+                    {isExpanded && violationCount > 0 && (
+                      <div style={{ borderTop: "1px solid #fca5a5", background: "#fff1f2", padding: "12px 16px" }}>
+                        <p style={{ margin: "0 0 8px", fontSize: "0.78rem", fontWeight: 700, color: "#b91c1c", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                          Integrity Violation Log
+                        </p>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                          {violations.map((v, idx) => (
+                            <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", color: "#7f1d1d" }}>
+                              <span>#{idx + 1} — {violationLabel(v.type)}</span>
+                              <span style={{ color: "#b91c1c" }}>{new Date(v.timestamp).toLocaleTimeString()}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {violationCount >= 3 && (
+                          <p style={{ margin: "8px 0 0", fontSize: "0.8rem", fontWeight: 700, color: "#dc2626" }}>
+                            ⚠️ Exam was auto-submitted due to repeated violations.
+                          </p>
+                        )}
                       </div>
-                      <div style={{ width: "100%", height: "6px", background: "#f1f5f9", borderRadius: "3px", overflow: "hidden" }}>
-                        <div style={{ width: `${progress}%`, height: "100%", background: student.status === "submitted" ? "#0284c7" : "#22c55e", transition: "width 0.3s ease" }} />
-                      </div>
-                    </div>
+                    )}
                   </div>
                 );
               })}

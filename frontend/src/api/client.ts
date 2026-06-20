@@ -252,6 +252,12 @@ export const apiClient = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
+
+  reportViolation: (examId: string, type: string) =>
+    request<{ status: string; totalViolations: number }>(`/exams/${examId}/violation`, {
+      method: "POST",
+      body: JSON.stringify({ type }),
+    }),
   getExamSession: (examId: string) =>
     request<{ id: string; examId: string; answers: Record<string, string[]>; startedAt: string; status: string; timeRemainingSeconds: number; currentQuestionIndex: number }>(
       `/exams/${examId}/session`

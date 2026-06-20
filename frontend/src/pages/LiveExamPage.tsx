@@ -305,10 +305,12 @@ export function LiveExamPage() {
     };
     requestFS();
 
-    const addViolation = (reason: string) => {
+    const addViolation = (reason: string, violationType: string) => {
       violationsRef.current += 1;
       const count = violationsRef.current;
       setViolations(count);
+      // Report to backend so admin can see it in the monitor
+      apiClient.reportViolation(generatedExam.exam.id, violationType).catch(() => {});
       if (count >= 3) {
         setCheatWarning(`⚠️ Third violation detected: ${reason}\n\nYour exam is being auto-submitted.`);
         void submitRef.current();
@@ -319,7 +321,7 @@ export function LiveExamPage() {
 
     const onVisibilityChange = () => {
       if (document.hidden && examLiveRef.current) {
-        addViolation("Tab switch detected.");
+        addViolation("Tab switch detected.", "tab_switch");
       }
     };
 
@@ -328,7 +330,7 @@ export function LiveExamPage() {
     const onBlur = () => {
       blurTimer = setTimeout(() => {
         if (!document.hidden && examLiveRef.current) {
-          addViolation("Window focus lost — possible screen switch.");
+          addViolation("Window focus lost — possible screen switch.", "window_blur");
         }
       }, 300);
     };

@@ -1477,6 +1477,39 @@ apiRouter.post("/exams/:examId/heartbeat", async (req, res) => {
   res.json({ status: "ok" });
 });
 
+apiRouter.post("/exams/:examId/violation", async (req, res) => {
+  const examId = Array.isArray(req.params.examId) ? req.params.examId[0] : req.params.examId;
+  const { type } = req.body as { type?: string };
+  const authUserId = (req as AuthenticatedRequest).auth?.sub;
+  const state = await getAppState();
+  const authUser = state.users.find((u) => u.id === authUserId);
+  const effectiveStudentId = authUser?.studentId ?? authUserId;
+
+  if (!effectiveStudentId || !type) {
+    res.status(400).json({ message: "Missing student or violation type" });
+    return;
+  }
+
+  const trackerId = `${examId}-${effectiveStudentId}`;
+  const existing = (await listRecords<any>("liveTrackers")).find((t: any) => t.id === trackerId) ?? {
+    id: trackerId,
+    examId,
+    studentId: effectiveStudentId,
+    studentName: state.students.find((s) => s.id === effectiveStudentId)?.name ?? authUser?.name ?? "Unknown",
+    answeredCount: 0,
+    totalQuestions: 0,
+    currentQuestionIndex: 0,
+    status: "taking",
+    lastActive: new Date().toISOString(),
+  };
+
+  const violations: { type: string; timestamp: string }[] = existing.violations ?? [];
+  violations.push({ type, timestamp: new Date().toISOString() });
+
+  await upsertRecord("liveTrackers", { ...existing, violations });
+  res.json({ status: "ok", totalViolations: violations.length });
+});
+
 // ── Exam Session Persistence ──────────────────────────────────────────────────
 
 apiRouter.get("/exams/:examId/session", requireAuth, async (req, res) => {
@@ -1670,7 +1703,8 @@ apiRouter.get("/exams/:examId/live-status", requireRole(["super_admin", "teacher
       answeredCount,
       totalQuestions,
       currentQuestionIndex,
-      lastActive
+      lastActive,
+      violations: (tracker?.violations ?? []) as { type: string; timestamp: string }[],
     };
   });
 
