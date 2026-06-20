@@ -314,7 +314,7 @@ apiRouter.post("/exams/self-generate", requireRole(["student", "super_admin", "t
     }
     
     if (questions.length === 0) {
-      return res.status(400).json({ message: "No questions available for selected topics and source filters. Make sure a textbook is uploaded for this subject if you want AI generation." });
+      return res.status(400).json({ message: "No questions found for the selected topics and source filters. Please ask your teacher to add questions to the question bank for these topics." });
     }
 
     const count = Math.min(questions.length, targetCount);

@@ -198,7 +198,7 @@ export function DashboardPage() {
           {/* Right Column: Practice Builder */}
           <section className="panel" style={{ border: "2px solid rgba(0,112,243,0.1)", background: "white" }}>
             <div style={{ marginBottom: "20px" }}>
-              <span className="tag" style={{ background: "rgba(0,112,243,0.1)", color: "#0070f3", border: "none" }}>AI GENERATOR</span>
+              <span className="tag" style={{ background: "rgba(34,197,94,0.1)", color: "#16a34a", border: "none" }}>QUESTION BANK</span>
               <h3 style={{ marginTop: "10px", fontSize: "1.5rem" }}>Self-Practice Builder</h3>
               <p className="muted-copy">Pick any topic to generate a quick practice test</p>
             </div>
@@ -269,7 +269,7 @@ export function DashboardPage() {
                     { id: "pyq", label: "PYQs" },
                     { id: "reference", label: "Reference Books" },
                     { id: "textbook", label: "Textbooks" },
-                    { id: "ai_generated", label: "AI Generated" },
+                    { id: "ai_generated", label: "AI-Saved" },
                     { id: "custom", label: "Custom Bank" }
                   ].map(source => (
                     <label key={source.id} style={{
