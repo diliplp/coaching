@@ -444,7 +444,28 @@ export function LiveExamPage() {
             {!isReviewMode && <div className="timer-box">{formattedTime}</div>}
           </div>
 
-          <div className="question-shell" style={{ border: isReviewMode ? `2px solid ${reviewData?.isCorrect ? "green" : "red"}` : "none", padding: isReviewMode ? "20px" : "0", borderRadius: "8px", userSelect: "none", WebkitUserSelect: "none" }}>
+          <div className="question-shell" style={{ position: "relative", border: isReviewMode ? `2px solid ${reviewData?.isCorrect ? "green" : "red"}` : "none", padding: isReviewMode ? "20px" : "0", borderRadius: "8px", userSelect: "none", WebkitUserSelect: "none" }}>
+            {/* Watermark — student name stamped diagonally so screenshots are traceable */}
+            {!isReviewMode && session?.user?.name && (
+              <div aria-hidden="true" style={{
+                position: "absolute", inset: 0, zIndex: 0,
+                pointerEvents: "none", overflow: "hidden", borderRadius: "8px",
+                display: "flex", flexWrap: "wrap", alignContent: "flex-start",
+                gap: "40px 24px", padding: "24px",
+                opacity: 0.045,
+              }}>
+                {Array.from({ length: 30 }).map((_, i) => (
+                  <span key={i} style={{
+                    fontSize: "0.78rem", fontWeight: 700, color: "#000",
+                    transform: "rotate(-25deg)", whiteSpace: "nowrap",
+                    display: "inline-block", letterSpacing: "0.05em",
+                  }}>
+                    {session.user.name}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div style={{ position: "relative", zIndex: 1 }}>
             <div className="row-between" style={{ alignItems: "center", marginBottom: "8px" }}>
               <p className="question-meta" style={{ margin: 0 }}>
                 Question {currentIndex + 1} of {generatedExam.questions.length}
@@ -587,6 +608,7 @@ export function LiveExamPage() {
                   : "Next"}
               </button>
             </div>
+            </div> {/* end z-index wrapper */}
           </div>
         </article>
 
