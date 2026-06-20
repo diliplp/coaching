@@ -50,6 +50,14 @@ export function LiveExamPage() {
   const [resultVersion, setResultVersion] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Anti-cheat state
+  const [violations, setViolations] = useState(0);
+  const [cheatWarning, setCheatWarning] = useState<string | null>(null);
+  const [needsFullscreen, setNeedsFullscreen] = useState(false);
+  const violationsRef = useRef(0);
+  const submitRef = useRef<() => Promise<void>>(async () => {});
+  const examLiveRef = useRef(false);
+
   // Keep answersRef in sync so toggleOption can read current answers without stale closure
   answersRef.current = answers;
 
@@ -279,11 +287,148 @@ export function LiveExamPage() {
     }
   };
 
+  // Keep submitRef current so the anti-cheat effect can call submitExam without stale closure
+  submitRef.current = submitExam;
+
+  // Track whether exam is currently live (not review, not lobby)
+  examLiveRef.current = !!generatedExam && !isReviewMode;
+
+  // ── Anti-cheat ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!generatedExam || isReviewMode) return;
+
+    // Enter fullscreen immediately when exam starts
+    const requestFS = () => {
+      document.documentElement.requestFullscreen?.().catch(() => {
+        // Fullscreen not supported or denied — don't block exam, just note it
+      });
+    };
+    requestFS();
+
+    const addViolation = (reason: string) => {
+      violationsRef.current += 1;
+      const count = violationsRef.current;
+      setViolations(count);
+      if (count >= 3) {
+        setCheatWarning(`⚠️ Third violation detected: ${reason}\n\nYour exam is being auto-submitted.`);
+        void submitRef.current();
+      } else {
+        setCheatWarning(`⚠️ ${reason}\n\nWarning ${count} of 3. Your exam will be auto-submitted on the third violation.`);
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.hidden && examLiveRef.current) {
+        addViolation("Tab switch detected.");
+      }
+    };
+
+    // Delay blur handler slightly — browser naturally blurs window on fullscreen enter/exit
+    let blurTimer: ReturnType<typeof setTimeout>;
+    const onBlur = () => {
+      blurTimer = setTimeout(() => {
+        if (!document.hidden && examLiveRef.current) {
+          addViolation("Window focus lost — possible screen switch.");
+        }
+      }, 300);
+    };
+    const onFocus = () => clearTimeout(blurTimer);
+
+    const onFullscreenChange = () => {
+      if (examLiveRef.current) {
+        setNeedsFullscreen(!document.fullscreenElement);
+      }
+    };
+
+    const blockEvent = (e: Event) => { e.preventDefault(); };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!examLiveRef.current) return;
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (ctrl && ['c', 'a', 'v', 'u', 's', 'p', 'f'].includes(e.key.toLowerCase())) {
+        e.preventDefault();
+      }
+      if (['F12', 'F5', 'F11', 'F1'].includes(e.key)) e.preventDefault();
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('contextmenu', blockEvent);
+    document.addEventListener('selectstart', blockEvent);
+    document.addEventListener('copy', blockEvent);
+    document.addEventListener('cut', blockEvent);
+    document.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      document.removeEventListener('contextmenu', blockEvent);
+      document.removeEventListener('selectstart', blockEvent);
+      document.removeEventListener('copy', blockEvent);
+      document.removeEventListener('cut', blockEvent);
+      document.removeEventListener('keydown', onKeyDown);
+      clearTimeout(blurTimer);
+      if (document.fullscreenElement) {
+        document.exitFullscreen?.().catch(() => {});
+      }
+    };
+  }, [generatedExam, isReviewMode]);
+
   const latestResult = liveExamState.latestResult;
   const reviewData = latestResult?.review?.[currentIndex];
 
   return (
-    <div className="page">
+    <div className="page" onContextMenu={e => e.preventDefault()}>
+      {/* ── Fullscreen required overlay ─────────────────────────────────────── */}
+      {needsFullscreen && !isReviewMode && (
+        <div style={overlayStyle}>
+          <div style={overlayCardStyle}>
+            <div style={{ fontSize: "2.5rem", marginBottom: "12px" }}>🖥️</div>
+            <h3 style={{ margin: "0 0 8px", color: "#1e293b" }}>Fullscreen Required</h3>
+            <p style={{ color: "#64748b", marginBottom: "20px", lineHeight: 1.6 }}>
+              You exited fullscreen mode. Please return to fullscreen to continue your exam.
+            </p>
+            <button
+              style={overlayBtnStyle}
+              onClick={() => document.documentElement.requestFullscreen?.().catch(() => {})}
+            >
+              Re-enter Fullscreen
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Cheat warning overlay ───────────────────────────────────────────── */}
+      {cheatWarning && (
+        <div style={overlayStyle}>
+          <div style={{ ...overlayCardStyle, borderTop: "4px solid #dc2626" }}>
+            <div style={{ fontSize: "2.5rem", marginBottom: "12px" }}>🚨</div>
+            <h3 style={{ margin: "0 0 8px", color: "#dc2626" }}>Integrity Alert</h3>
+            <p style={{ color: "#374151", marginBottom: "8px", whiteSpace: "pre-line", lineHeight: 1.6 }}>
+              {cheatWarning}
+            </p>
+            <p style={{ fontSize: "0.82rem", color: "#94a3b8", marginBottom: "20px" }}>
+              Violation {violations} of 3
+            </p>
+            {violations < 3 && (
+              <button
+                style={overlayBtnStyle}
+                onClick={() => {
+                  setCheatWarning(null);
+                  document.documentElement.requestFullscreen?.().catch(() => {});
+                }}
+              >
+                I Understand — Resume Exam
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <section className="exam-layout">
         <article className="panel exam-main">
           <div className="row-between">
@@ -297,7 +442,7 @@ export function LiveExamPage() {
             {!isReviewMode && <div className="timer-box">{formattedTime}</div>}
           </div>
 
-          <div className="question-shell" style={{ border: isReviewMode ? `2px solid ${reviewData?.isCorrect ? "green" : "red"}` : "none", padding: isReviewMode ? "20px" : "0", borderRadius: "8px" }}>
+          <div className="question-shell" style={{ border: isReviewMode ? `2px solid ${reviewData?.isCorrect ? "green" : "red"}` : "none", padding: isReviewMode ? "20px" : "0", borderRadius: "8px", userSelect: "none", WebkitUserSelect: "none" }}>
             <div className="row-between" style={{ alignItems: "center", marginBottom: "8px" }}>
               <p className="question-meta" style={{ margin: 0 }}>
                 Question {currentIndex + 1} of {generatedExam.questions.length}
@@ -674,3 +819,35 @@ export function LiveExamPage() {
     </div>
   );
 }
+
+const overlayStyle: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(0,0,0,0.75)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 9999,
+  backdropFilter: "blur(4px)",
+};
+
+const overlayCardStyle: React.CSSProperties = {
+  background: "#fff",
+  borderRadius: "16px",
+  padding: "36px 32px",
+  maxWidth: "400px",
+  width: "90%",
+  textAlign: "center",
+  boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+};
+
+const overlayBtnStyle: React.CSSProperties = {
+  padding: "12px 28px",
+  background: "#1d4ed8",
+  color: "#fff",
+  border: "none",
+  borderRadius: "8px",
+  fontWeight: 700,
+  fontSize: "0.95rem",
+  cursor: "pointer",
+};
