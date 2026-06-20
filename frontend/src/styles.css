@@ -654,6 +654,24 @@ button {
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
+/* ── Fullscreen exam: hide sidebar so only questions are visible ── */
+:fullscreen .sidebar,
+:-webkit-full-screen .sidebar,
+:-moz-full-screen .sidebar {
+  display: none !important;
+}
+:fullscreen .app-shell,
+:-webkit-full-screen .app-shell,
+:-moz-full-screen .app-shell {
+  grid-template-columns: 1fr;
+}
+:fullscreen .content,
+:-webkit-full-screen .content,
+:-moz-full-screen .content {
+  padding: 16px;
+  overflow-y: auto;
+}
+
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
