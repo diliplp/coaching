@@ -1,6 +1,14 @@
 import { useEffect, useState, useMemo } from "react";
 import { apiClient } from "../api/client";
 
+function getAcademicYear(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const startYear = month >= 4 ? year : year - 1;
+  return `${startYear}-${String(startYear + 1).slice(2)}`;
+}
+
 interface AdmissionRecord {
   id: string;
   studentName: string;
@@ -77,7 +85,7 @@ export function AdminAdmissionsPage() {
         <div>
           <h2 style={styles.title}>Admissions</h2>
           <p style={{ color: "#64748b", margin: "2px 0 0", fontSize: "0.9rem" }}>
-            BSA Classes 11-12 — 2026-27 · {admissions.length} total applications
+            BSA Classes 11-12 — {getAcademicYear()} · {admissions.length} total applications
           </p>
         </div>
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
