@@ -4,7 +4,6 @@ export type UserRole = "super_admin" | "teacher" | "student";
 
 export type AdmissionBoard = "CBSE" | "ICSE" | "GSEB";
 export type AdmissionStandard = "11" | "12";
-export type AdmissionBatch = "1" | "2" | "3" | "4";
 
 export interface Admission {
   id: string;
@@ -13,7 +12,8 @@ export interface Admission {
   schoolName: string;
   standard: AdmissionStandard;
   board: AdmissionBoard;
-  batchNumber: AdmissionBatch;
+  batchId: string;
+  batchName: string;
   fatherName: string;
   motherName?: string;
   fatherMobileEncrypted: string;

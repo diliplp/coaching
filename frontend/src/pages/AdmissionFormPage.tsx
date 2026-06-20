@@ -1,8 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { apiClient } from "../api/client";
 
 const BOARDS = ["CBSE", "ICSE", "GSEB"] as const;
-const BATCHES = ["1", "2", "3", "4"] as const;
 
 type Field = {
   studentName: string;
@@ -10,7 +9,7 @@ type Field = {
   schoolName: string;
   standard: "11" | "12" | "";
   board: string;
-  batchNumber: string;
+  batchId: string;
   fatherName: string;
   motherName: string;
   fatherMobile: string;
@@ -20,15 +19,24 @@ type Field = {
 
 const EMPTY: Field = {
   studentName: "", dateOfBirth: "", schoolName: "", standard: "",
-  board: "", batchNumber: "", fatherName: "", motherName: "",
+  board: "", batchId: "", fatherName: "", motherName: "",
   fatherMobile: "", motherMobile: "", email: "",
 };
 
 export function AdmissionFormPage() {
   const [form, setForm] = useState<Field>(EMPTY);
+  const [batches, setBatches] = useState<{ id: string; name: string }[]>([]);
+  const [batchesLoading, setBatchesLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    apiClient.getPublicBatches()
+      .then(setBatches)
+      .catch(() => setBatches([]))
+      .finally(() => setBatchesLoading(false));
+  }, []);
 
   const set = (k: keyof Field, v: string) => setForm(f => ({ ...f, [k]: v }));
 
@@ -36,7 +44,6 @@ export function AdmissionFormPage() {
     e.preventDefault();
     setError("");
 
-    // Basic mobile validation
     if (!/^\d{10}$/.test(form.fatherMobile)) {
       setError("Father's mobile number must be exactly 10 digits.");
       return;
@@ -50,6 +57,12 @@ export function AdmissionFormPage() {
       return;
     }
 
+    const selectedBatch = batches.find(b => b.id === form.batchId);
+    if (!selectedBatch) {
+      setError("Please select a batch.");
+      return;
+    }
+
     setSubmitting(true);
     try {
       await apiClient.submitAdmission({
@@ -58,7 +71,8 @@ export function AdmissionFormPage() {
         schoolName: form.schoolName,
         standard: form.standard as "11" | "12",
         board: form.board,
-        batchNumber: form.batchNumber,
+        batchId: selectedBatch.id,
+        batchName: selectedBatch.name,
         fatherName: form.fatherName,
         motherName: form.motherName || undefined,
         fatherMobile: form.fatherMobile,
@@ -77,15 +91,21 @@ export function AdmissionFormPage() {
     return (
       <div style={styles.page}>
         <div style={styles.card}>
-          <div style={{ textAlign: "center", padding: "40px 20px" }}>
-            <div style={{ fontSize: "3rem", marginBottom: "16px" }}>✅</div>
-            <h2 style={{ color: "var(--color-primary, #2563eb)", marginBottom: "8px" }}>
-              Application Submitted!
+          <div style={{ textAlign: "center", padding: "48px 20px" }}>
+            <div style={{ fontSize: "3.5rem", marginBottom: "20px" }}>✅</div>
+            <h2 style={{ color: "#16a34a", marginBottom: "12px", fontSize: "1.5rem" }}>
+              Application Submitted Successfully!
             </h2>
-            <p style={{ color: "#64748b", lineHeight: 1.6 }}>
-              Thank you for applying to BSA Classes 11-12 (2026-27).<br />
-              We will contact you soon on the provided mobile number or email.
+            <p style={{ color: "#64748b", lineHeight: 1.7, maxWidth: "380px", margin: "0 auto" }}>
+              Thank you for applying to <strong>BSA Classes 11-12 (2026-27)</strong>.<br />
+              We will contact you on the provided mobile number or email address.
             </p>
+            <div style={{ marginTop: "28px", padding: "16px 24px", background: "#f0fdf4",
+              border: "1px solid #bbf7d0", borderRadius: "10px", display: "inline-block" }}>
+              <p style={{ margin: 0, fontSize: "0.88rem", color: "#15803d" }}>
+                Keep this page saved — our team will reach out within 2–3 working days.
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -99,7 +119,7 @@ export function AdmissionFormPage() {
           <img src="/logo.jpeg" alt="BSA Logo" style={styles.logo} />
           <div>
             <h1 style={styles.title}>BSA Admission Form</h1>
-            <p style={styles.subtitle}>Classes 11-12 | Academic Year 2026-27</p>
+            <p style={styles.subtitle}>Classes 11-12 · Academic Year 2026-27</p>
           </div>
         </div>
 
@@ -138,10 +158,15 @@ export function AdmissionFormPage() {
                 </select>
               </Field>
               <Field label="Batch *" htmlFor="batch">
-                <select id="batch" style={styles.input} value={form.batchNumber} required
-                  onChange={e => set("batchNumber", e.target.value)}>
-                  <option value="">Select batch</option>
-                  {BATCHES.map(b => <option key={b} value={b}>Batch {b}</option>)}
+                <select id="batch" style={styles.input} value={form.batchId} required
+                  onChange={e => set("batchId", e.target.value)}
+                  disabled={batchesLoading}>
+                  <option value="">
+                    {batchesLoading ? "Loading batches…" : batches.length === 0 ? "No batches available" : "Select batch"}
+                  </option>
+                  {batches.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
                 </select>
               </Field>
             </Row>
@@ -185,8 +210,8 @@ export function AdmissionFormPage() {
             </p>
           )}
 
-          <button type="submit" disabled={submitting}
-            style={{ ...styles.submitBtn, opacity: submitting ? 0.7 : 1 }}>
+          <button type="submit" disabled={submitting || batchesLoading}
+            style={{ ...styles.submitBtn, opacity: (submitting || batchesLoading) ? 0.7 : 1 }}>
             {submitting ? "Submitting…" : "Submit Application"}
           </button>
         </form>
@@ -276,7 +301,6 @@ const styles = {
     background: "#f8fafc",
     outline: "none",
     boxSizing: "border-box" as const,
-    transition: "border-color 0.2s",
   },
   submitBtn: {
     width: "100%",

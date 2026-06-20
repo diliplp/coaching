@@ -8,7 +8,8 @@ interface AdmissionRecord {
   schoolName: string;
   standard: "11" | "12";
   board: "CBSE" | "ICSE" | "GSEB";
-  batchNumber: "1" | "2" | "3" | "4";
+  batchId: string;
+  batchName: string;
   fatherName: string;
   motherName: string | null;
   fatherMobile: string;
@@ -39,6 +40,7 @@ export function AdminAdmissionsPage() {
   const [filterBoard, setFilterBoard] = useState("");
   const [filterStandard, setFilterStandard] = useState("");
   const [filterBatch, setFilterBatch] = useState("");
+  const batchNames = useMemo(() => [...new Set(admissions.map(a => a.batchName))].sort(), [admissions]);
 
   useEffect(() => {
     Promise.all([apiClient.getAdmissions(), apiClient.getAdmissionReports()])
@@ -52,7 +54,7 @@ export function AdminAdmissionsPage() {
     return admissions.filter(a => {
       if (filterBoard && a.board !== filterBoard) return false;
       if (filterStandard && a.standard !== filterStandard) return false;
-      if (filterBatch && a.batchNumber !== filterBatch) return false;
+      if (filterBatch && a.batchName !== filterBatch) return false;
       if (q && !a.studentName.toLowerCase().includes(q) &&
           !a.fatherName.toLowerCase().includes(q) &&
           !a.email.toLowerCase().includes(q) &&
@@ -113,7 +115,7 @@ export function AdminAdmissionsPage() {
             </select>
             <select value={filterBatch} onChange={e => setFilterBatch(e.target.value)} style={styles.select}>
               <option value="">All Batches</option>
-              {["1", "2", "3", "4"].map(b => <option key={b} value={b}>Batch {b}</option>)}
+              {batchNames.map(b => <option key={b} value={b}>{b}</option>)}
             </select>
             {(search || filterBoard || filterStandard || filterBatch) && (
               <button onClick={() => { setSearch(""); setFilterBoard(""); setFilterStandard(""); setFilterBatch(""); }}
@@ -153,7 +155,7 @@ export function AdminAdmissionsPage() {
                       <span style={{ ...styles.badge, background: boardColor(a.board) }}>{a.board}</span>
                     </td>
                     <td style={{ ...styles.td, textAlign: "center" }}>
-                      <span style={{ ...styles.badge, background: "#f0fdf4", color: "#15803d" }}>B{a.batchNumber}</span>
+                      <span style={{ ...styles.badge, background: "#f0fdf4", color: "#15803d" }}>{a.batchName}</span>
                     </td>
                     <td style={styles.td}>{a.fatherName}</td>
                     <td style={{ ...styles.td, fontFamily: "monospace", fontSize: "0.85rem" }}>

@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { Router, Request, Response } from "express";
 import multer from "multer";
-import { getAppState, getRecord, upsertRecord, deleteRecord } from "../data/database.js";
+import { getAppState, getRecord, listRecords, upsertRecord, deleteRecord } from "../data/database.js";
 import { booksUploadsRoot } from "../utils/paths.js";
 import {
   buildAdaptiveExamPlan,
@@ -20,7 +20,7 @@ import { generateQuestionsFromText, generateQuestionsFromBiologyFigures, ensureE
 import { listReferencePapers } from "../utils/reference-papers.js";
 import { findUserByEmail, generateSessionId, requireAuth, requireRole, signAuthToken, verifyPassword } from "../utils/auth.js";
 import { createJob, emitJobEvent, subscribeToJob } from "../utils/sse-job-store.js";
-import type { Admission, AuthenticatedRequest, ExamSession, Question, QuestionSource, SubjectBook } from "../types.js";
+import type { Admission, AuthenticatedRequest, BatchNode, ExamSession, Question, QuestionSource, SubjectBook } from "../types.js";
 import { encrypt } from "../utils/encryption.js";
 
 export const apiRouter = Router();
@@ -169,13 +169,19 @@ apiRouter.get("/debug-env", async (req, res) => {
   res.json(results);
 });
 
+// Public — list batches for the admission form (no auth)
+apiRouter.get("/batches/public", async (_req: Request, res: Response) => {
+  const batches = await listRecords<BatchNode>("batches");
+  res.json(batches.map(b => ({ id: b.id, name: b.name })));
+});
+
 // Public admission submission — no auth required
 apiRouter.post("/admissions", async (req: Request, res: Response) => {
-  const { studentName, dateOfBirth, schoolName, standard, board, batchNumber,
+  const { studentName, dateOfBirth, schoolName, standard, board, batchId, batchName,
     fatherName, motherName, fatherMobile, motherMobile, email } = req.body;
 
   if (!studentName || !dateOfBirth || !schoolName || !standard || !board ||
-    !batchNumber || !fatherName || !fatherMobile || !email) {
+    !batchId || !batchName || !fatherName || !fatherMobile || !email) {
     res.status(400).json({ message: "Missing required fields" });
     return;
   }
@@ -187,7 +193,8 @@ apiRouter.post("/admissions", async (req: Request, res: Response) => {
     schoolName: String(schoolName).trim(),
     standard,
     board,
-    batchNumber,
+    batchId: String(batchId),
+    batchName: String(batchName).trim(),
     fatherName: String(fatherName).trim(),
     motherName: motherName ? String(motherName).trim() : undefined,
     fatherMobileEncrypted: encrypt(String(fatherMobile).trim()),

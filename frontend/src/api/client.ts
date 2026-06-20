@@ -407,9 +407,11 @@ export const apiClient = {
 
   // ── Admissions ──────────────────────────────────────────────────────────────
 
+  getPublicBatches: () => request<{ id: string; name: string }[]>("/batches/public"),
+
   submitAdmission: (payload: {
     studentName: string; dateOfBirth: string; schoolName: string;
-    standard: "11" | "12"; board: string; batchNumber: string;
+    standard: "11" | "12"; board: string; batchId: string; batchName: string;
     fatherName: string; motherName?: string;
     fatherMobile: string; motherMobile?: string; email: string;
   }) => request<{ message: string; id: string }>("/admissions", {

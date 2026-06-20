@@ -472,7 +472,8 @@ function decryptAdmission(a: Admission) {
     schoolName: a.schoolName,
     standard: a.standard,
     board: a.board,
-    batchNumber: a.batchNumber,
+    batchId: a.batchId,
+    batchName: a.batchName,
     fatherName: a.fatherName,
     motherName: a.motherName ?? null,
     fatherMobile: decrypt(a.fatherMobileEncrypted),
@@ -490,13 +491,14 @@ adminRouter.get("/admissions", async (_req: Request, res: Response) => {
 
 adminRouter.get("/admissions/reports", async (_req: Request, res: Response) => {
   const admissions = await listRecords<Admission>("admissions");
-  const byBatch: Record<string, number> = { "1": 0, "2": 0, "3": 0, "4": 0 };
+  const byBatch: Record<string, number> = {};
   const byBoard: Record<string, number> = { CBSE: 0, ICSE: 0, GSEB: 0 };
   const byStandard: Record<string, number> = { "11": 0, "12": 0 };
   const byDate: Record<string, number> = {};
 
   for (const a of admissions) {
-    byBatch[a.batchNumber] = (byBatch[a.batchNumber] ?? 0) + 1;
+    const batchLabel = a.batchName || a.batchId;
+    byBatch[batchLabel] = (byBatch[batchLabel] ?? 0) + 1;
     byBoard[a.board] = (byBoard[a.board] ?? 0) + 1;
     byStandard[a.standard] = (byStandard[a.standard] ?? 0) + 1;
     const date = a.createdAt.slice(0, 10);
@@ -518,7 +520,7 @@ adminRouter.get("/admissions/export", requireRole(["super_admin"]), async (_req:
   for (const a of admissions) {
     rows.push([
       a.id, a.studentName, a.dateOfBirth, a.schoolName,
-      a.standard, a.board, a.batchNumber,
+      a.standard, a.board, a.batchName,
       a.fatherName, a.motherName ?? "",
       decrypt(a.fatherMobileEncrypted),
       a.motherMobileEncrypted ? decrypt(a.motherMobileEncrypted) : "",
