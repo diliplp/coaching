@@ -654,7 +654,20 @@ button {
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
-/* ── Fullscreen exam: hide sidebar so only questions are visible ── */
+/* ── Exam running: hide sidebar regardless of fullscreen support ── */
+/* body class set by LiveExamPage JS — works on mobile where fullscreen API is unsupported */
+body.exam-running .sidebar {
+  display: none !important;
+}
+body.exam-running .app-shell {
+  grid-template-columns: 1fr;
+}
+body.exam-running .content {
+  padding: 16px;
+  overflow-y: auto;
+}
+
+/* Fallback: also hide via :fullscreen for desktop browsers */
 :fullscreen .sidebar,
 :-webkit-full-screen .sidebar,
 :-moz-full-screen .sidebar {

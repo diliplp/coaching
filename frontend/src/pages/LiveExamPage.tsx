@@ -297,6 +297,9 @@ export function LiveExamPage() {
   useEffect(() => {
     if (!generatedExam || isReviewMode) return;
 
+    // Hide sidebar for the duration of the exam (works on mobile where fullscreen isn't supported)
+    document.body.classList.add("exam-running");
+
     // Enter fullscreen immediately when exam starts
     const requestFS = () => {
       document.documentElement.requestFullscreen?.().catch(() => {
@@ -374,6 +377,7 @@ export function LiveExamPage() {
       document.removeEventListener('cut', blockEvent);
       document.removeEventListener('keydown', onKeyDown);
       clearTimeout(blurTimer);
+      document.body.classList.remove("exam-running");
       if (document.fullscreenElement) {
         document.exitFullscreen?.().catch(() => {});
       }
