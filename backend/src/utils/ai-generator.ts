@@ -2121,15 +2121,27 @@ Return JSON:
   });
 }
 
-const BIOLOGY_VISION_PROMPT = `You are a biology exam question generator. You will receive an image of a biological diagram, figure, or illustration from a biology textbook.
+const BIOLOGY_VISION_PROMPT = `You are a biology exam question generator. You will receive an image from a biology textbook.
 
-Create exactly 1 multiple-choice question based on what you see in the image. The question must:
-- Reference the diagram/figure directly (e.g., "In the figure shown,", "Based on the diagram,", "The structure labeled X in the figure is")
-- Test conceptual understanding, not trivial observation
-- Have exactly 4 options labeled A, B, C, D
-- Have exactly 1 correct answer
+FIRST, decide if the image is a proper biological diagram or scientific figure (e.g. cell diagrams, organ cross-sections, microscopy images, plant/animal structure illustrations, biological process diagrams, labelled anatomical figures).
 
-Return ONLY a JSON object with this exact structure:
+If the image is ANY of the following, respond with ONLY: {"skip": true}
+- A portrait or photograph of a person / scientist
+- A page of running text or chapter introduction
+- A table of contents, index, or chapter heading page
+- A decorative or background image unrelated to a biology concept
+- A full textbook page spread showing mostly paragraphs of text
+
+Only if it IS a proper biology diagram: create exactly 1 multiple-choice question that:
+- References the diagram directly (e.g. "In the figure shown,", "Based on the diagram,", "The structure labeled X is")
+- Tests conceptual understanding, not trivial observation
+- Has exactly 4 options and exactly 1 correct answer
+
+Return ONLY a JSON object in one of these two forms:
+
+Skip form:  { "skip": true }
+
+Question form:
 {
   "question": "Question text referencing the figure",
   "options": ["Option A text", "Option B text", "Option C text", "Option D text"],
@@ -2141,8 +2153,7 @@ Return ONLY a JSON object with this exact structure:
 Rules:
 - correctIndex is 0-based (0=A, 1=B, 2=C, 3=D)
 - difficulty must be one of: "easy", "medium", "hard"
-- Do NOT include option letters (A/B/C/D) inside the option text strings
-- The question must make sense even without labeling, as the image will be shown alongside it`;
+- Do NOT include option letters (A/B/C/D) inside the option text strings`;
 
 /**
  * Generates biology MCQ questions from diagram images extracted from a PDF.
@@ -2169,10 +2180,15 @@ export async function generateQuestionsFromBiologyFigures(params: {
     return [];
   }
 
-  // Filter to diagrams with area > 3% of the page (bbox is [y1,x1,y2,x2] as fractions 0-1)
+  // Filter to diagrams that are actual figures:
+  //   - area > 3% (skip tiny decorative elements)
+  //   - area < 45% (skip full-page text renders / page spreads)
+  //   - width < 95% of page (skip full-width banners/headers)
   const significant = diagrams.filter(d => {
     const [y1, x1, y2, x2] = d.bbox;
-    return (y2 - y1) * (x2 - x1) > 0.03;
+    const area = (y2 - y1) * (x2 - x1);
+    const width = x2 - x1;
+    return area > 0.03 && area < 0.45 && width < 0.95;
   });
 
   if (significant.length === 0) {
@@ -2224,6 +2240,11 @@ export async function generateQuestionsFromBiologyFigures(params: {
       parsed = JSON.parse(stripped);
     } catch {
       onProgress?.(`Figure ${i + 1}: failed to parse JSON response, skipping.`);
+      continue;
+    }
+
+    if (parsed.skip === true) {
+      onProgress?.(`Figure ${i + 1}: not a biology diagram (portrait/text page), skipping.`);
       continue;
     }
 
