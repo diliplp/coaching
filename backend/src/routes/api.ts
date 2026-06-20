@@ -1194,67 +1194,128 @@ apiRouter.post("/exams/generate-from-prompt", requireRole(["super_admin"]), asyn
   }
 
   try {
+    // Step 1 — parse natural language prompt with AI
     const parsed = await parseExamPrompt(prompt);
     const state = await getAppState();
 
-    // 1. Find Batch
-    const batch = state.batches.find(b => 
-      b.name.toLowerCase().includes(parsed.batchName.toLowerCase()) || 
+    // Step 2 — match batch
+    const batch = state.batches.find(b =>
+      b.name.toLowerCase().includes(parsed.batchName.toLowerCase()) ||
       parsed.batchName.toLowerCase().includes(b.name.toLowerCase())
     ) || state.batches[0];
 
-    // 2. Find Subject
-    const subject = state.subjects.find(s => 
+    if (!batch) {
+      return res.status(404).json({ message: "No batches found. Please create a batch first." });
+    }
+
+    // Step 3 — match subject
+    const subject = state.subjects.find(s =>
       s.name.toLowerCase().includes(parsed.subjectName.toLowerCase()) ||
       parsed.subjectName.toLowerCase().includes(s.name.toLowerCase())
     ) || state.subjects.find(s => s.classId === batch.classId) || state.subjects[0];
 
-    // 3. Find Topics
-    const matchedTopics = state.topics.filter(t => 
-      t.subjectId === subject.id && 
-      parsed.topicKeywords.some(k => t.name.toLowerCase().includes(k.toLowerCase()))
-    );
-
-    const targetTopicIds = matchedTopics.length > 0 
-      ? matchedTopics.map(t => t.id)
-      : state.topics.filter(t => t.subjectId === subject.id).slice(0, 5).map(t => t.id);
-
-    if (targetTopicIds.length === 0) {
-      return res.status(404).json({ message: `Could not find any topics for subject: ${subject.name}` });
+    if (!subject) {
+      return res.status(404).json({ message: `No subject found matching "${parsed.subjectName}".` });
     }
 
-    // 4. Set question count limit and calculate weights
-    const totalQuestions = Math.min(parsed.questionCount, 50);
-    const weightagePerTopic = 100 / targetTopicIds.length;
+    // Step 4 — match topics from curriculum
+    const allSubjectTopics = state.topics.filter(t => t.subjectId === subject.id);
+    const matchedTopics = parsed.topicKeywords.length > 0
+      ? allSubjectTopics.filter(t =>
+          parsed.topicKeywords.some(k => t.name.toLowerCase().includes(k.toLowerCase()))
+        )
+      : [];
+    const targetTopics = matchedTopics.length > 0
+      ? matchedTopics
+      : allSubjectTopics.slice(0, 3);
 
-    const generated = await generateCustomExam({
+    if (targetTopics.length === 0) {
+      return res.status(404).json({ message: `No topics found for subject "${subject.name}". Please set up the curriculum first.` });
+    }
+
+    const totalQuestions = Math.min(parsed.questionCount, 50);
+
+    // Step 5 — find parsed textbook content for this subject (improves question quality)
+    const book = (state as any).subjectBooks?.find((b: any) => b.subjectId === subject.id && b.parsedText)
+      ?? null;
+
+    // Step 6 — synthesize source text if no book is available
+    // The AI will generate questions from its own knowledge about these topics
+    const sourceText = book?.parsedText ?? [
+      `Subject: ${subject.name}`,
+      `Topics: ${targetTopics.map(t => t.name).join(", ")}`,
+      `Difficulty: ${parsed.difficulty}`,
+      `Generate ${totalQuestions} high-quality multiple-choice questions suitable for Class 11/12`,
+      `students covering the above topics in ${subject.name}.`,
+      `Each question should test conceptual understanding, not just memorisation.`,
+    ].join("\n");
+
+    // Step 7 — generate questions fresh from AI, distributed across topics
+    const questionsPerTopic = Math.max(1, Math.ceil(totalQuestions / targetTopics.length));
+    const allGeneratedQuestions: Question[] = [];
+
+    for (const topic of targetTopics) {
+      if (allGeneratedQuestions.length >= totalQuestions) break;
+      const needed = Math.min(questionsPerTopic, totalQuestions - allGeneratedQuestions.length);
+
+      const generated = await generateQuestionsFromText({
+        text: sourceText,
+        topicId: topic.id,
+        subjectId: subject.id,
+        subject: subject.name,
+        chapterName: topic.name,
+        topicNames: [topic.name],
+        questionCount: needed,
+      });
+
+      // Assign topicId and mark as ai_generated
+      const finalised = generated.map(q => ({
+        ...q,
+        topicId: topic.id,
+        sourceType: "ai_generated" as QuestionSource,
+      }));
+
+      for (const q of finalised) {
+        await upsertRecord("questions", q);
+      }
+
+      allGeneratedQuestions.push(...finalised);
+    }
+
+    if (allGeneratedQuestions.length === 0) {
+      return res.status(500).json({ message: "AI failed to generate any questions. Please try again." });
+    }
+
+    // Step 8 — build and persist the exam
+    const { default: crypto } = await import("node:crypto");
+    const examId = `exam-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`;
+    const exam = {
+      id: examId,
+      blueprintId: `ai-prompt-${Date.now()}`,
       name: parsed.examName,
+      classId: batch.classId,
+      streamId: batch.streamId,
       batchId: batch.id,
       subjectId: subject.id,
       durationMinutes: parsed.durationMinutes,
-      totalQuestions,
-      selectionMode: "topic",
-      rules: targetTopicIds.map(id => ({
-        entityId: id,
-        weightagePercent: weightagePerTopic
+      generatedAt: new Date().toISOString(),
+      generationMode: "custom" as const,
+      adaptiveSummary: `AI-generated from prompt · Topics: ${targetTopics.map(t => t.name).join(", ")} · Difficulty: ${parsed.difficulty}`,
+      questions: allGeneratedQuestions.slice(0, totalQuestions).map((q, i) => ({
+        questionId: q.id,
+        order: i + 1,
+        marks: q.marks ?? 1,
+        negativeMarks: q.negativeMarks ?? 0,
+        optionOrderIds: q.options.map((o: any) => o.id),
       })),
-      allowedSourceTypes: ["pyq", "reference", "textbook", "ai_generated", "custom"]
-    });
+    };
 
-    if (!generated) {
-      return res.status(400).json({ message: "Unable to generate exam from prompt: No questions available." });
-    }
-
-    if ("error" in generated) {
-      return res.status(400).json({ 
-        message: `Unable to generate exam: ${generated.error}. Matched Subject: ${subject.name}, Topics: ${matchedTopics.map(t => t.name).join(", ")}` 
-      });
-    }
+    await upsertRecord("exams", exam);
 
     res.status(201).json({
-      exam: generated,
-      questions: await getExamQuestions(generated.id),
-      analysis: parsed
+      exam,
+      questions: allGeneratedQuestions.slice(0, totalQuestions),
+      analysis: parsed,
     });
 
   } catch (error: any) {
