@@ -401,7 +401,42 @@ export const apiClient = {
       if (!response.ok) throw new Error("Failed to parse Word document");
       return response.json();
     },
-    saveBulkCurriculum: (payload: { classId: string; streamId: string; subjects: any[]; bookId?: string }) => 
+    saveBulkCurriculum: (payload: { classId: string; streamId: string; subjects: any[]; bookId?: string }) =>
       request<any>("/admin/curriculum/save-bulk", { method: "POST", body: JSON.stringify(payload) }),
-  }
+  },
+
+  // ── Admissions ──────────────────────────────────────────────────────────────
+
+  submitAdmission: (payload: {
+    studentName: string; dateOfBirth: string; schoolName: string;
+    standard: "11" | "12"; board: string; batchNumber: string;
+    fatherName: string; motherName?: string;
+    fatherMobile: string; motherMobile?: string; email: string;
+  }) => request<{ message: string; id: string }>("/admissions", {
+    method: "POST", body: JSON.stringify(payload),
+  }),
+
+  getAdmissions: () => request<any[]>("/admin/admissions"),
+
+  getAdmissionReports: () => request<any>("/admin/admissions/reports"),
+
+  exportAdmissionsCSV: async () => {
+    const session = getStoredSession();
+    const response = await fetch(buildApiUrl("/admin/admissions/export"), {
+      headers: session?.token ? { Authorization: `Bearer ${session.token}` } : {},
+    });
+    if (!response.ok) throw new Error("Export failed");
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `admissions-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+
+  deleteAdmission: (id: string) =>
+    request<{ success: boolean }>(`/admin/admissions/${id}`, { method: "DELETE" }),
 };

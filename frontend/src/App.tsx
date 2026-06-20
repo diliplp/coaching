@@ -15,6 +15,8 @@ import { CurriculumPage } from "./pages/CurriculumPage";
 import { OfflineExamBuilderPage } from "./pages/OfflineExamBuilderPage";
 import { LiveExamMonitorPage } from "./pages/LiveExamMonitorPage";
 import { MyResultsPage } from "./pages/MyResultsPage";
+import { AdmissionFormPage } from "./pages/AdmissionFormPage";
+import { AdminAdmissionsPage } from "./pages/AdminAdmissionsPage";
 import { getStoredSession, clearSession } from "./auth";
 import { apiClient } from "./api/client";
 
@@ -77,6 +79,7 @@ export default function App() {
     >
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/apply" element={<AdmissionFormPage />} />
         <Route
           element={
             <ProtectedRoute>
@@ -122,9 +125,13 @@ export default function App() {
             path="/curriculum" 
             element={<ProtectedRoute roles={["super_admin", "teacher"]}><CurriculumPage /></ProtectedRoute>} 
           />
-          <Route 
-            path="/admin" 
-            element={<ProtectedRoute roles={["super_admin"]}><AdminPage /></ProtectedRoute>} 
+          <Route
+            path="/admin"
+            element={<ProtectedRoute roles={["super_admin"]}><AdminPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/admissions"
+            element={<ProtectedRoute roles={["super_admin", "teacher"]}><AdminAdmissionsPage /></ProtectedRoute>}
           />
         </Route>
       </Routes>

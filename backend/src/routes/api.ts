@@ -20,7 +20,8 @@ import { generateQuestionsFromText, generateQuestionsFromBiologyFigures, ensureE
 import { listReferencePapers } from "../utils/reference-papers.js";
 import { findUserByEmail, generateSessionId, requireAuth, requireRole, signAuthToken, verifyPassword } from "../utils/auth.js";
 import { createJob, emitJobEvent, subscribeToJob } from "../utils/sse-job-store.js";
-import type { AuthenticatedRequest, ExamSession, Question, QuestionSource, SubjectBook } from "../types.js";
+import type { Admission, AuthenticatedRequest, ExamSession, Question, QuestionSource, SubjectBook } from "../types.js";
+import { encrypt } from "../utils/encryption.js";
 
 export const apiRouter = Router();
 
@@ -166,6 +167,37 @@ apiRouter.get("/debug-env", async (req, res) => {
   }
   
   res.json(results);
+});
+
+// Public admission submission — no auth required
+apiRouter.post("/admissions", async (req: Request, res: Response) => {
+  const { studentName, dateOfBirth, schoolName, standard, board, batchNumber,
+    fatherName, motherName, fatherMobile, motherMobile, email } = req.body;
+
+  if (!studentName || !dateOfBirth || !schoolName || !standard || !board ||
+    !batchNumber || !fatherName || !fatherMobile || !email) {
+    res.status(400).json({ message: "Missing required fields" });
+    return;
+  }
+
+  const admission: Admission = {
+    id: `adm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    studentName: String(studentName).trim(),
+    dateOfBirth: String(dateOfBirth).trim(),
+    schoolName: String(schoolName).trim(),
+    standard,
+    board,
+    batchNumber,
+    fatherName: String(fatherName).trim(),
+    motherName: motherName ? String(motherName).trim() : undefined,
+    fatherMobileEncrypted: encrypt(String(fatherMobile).trim()),
+    motherMobileEncrypted: motherMobile ? encrypt(String(motherMobile).trim()) : undefined,
+    emailEncrypted: encrypt(String(email).trim().toLowerCase()),
+    createdAt: new Date().toISOString(),
+  };
+
+  await upsertRecord("admissions", admission);
+  res.status(201).json({ message: "Application submitted successfully", id: admission.id });
 });
 
 // SSE stream endpoint — must be before requireAuth because EventSource/fetch can't reliably send

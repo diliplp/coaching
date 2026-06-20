@@ -5,7 +5,8 @@ import bcrypt from "bcryptjs";
 import multer from "multer";
 import { parseCurriculumDocx } from "../utils/curriculum-bulk.js";
 import { uploadsRoot } from "../utils/paths.js";
-import type { ClassNode, StreamNode, BatchNode, UserAccount, Student, Question } from "../types.js";
+import type { Admission, ClassNode, StreamNode, BatchNode, UserAccount, Student, Question } from "../types.js";
+import { decrypt } from "../utils/encryption.js";
 
 export const adminRouter = Router();
 
@@ -459,4 +460,80 @@ adminRouter.post("/questions/:id/verify", async (req: Request, res: Response) =>
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// ─── Admissions ────────────────────────────────────────────────────────────────
+
+function decryptAdmission(a: Admission) {
+  return {
+    id: a.id,
+    studentName: a.studentName,
+    dateOfBirth: a.dateOfBirth,
+    schoolName: a.schoolName,
+    standard: a.standard,
+    board: a.board,
+    batchNumber: a.batchNumber,
+    fatherName: a.fatherName,
+    motherName: a.motherName ?? null,
+    fatherMobile: decrypt(a.fatherMobileEncrypted),
+    motherMobile: a.motherMobileEncrypted ? decrypt(a.motherMobileEncrypted) : null,
+    email: decrypt(a.emailEncrypted),
+    createdAt: a.createdAt,
+  };
+}
+
+adminRouter.get("/admissions", async (_req: Request, res: Response) => {
+  const admissions = await listRecords<Admission>("admissions");
+  admissions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  res.json(admissions.map(decryptAdmission));
+});
+
+adminRouter.get("/admissions/reports", async (_req: Request, res: Response) => {
+  const admissions = await listRecords<Admission>("admissions");
+  const byBatch: Record<string, number> = { "1": 0, "2": 0, "3": 0, "4": 0 };
+  const byBoard: Record<string, number> = { CBSE: 0, ICSE: 0, GSEB: 0 };
+  const byStandard: Record<string, number> = { "11": 0, "12": 0 };
+  const byDate: Record<string, number> = {};
+
+  for (const a of admissions) {
+    byBatch[a.batchNumber] = (byBatch[a.batchNumber] ?? 0) + 1;
+    byBoard[a.board] = (byBoard[a.board] ?? 0) + 1;
+    byStandard[a.standard] = (byStandard[a.standard] ?? 0) + 1;
+    const date = a.createdAt.slice(0, 10);
+    byDate[date] = (byDate[date] ?? 0) + 1;
+  }
+
+  res.json({ total: admissions.length, byBatch, byBoard, byStandard, byDate });
+});
+
+adminRouter.get("/admissions/export", requireRole(["super_admin"]), async (_req: Request, res: Response) => {
+  const admissions = await listRecords<Admission>("admissions");
+  admissions.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+  const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  const header = ["ID", "Student Name", "Date of Birth", "School", "Class", "Board", "Batch",
+    "Father Name", "Mother Name", "Father Mobile", "Mother Mobile", "Email", "Submitted At"];
+  const rows = [header.map(escape).join(",")];
+
+  for (const a of admissions) {
+    rows.push([
+      a.id, a.studentName, a.dateOfBirth, a.schoolName,
+      a.standard, a.board, a.batchNumber,
+      a.fatherName, a.motherName ?? "",
+      decrypt(a.fatherMobileEncrypted),
+      a.motherMobileEncrypted ? decrypt(a.motherMobileEncrypted) : "",
+      decrypt(a.emailEncrypted),
+      a.createdAt,
+    ].map(v => escape(String(v))).join(","));
+  }
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="admissions-${new Date().toISOString().slice(0, 10)}.csv"`);
+  res.send(rows.join("\r\n"));
+});
+
+adminRouter.delete("/admissions/:id", requireRole(["super_admin"]), async (req: Request, res: Response) => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  await deleteRecord("admissions", id);
+  res.json({ success: true });
 });

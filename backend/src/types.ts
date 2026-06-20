@@ -2,6 +2,26 @@ import type { Request } from "express";
 
 export type UserRole = "super_admin" | "teacher" | "student";
 
+export type AdmissionBoard = "CBSE" | "ICSE" | "GSEB";
+export type AdmissionStandard = "11" | "12";
+export type AdmissionBatch = "1" | "2" | "3" | "4";
+
+export interface Admission {
+  id: string;
+  studentName: string;
+  dateOfBirth: string;
+  schoolName: string;
+  standard: AdmissionStandard;
+  board: AdmissionBoard;
+  batchNumber: AdmissionBatch;
+  fatherName: string;
+  motherName?: string;
+  fatherMobileEncrypted: string;
+  motherMobileEncrypted?: string;
+  emailEncrypted: string;
+  createdAt: string;
+}
+
 export type QuestionType = "single_correct" | "multi_correct";
 
 export type QuestionSource = "pyq" | "reference" | "textbook" | "ai_generated" | "custom";
