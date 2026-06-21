@@ -1084,10 +1084,11 @@ async function generateOfflinePaperContent(prompt: string): Promise<string> {
   const freeModels = configuredModel
     ? [configuredModel]
     : [
-        "deepseek/deepseek-r1:free",       // Best reasoning + STEM accuracy
-        "deepseek/deepseek-chat:free",      // DeepSeek V3 — good structured JSON
-        "google/gemini-2.5-pro-exp-03-25:free", // Gemini 2.5 Pro experimental
-        "meta-llama/llama-4-maverick:free", // Llama 4 fallback
+        "deepseek/deepseek-chat:free",           // DeepSeek V3 — strong STEM, good JSON
+        "qwen/qwen3-235b-a22b:free",             // Qwen3 235B — excellent reasoning
+        "google/gemini-2.0-flash-exp:free",      // Gemini 2.0 Flash experimental
+        "meta-llama/llama-4-maverick:free",      // Llama 4 Maverick
+        "mistralai/mistral-small-3.2-24b-instruct:free", // Mistral fallback
       ];
 
   for (const model of freeModels) {
