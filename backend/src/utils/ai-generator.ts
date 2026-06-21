@@ -1060,13 +1060,72 @@ JSON STRUCTURE:
   `;
 
   try {
-    const rawResponse = await generateContentWithFallback(prompt, "{}");
-
-    return JSON.parse(rawResponse);
+    const rawResponse = await generateOfflinePaperContent(prompt);
+    // Strip markdown fences if model wraps in ```json ... ```
+    const cleaned = rawResponse.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start === -1 || end === -1) throw new Error("No JSON object found in model response");
+    return JSON.parse(cleaned.slice(start, end + 1));
   } catch (error) {
     console.error("Offline Paper Generation failed:", error);
     throw error;
   }
+}
+
+/** Dedicated OpenRouter call for offline paper generation — uses free models only. */
+async function generateOfflinePaperContent(prompt: string): Promise<string> {
+  if (!process.env.OPENROUTER_API_KEY) {
+    throw new Error("OPENROUTER_API_KEY is not configured.");
+  }
+
+  // Configurable via env; defaults to the best free STEM model available on OpenRouter
+  const configuredModel = process.env.OFFLINE_PAPER_MODEL;
+  const freeModels = configuredModel
+    ? [configuredModel]
+    : [
+        "deepseek/deepseek-r1:free",       // Best reasoning + STEM accuracy
+        "deepseek/deepseek-chat:free",      // DeepSeek V3 — good structured JSON
+        "google/gemini-2.5-pro-exp-03-25:free", // Gemini 2.5 Pro experimental
+        "meta-llama/llama-4-maverick:free", // Llama 4 fallback
+      ];
+
+  for (const model of freeModels) {
+    try {
+      console.log(`[OfflinePaper] Trying free model: ${model}`);
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://railway.app",
+          "X-Title": "Coaching Portal Offline Paper"
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: 8000,
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const text: string | undefined = data.choices?.[0]?.message?.content;
+        if (text) {
+          console.log(`[OfflinePaper] ${model} succeeded.`);
+          return text;
+        }
+        console.warn(`[OfflinePaper] ${model} returned empty content.`);
+      } else {
+        const errText = (await response.text()).slice(0, 300);
+        console.warn(`[OfflinePaper] ${model} failed (${response.status}): ${errText}`);
+      }
+    } catch (e: any) {
+      console.warn(`[OfflinePaper] ${model} threw: ${e.message}`);
+    }
+  }
+
+  throw new Error("All free models failed to generate the offline paper. Please try again.");
 }
 
 function shouldSkipPage(pageText: string): boolean {
