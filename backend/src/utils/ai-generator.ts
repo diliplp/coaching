@@ -1061,8 +1061,9 @@ JSON STRUCTURE:
 
   try {
     const rawResponse = await generateOfflinePaperContent(prompt);
+    console.log("[OfflinePaper] Raw response preview:", rawResponse.slice(0, 300));
 
-    // Strip markdown fences (```json ... ```) and any leading prose
+    // Strip markdown fences and any leading prose before the JSON object
     const stripped = rawResponse
       .replace(/^```(?:json)?\s*/im, "")
       .replace(/\s*```\s*$/im, "")
@@ -1074,13 +1075,27 @@ JSON STRUCTURE:
 
     const jsonSlice = stripped.slice(start, end + 1);
 
-    // First try strict parse, then fall back to our repair utility
+    // Try strict parse first
     try {
       return JSON.parse(jsonSlice);
-    } catch {
-      console.warn("[OfflinePaper] Strict JSON.parse failed — attempting repair...");
-      return JSON.parse(repairJsonString(jsonSlice));
-    }
+    } catch { /* fall through to repair */ }
+
+    // Apply layered repairs for common free-model issues
+    const repaired = jsonSlice
+      // unquoted property keys: {title: → {"title":
+      .replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":')
+      // single-quoted strings → double-quoted
+      .replace(/'([^'\\]*(\\.[^'\\]*)*)'/g, '"$1"')
+      // trailing commas before } or ]
+      .replace(/,\s*([}\]])/g, '$1');
+
+    try {
+      return JSON.parse(repaired);
+    } catch { /* fall through to repairJsonString */ }
+
+    console.warn("[OfflinePaper] Basic repair failed — trying repairJsonString...");
+    return JSON.parse(repairJsonString(repaired));
+
   } catch (error) {
     console.error("Offline Paper Generation failed:", error);
     throw error;
