@@ -1095,6 +1095,9 @@ async function generateOfflinePaperContent(prompt: string): Promise<string> {
 
   // ── 2. Gemini direct (free tier, fully separate from OpenRouter) ─────────
   const geminiClients = getGeminiClients();
+  if (geminiClients.length === 0) {
+    console.warn("[OfflinePaper] Gemini skipped — GEMINI_API_KEY not set.");
+  }
   if (geminiClients.length > 0) {
     for (const { client, name } of geminiClients) {
       try {
