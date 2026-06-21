@@ -273,7 +273,7 @@ async function generateContentWithFallback(prompt: string, fallbackJson: string 
 
   // 3. Free fallback models — last resort only; accuracy will be lower for STEM
   if (process.env.OPENROUTER_API_KEY) {
-    const freeModels = ["deepseek/deepseek-chat:free"];
+    const freeModels = ["meta-llama/llama-3.3-70b-instruct:free", "nvidia/nemotron-3-super-120b-a12b:free"];
     for (const model of freeModels) {
       try {
         console.warn(`[OpenRouter] WARNING: falling back to free model ${model} — STEM accuracy may be reduced.`);
@@ -1086,7 +1086,7 @@ async function generateOfflinePaperContent(prompt: string): Promise<string> {
 
   // ── 1. Dedicated offline OpenRouter account ──────────────────────────────
   const offlineKey = process.env.OFFLINE_OPENROUTER_API_KEY;
-  const offlineModel = process.env.OFFLINE_PAPER_MODEL || "deepseek/deepseek-chat:free";
+  const offlineModel = process.env.OFFLINE_PAPER_MODEL || "nvidia/nemotron-3-ultra-550b-a55b:free";
   if (offlineKey) {
     console.log(`[OfflinePaper] Using dedicated OFFLINE_OPENROUTER_API_KEY with ${offlineModel}`);
     const result = await callOpenRouter(offlineKey, offlineModel, prompt, errors);
@@ -1126,10 +1126,12 @@ async function generateOfflinePaperContent(prompt: string): Promise<string> {
   if (mainKey) {
     console.warn("[OfflinePaper] Falling back to main OPENROUTER_API_KEY (last resort).");
     const freeModels = [
-      "deepseek/deepseek-chat:free",
-      "meta-llama/llama-4-maverick:free",
-      "meta-llama/llama-4-scout:free",
-      "mistralai/mistral-small-3.2-24b-instruct:free",
+      "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "nvidia/nemotron-3-super-120b-a12b:free",
+      "meta-llama/llama-3.3-70b-instruct:free",
+      "openai/gpt-oss-120b:free",
+      "nousresearch/hermes-3-llama-3.1-405b:free",
+      "google/gemma-4-31b-it:free",
     ];
     for (const model of freeModels) {
       const result = await callOpenRouter(mainKey, model, prompt, errors);
