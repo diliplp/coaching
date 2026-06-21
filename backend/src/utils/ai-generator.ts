@@ -1079,23 +1079,27 @@ async function generateOfflinePaperContent(prompt: string): Promise<string> {
     throw new Error("OPENROUTER_API_KEY is not configured.");
   }
 
-  // Configurable via env; defaults to the best free STEM model available on OpenRouter
   const configuredModel = process.env.OFFLINE_PAPER_MODEL;
   const freeModels = configuredModel
     ? [configuredModel]
     : [
-        "deepseek/deepseek-chat:free",           // DeepSeek V3 — strong STEM, good JSON
-        "qwen/qwen3-235b-a22b:free",             // Qwen3 235B — excellent reasoning
-        "google/gemini-2.0-flash-exp:free",      // Gemini 2.0 Flash experimental
-        "meta-llama/llama-4-maverick:free",      // Llama 4 Maverick
-        "mistralai/mistral-small-3.2-24b-instruct:free", // Mistral fallback
+        "deepseek/deepseek-chat:free",
+        "meta-llama/llama-4-maverick:free",
+        "meta-llama/llama-4-scout:free",
+        "mistralai/mistral-small-3.2-24b-instruct:free",
+        "google/gemini-2.0-flash-exp:free",
       ];
 
+  const errors: string[] = [];
+
   for (const model of freeModels) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 90_000); // 90s per model
     try {
-      console.log(`[OfflinePaper] Trying free model: ${model}`);
+      console.log(`[OfflinePaper] Trying: ${model}`);
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
+        signal: controller.signal,
         headers: {
           "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
           "Content-Type": "application/json",
@@ -1105,28 +1109,50 @@ async function generateOfflinePaperContent(prompt: string): Promise<string> {
         body: JSON.stringify({
           model,
           messages: [{ role: "user", content: prompt }],
-          max_tokens: 8000,
+          max_tokens: 4096,
         })
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        const text: string | undefined = data.choices?.[0]?.message?.content;
-        if (text) {
-          console.log(`[OfflinePaper] ${model} succeeded.`);
-          return text;
-        }
-        console.warn(`[OfflinePaper] ${model} returned empty content.`);
-      } else {
-        const errText = (await response.text()).slice(0, 300);
-        console.warn(`[OfflinePaper] ${model} failed (${response.status}): ${errText}`);
+      clearTimeout(timeout);
+
+      const rawBody = await response.text();
+
+      if (!response.ok) {
+        const reason = rawBody.slice(0, 400);
+        console.warn(`[OfflinePaper] ${model} HTTP ${response.status}: ${reason}`);
+        errors.push(`${model}: HTTP ${response.status} — ${reason}`);
+        continue;
       }
+
+      let data: any;
+      try { data = JSON.parse(rawBody); } catch {
+        console.warn(`[OfflinePaper] ${model} returned non-JSON body: ${rawBody.slice(0, 200)}`);
+        errors.push(`${model}: non-JSON response`);
+        continue;
+      }
+
+      const text: string | undefined = data.choices?.[0]?.message?.content;
+      if (text && text.trim().length > 0) {
+        console.log(`[OfflinePaper] ${model} succeeded (${text.length} chars).`);
+        return text;
+      }
+
+      const finishReason = data.choices?.[0]?.finish_reason ?? "unknown";
+      console.warn(`[OfflinePaper] ${model} empty content, finish_reason=${finishReason}`);
+      errors.push(`${model}: empty content (finish_reason=${finishReason})`);
+
     } catch (e: any) {
-      console.warn(`[OfflinePaper] ${model} threw: ${e.message}`);
+      clearTimeout(timeout);
+      const msg = e.name === "AbortError" ? "timed out after 90s" : e.message;
+      console.warn(`[OfflinePaper] ${model} threw: ${msg}`);
+      errors.push(`${model}: ${msg}`);
     }
   }
 
-  throw new Error("All free models failed to generate the offline paper. Please try again.");
+  console.error("[OfflinePaper] All models failed:\n" + errors.join("\n"));
+  throw new Error(
+    "All free models failed to generate the paper.\n" + errors.map(e => `• ${e}`).join("\n")
+  );
 }
 
 function shouldSkipPage(pageText: string): boolean {
