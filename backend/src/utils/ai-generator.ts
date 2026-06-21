@@ -1061,12 +1061,26 @@ JSON STRUCTURE:
 
   try {
     const rawResponse = await generateOfflinePaperContent(prompt);
-    // Strip markdown fences if model wraps in ```json ... ```
-    const cleaned = rawResponse.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
+
+    // Strip markdown fences (```json ... ```) and any leading prose
+    const stripped = rawResponse
+      .replace(/^```(?:json)?\s*/im, "")
+      .replace(/\s*```\s*$/im, "")
+      .trim();
+
+    const start = stripped.indexOf("{");
+    const end = stripped.lastIndexOf("}");
     if (start === -1 || end === -1) throw new Error("No JSON object found in model response");
-    return JSON.parse(cleaned.slice(start, end + 1));
+
+    const jsonSlice = stripped.slice(start, end + 1);
+
+    // First try strict parse, then fall back to our repair utility
+    try {
+      return JSON.parse(jsonSlice);
+    } catch {
+      console.warn("[OfflinePaper] Strict JSON.parse failed — attempting repair...");
+      return JSON.parse(repairJsonString(jsonSlice));
+    }
   } catch (error) {
     console.error("Offline Paper Generation failed:", error);
     throw error;
