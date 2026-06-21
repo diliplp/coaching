@@ -1875,16 +1875,23 @@ apiRouter.post("/subject-books/:bookId/detect-curriculum", requireRole(["super_a
 });
 
 apiRouter.post("/offline-exams/generate", requireAuth, requireRole(["teacher", "super_admin"]), async (req, res) => {
-  try {
-    const { className, subjectName, topics } = req.body;
-    if (!className || !subjectName || !topics || topics.length === 0) {
-      return res.status(400).json({ message: "Class name, subject name, and topics are required." });
-    }
-    const paper = await generateOfflineBoardPaper({ className, subjectName, topics });
-    res.json(paper);
-  } catch (error: any) {
-    res.status(500).json({ message: error.message || "Failed to generate offline paper" });
+  const { className, subjectName, topics } = req.body;
+  if (!className || !subjectName || !topics || topics.length === 0) {
+    return res.status(400).json({ message: "Class name, subject name, and topics are required." });
   }
+  // Return job ID immediately so the HTTP connection doesn't time out while the AI generates
+  const jobId = createJob();
+  res.status(202).json({ jobId });
+
+  (async () => {
+    try {
+      emitJobEvent(jobId, { type: "progress", message: "Connecting to AI model..." });
+      const paper = await generateOfflineBoardPaper({ className, subjectName, topics });
+      emitJobEvent(jobId, { type: "complete", message: "Paper ready", data: paper });
+    } catch (error: any) {
+      emitJobEvent(jobId, { type: "error", message: error.message || "Failed to generate offline paper" });
+    }
+  })();
 });
 
 function getSingleFormValue(value: unknown) {

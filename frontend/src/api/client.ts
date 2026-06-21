@@ -347,11 +347,40 @@ export const apiClient = {
     request<{ chapters: { name: string; topics: string[] }[] }>(`/subject-books/${bookId}/detect-curriculum`, {
       method: "POST"
     }),
-  generateOfflineBoardPaper: (payload: { className: string; subjectName: string; topics: string[] }) =>
-    request<any>("/offline-exams/generate", {
-      method: "POST",
-      body: JSON.stringify(payload)
-    }),
+  generateOfflineBoardPaper: (
+    payload: { className: string; subjectName: string; topics: string[] },
+    onProgress: (msg: string) => void
+  ): Promise<any> => {
+    const session = getStoredSession();
+    const token = session?.token;
+    return new Promise((resolve, reject) => {
+      // Step 1: start job
+      fetch(`${API_BASE_URL}/offline-exams/generate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      })
+        .then(r => r.json())
+        .then(({ jobId }) => {
+          if (!jobId) { reject(new Error("Failed to start generation job")); return; }
+          // Step 2: subscribe to SSE stream
+          const es = new EventSource(`${API_BASE_URL}/jobs/${jobId}/stream`);
+          es.onmessage = (e) => {
+            try {
+              const event = JSON.parse(e.data);
+              if (event.type === "progress") { onProgress(event.message); }
+              else if (event.type === "complete") { es.close(); resolve(event.data); }
+              else if (event.type === "error") { es.close(); reject(new Error(event.message)); }
+            } catch { /* ignore parse errors */ }
+          };
+          es.onerror = () => { es.close(); reject(new Error("Connection lost while generating paper")); };
+        })
+        .catch(reject);
+    });
+  },
   // Admin Methods
   admin: {
     getClasses: () => request<any[]>("/admin/classes"),

@@ -8,22 +8,24 @@ export function OfflineExamBuilderPage() {
   const [topics, setTopics] = useState("Electrostatics, Current Electricity, Magnetism");
   const [paper, setPaper] = useState<any>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [statusMsg, setStatusMsg] = useState("");
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsGenerating(true);
+    setStatusMsg("Starting generation...");
     setPaper(null);
     try {
-      const result = await apiClient.generateOfflineBoardPaper({
-        className,
-        subjectName,
-        topics: topics.split(",").map(t => t.trim()).filter(Boolean)
-      });
+      const result = await apiClient.generateOfflineBoardPaper(
+        { className, subjectName, topics: topics.split(",").map(t => t.trim()).filter(Boolean) },
+        (msg) => setStatusMsg(msg)
+      );
       setPaper(result);
     } catch (err: any) {
       alert("Error generating paper: " + err.message);
     } finally {
       setIsGenerating(false);
+      setStatusMsg("");
     }
   };
 
@@ -168,9 +170,14 @@ export function OfflineExamBuilderPage() {
           </button>
           
           {isGenerating && (
-            <p className="muted-copy" style={{ textAlign: "center", fontSize: "0.9rem" }}>
-              Please wait. The AI is crafting 30+ unique questions matching the exact CBSE typology... (This takes about 45-60 seconds).
-            </p>
+            <div style={{ textAlign: "center" }}>
+              <p className="muted-copy" style={{ fontSize: "0.9rem", marginBottom: "6px" }}>
+                {statusMsg || "Connecting to AI..."}
+              </p>
+              <p className="muted-copy" style={{ fontSize: "0.8rem", color: "#94a3b8" }}>
+                This may take 1–3 minutes. The page will update automatically.
+              </p>
+            </div>
           )}
         </form>
       </div>
