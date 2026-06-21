@@ -1073,86 +1073,132 @@ JSON STRUCTURE:
   }
 }
 
-/** Dedicated OpenRouter call for offline paper generation — uses free models only. */
+/**
+ * Dedicated content generator for offline paper generation.
+ * Completely isolated from the online exam generation pipeline:
+ *
+ *   1. OFFLINE_OPENROUTER_API_KEY + OFFLINE_PAPER_MODEL  (dedicated separate account)
+ *   2. Gemini direct  (GEMINI_API_KEY — separate quota from OpenRouter entirely)
+ *   3. Main OPENROUTER_API_KEY free models  (last resort only, to avoid touching online quota)
+ */
 async function generateOfflinePaperContent(prompt: string): Promise<string> {
-  if (!process.env.OPENROUTER_API_KEY) {
-    throw new Error("OPENROUTER_API_KEY is not configured.");
-  }
-
-  const configuredModel = process.env.OFFLINE_PAPER_MODEL;
-  const freeModels = configuredModel
-    ? [configuredModel]
-    : [
-        "deepseek/deepseek-chat:free",
-        "meta-llama/llama-4-maverick:free",
-        "meta-llama/llama-4-scout:free",
-        "mistralai/mistral-small-3.2-24b-instruct:free",
-        "google/gemini-2.0-flash-exp:free",
-      ];
-
   const errors: string[] = [];
 
-  for (const model of freeModels) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 90_000); // 90s per model
-    try {
-      console.log(`[OfflinePaper] Trying: ${model}`);
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        signal: controller.signal,
-        headers: {
-          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://railway.app",
-          "X-Title": "Coaching Portal Offline Paper"
-        },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: "user", content: prompt }],
-          max_tokens: 4096,
-        })
-      });
+  // ── 1. Dedicated offline OpenRouter account ──────────────────────────────
+  const offlineKey = process.env.OFFLINE_OPENROUTER_API_KEY;
+  const offlineModel = process.env.OFFLINE_PAPER_MODEL || "deepseek/deepseek-chat:free";
+  if (offlineKey) {
+    console.log(`[OfflinePaper] Using dedicated OFFLINE_OPENROUTER_API_KEY with ${offlineModel}`);
+    const result = await callOpenRouter(offlineKey, offlineModel, prompt, errors);
+    if (result) return result;
+  }
 
-      clearTimeout(timeout);
-
-      const rawBody = await response.text();
-
-      if (!response.ok) {
-        const reason = rawBody.slice(0, 400);
-        console.warn(`[OfflinePaper] ${model} HTTP ${response.status}: ${reason}`);
-        errors.push(`${model}: HTTP ${response.status} — ${reason}`);
-        continue;
+  // ── 2. Gemini direct (free tier, fully separate from OpenRouter) ─────────
+  const geminiClients = getGeminiClients();
+  if (geminiClients.length > 0) {
+    for (const { client, name } of geminiClients) {
+      try {
+        console.log(`[OfflinePaper] Trying Gemini (${name})...`);
+        const result = await client.models.generateContent({
+          model: GEMINI_MODEL,
+          contents: prompt,
+          config: { responseMimeType: "application/json" }
+        });
+        const text = result.text;
+        if (text && text.trim().length > 0) {
+          console.log(`[OfflinePaper] Gemini (${name}) succeeded (${text.length} chars).`);
+          return text;
+        }
+        console.warn(`[OfflinePaper] Gemini (${name}) returned empty content.`);
+        errors.push(`Gemini (${name}): empty content`);
+      } catch (e: any) {
+        console.warn(`[OfflinePaper] Gemini (${name}) failed: ${e?.message ?? e}`);
+        errors.push(`Gemini (${name}): ${e?.message ?? e}`);
       }
-
-      let data: any;
-      try { data = JSON.parse(rawBody); } catch {
-        console.warn(`[OfflinePaper] ${model} returned non-JSON body: ${rawBody.slice(0, 200)}`);
-        errors.push(`${model}: non-JSON response`);
-        continue;
-      }
-
-      const text: string | undefined = data.choices?.[0]?.message?.content;
-      if (text && text.trim().length > 0) {
-        console.log(`[OfflinePaper] ${model} succeeded (${text.length} chars).`);
-        return text;
-      }
-
-      const finishReason = data.choices?.[0]?.finish_reason ?? "unknown";
-      console.warn(`[OfflinePaper] ${model} empty content, finish_reason=${finishReason}`);
-      errors.push(`${model}: empty content (finish_reason=${finishReason})`);
-
-    } catch (e: any) {
-      clearTimeout(timeout);
-      const msg = e.name === "AbortError" ? "timed out after 90s" : e.message;
-      console.warn(`[OfflinePaper] ${model} threw: ${msg}`);
-      errors.push(`${model}: ${msg}`);
     }
   }
 
-  console.error("[OfflinePaper] All models failed:\n" + errors.join("\n"));
+  // ── 3. Main OpenRouter key — free models only, last resort ───────────────
+  const mainKey = process.env.OPENROUTER_API_KEY;
+  if (mainKey) {
+    console.warn("[OfflinePaper] Falling back to main OPENROUTER_API_KEY (last resort).");
+    const freeModels = [
+      "deepseek/deepseek-chat:free",
+      "meta-llama/llama-4-maverick:free",
+      "meta-llama/llama-4-scout:free",
+      "mistralai/mistral-small-3.2-24b-instruct:free",
+    ];
+    for (const model of freeModels) {
+      const result = await callOpenRouter(mainKey, model, prompt, errors);
+      if (result) return result;
+    }
+  }
+
+  console.error("[OfflinePaper] All providers failed:\n" + errors.join("\n"));
   throw new Error(
-    "All free models failed to generate the paper.\n" + errors.map(e => `• ${e}`).join("\n")
+    "Could not generate the paper — all providers failed.\n" +
+    errors.map(e => `• ${e}`).join("\n")
   );
+}
+
+/** Single OpenRouter call with 90s timeout. Pushes failure reason into errors[] and returns null on failure. */
+async function callOpenRouter(
+  apiKey: string,
+  model: string,
+  prompt: string,
+  errors: string[]
+): Promise<string | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 90_000);
+  try {
+    console.log(`[OfflinePaper] Trying OpenRouter model: ${model}`);
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://railway.app",
+        "X-Title": "Coaching Portal Offline Paper"
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 4096,
+      })
+    });
+    clearTimeout(timeout);
+
+    const rawBody = await response.text();
+    if (!response.ok) {
+      const reason = rawBody.slice(0, 400);
+      console.warn(`[OfflinePaper] ${model} HTTP ${response.status}: ${reason}`);
+      errors.push(`${model}: HTTP ${response.status} — ${reason}`);
+      return null;
+    }
+
+    let data: any;
+    try { data = JSON.parse(rawBody); } catch {
+      errors.push(`${model}: non-JSON response`);
+      return null;
+    }
+
+    const text: string | undefined = data.choices?.[0]?.message?.content;
+    if (text && text.trim().length > 0) {
+      console.log(`[OfflinePaper] ${model} succeeded (${text.length} chars).`);
+      return text;
+    }
+    const finishReason = data.choices?.[0]?.finish_reason ?? "unknown";
+    errors.push(`${model}: empty content (finish_reason=${finishReason})`);
+    return null;
+
+  } catch (e: any) {
+    clearTimeout(timeout);
+    const msg = e.name === "AbortError" ? "timed out after 90s" : e.message;
+    console.warn(`[OfflinePaper] ${model} threw: ${msg}`);
+    errors.push(`${model}: ${msg}`);
+    return null;
+  }
 }
 
 function shouldSkipPage(pageText: string): boolean {
