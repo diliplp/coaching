@@ -492,6 +492,18 @@ button {
   border-color: #10b981;
 }
 
+.palette-button.marked-review {
+  background: #fef3c7;
+  border-color: #f59e0b;
+  color: #92400e;
+}
+
+.palette-button.answered-marked {
+  background: #fed7aa;
+  border-color: #f97316;
+  color: #9a3412;
+}
+
 .palette-button.active {
   box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.4);
   border-color: #0f766e;

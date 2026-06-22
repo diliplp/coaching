@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { getStoredSession } from "../auth";
@@ -14,6 +14,22 @@ export function DashboardPage() {
   const [batchPlans, setBatchPlans] = useState<BatchAdaptivePlan[]>([]);
   const [adaptiveStatus, setAdaptiveStatus] = useState("");
   const [teacherAdaptiveStatus, setTeacherAdaptiveStatus] = useState("");
+
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const formatCountdown = (target: Date) => {
+    const diff = Math.max(0, target.getTime() - now.getTime());
+    const h = Math.floor(diff / 3_600_000);
+    const m = Math.floor((diff % 3_600_000) / 60_000);
+    const s = Math.floor((diff % 60_000) / 1000);
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  };
 
   // Self-generation state
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
@@ -141,42 +157,38 @@ export function DashboardPage() {
             ) : (
               <div className="stack" style={{ gap: "12px" }}>
                 {data.scheduledExams.map(exam => {
-                  const now = new Date();
                   const startTime = exam.scheduledStartTime ? new Date(exam.scheduledStartTime) : null;
                   const endTime = exam.scheduledEndTime ? new Date(exam.scheduledEndTime) : null;
-
                   const hasStarted = !startTime || startTime <= now;
-                  const hasEnded = endTime && endTime < now;
+                  const hasEnded = !!(endTime && endTime < now);
                   const isAvailable = hasStarted && !hasEnded;
+                  const startsSoon = !hasStarted && startTime && (startTime.getTime() - now.getTime()) < 3_600_000;
 
                   return (
                     <article key={exam.id} className="row-between" style={{
-                      padding: "16px",
-                      background: "white",
-                      borderRadius: "12px",
-                      border: "1px solid var(--color-border)",
-                      opacity: isAvailable ? 1 : 0.7,
-                      transition: "all 0.2s"
+                      padding: "16px", background: "white", borderRadius: "12px",
+                      border: `1px solid ${isAvailable ? "var(--color-primary)" : startsSoon ? "#f59e0b" : "var(--color-border)"}`,
+                      opacity: hasEnded ? 0.6 : 1, transition: "all 0.2s"
                     }}>
                       <div style={{ display: "flex", gap: "15px", alignItems: "center" }}>
                         <div style={{
-                          width: "40px",
-                          height: "40px",
-                          borderRadius: "8px",
-                          background: isAvailable ? "var(--color-bg-secondary)" : "#f0f0f0",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: "1.2rem"
+                          width: "40px", height: "40px", borderRadius: "8px",
+                          background: isAvailable ? "#eff6ff" : startsSoon ? "#fffbeb" : "#f8fafc",
+                          display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.2rem"
                         }}>
-                          {hasEnded ? "🏁" : hasStarted ? "📝" : "⏳"}
+                          {hasEnded ? "🏁" : isAvailable ? "📝" : "⏳"}
                         </div>
                         <div>
-                          <strong style={{ fontSize: "1.1rem" }}>{exam.name}</strong>
-                          <div className="muted-copy" style={{ fontSize: "0.85rem" }}>
-                            ⏱️ {exam.durationMinutes} minutes
-                            {!hasStarted && startTime && ` • Starts: ${startTime.toLocaleString()}`}
-                            {hasEnded && ` • Ended`}
+                          <strong style={{ fontSize: "1.05rem" }}>{exam.name}</strong>
+                          <div className="muted-copy" style={{ fontSize: "0.82rem", marginTop: "2px" }}>
+                            ⏱️ {exam.durationMinutes} min
+                            {isAvailable && endTime && ` • Ends in ${formatCountdown(endTime)}`}
+                            {!hasStarted && startTime && (
+                              <span style={{ color: startsSoon ? "#d97706" : "#64748b", fontWeight: startsSoon ? 600 : 400 }}>
+                                {" "}• Starts in <strong>{formatCountdown(startTime)}</strong>
+                              </span>
+                            )}
+                            {hasEnded && " • Ended"}
                           </div>
                         </div>
                       </div>
@@ -184,9 +196,9 @@ export function DashboardPage() {
                         className={isAvailable ? "primary-button" : "secondary-button"}
                         onClick={() => isAvailable && startExam(exam.id)}
                         disabled={!isAvailable}
-                        style={{ padding: "8px 20px" }}
+                        style={{ padding: "8px 20px", minWidth: "100px" }}
                       >
-                        {hasEnded ? "Completed" : hasStarted ? "Start Exam" : "Upcoming"}
+                        {hasEnded ? "Ended" : isAvailable ? "Start Exam" : "Upcoming"}
                       </button>
                     </article>
                   );

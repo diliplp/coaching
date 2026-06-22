@@ -49,6 +49,13 @@ export function LiveExamPage() {
   const [isReviewMode, setIsReviewMode] = useState(false);
   const [resultVersion, setResultVersion] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [markedForReview, setMarkedForReview] = useState<Set<number>>(new Set());
+  const toggleMarkForReview = () =>
+    setMarkedForReview(prev => {
+      const next = new Set(prev);
+      next.has(currentIndex) ? next.delete(currentIndex) : next.add(currentIndex);
+      return next;
+    });
 
   // Anti-cheat state
   const [violations, setViolations] = useState(0);
@@ -387,6 +394,23 @@ export function LiveExamPage() {
   const latestResult = liveExamState.latestResult;
   const reviewData = latestResult?.review?.[currentIndex];
 
+  // Compute topic-wise breakdown from questions + review data
+  const topicBreakdown = useMemo(() => {
+    if (!generatedExam || !latestResult?.review) return [];
+    const map = new Map<string, { name: string; total: number; correct: number; unanswered: number }>();
+    generatedExam.questions.forEach((q: any, i: number) => {
+      const tid = q.topicId || "unknown";
+      const tname = latestResult.insights?.find((ins: any) => ins.topicId === tid)?.topicName || q.topicName || "Other";
+      if (!map.has(tid)) map.set(tid, { name: tname, total: 0, correct: 0, unanswered: 0 });
+      const entry = map.get(tid)!;
+      entry.total++;
+      const rev = latestResult.review?.[i];
+      if (!rev?.selectedOptionIds?.length) entry.unanswered++;
+      else if (rev.isCorrect) entry.correct++;
+    });
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [generatedExam, latestResult]);
+
   return (
     <div className="page" onContextMenu={e => e.preventDefault()}>
       {/* ── Fullscreen required overlay ─────────────────────────────────────── */}
@@ -588,7 +612,7 @@ export function LiveExamPage() {
               </div>
             )}
 
-            <div className="row-between" style={{ marginTop: "20px" }}>
+            <div className="row-between" style={{ marginTop: "20px", flexWrap: "wrap", gap: "10px" }}>
               <button
                 className="secondary-button"
                 disabled={currentIndex === 0}
@@ -596,6 +620,19 @@ export function LiveExamPage() {
               >
                 Previous
               </button>
+              {!isReviewMode && (
+                <button
+                  onClick={toggleMarkForReview}
+                  style={{
+                    padding: "10px 18px", borderRadius: "8px", fontWeight: 600, fontSize: "0.9rem", cursor: "pointer", border: "2px solid",
+                    borderColor: markedForReview.has(currentIndex) ? "#f59e0b" : "#cbd5e1",
+                    background: markedForReview.has(currentIndex) ? "#fef3c7" : "transparent",
+                    color: markedForReview.has(currentIndex) ? "#92400e" : "#64748b",
+                  }}
+                >
+                  {markedForReview.has(currentIndex) ? "🟡 Marked" : "🔖 Mark for Review"}
+                </button>
+              )}
               <button
                 className="primary-button"
                 disabled={isSubmitting || (isReviewMode && currentIndex === generatedExam.questions.length - 1)}
@@ -625,37 +662,31 @@ export function LiveExamPage() {
                 <p>{latestResult?.obtainedMarks} / {latestResult?.totalMarks} marks</p>
                 <p>{latestResult?.correctAnswers} Correct • {latestResult?.incorrectAnswers} Incorrect</p>
                 
-                <h4 style={{ marginTop: "20px", color: "var(--color-primary)" }}>Performance Analysis</h4>
-                
-                <div style={{ marginTop: "15px" }}>
-                  <strong style={{ color: "green" }}>✓ Your Strengths</strong>
-                  <ul className="plain-list compact" style={{ marginTop: "5px" }}>
-                    {latestResult?.insights
-                      .filter(t => t.accuracy >= 75)
-                      .map((topic) => (
-                        <li key={topic.topicId}>
-                          <strong>{topic.topicName}</strong>
-                          <div className="muted-copy">{topic.accuracy}% Accuracy • Strong</div>
-                        </li>
-                      ))}
-                    {latestResult?.insights.filter(t => t.accuracy >= 75).length === 0 && <li className="muted-copy">Keep practicing to build strengths!</li>}
-                  </ul>
-                </div>
-
-                <div style={{ marginTop: "15px" }}>
-                  <strong style={{ color: "red" }}>⚠ Areas for Improvement</strong>
-                  <ul className="plain-list compact" style={{ marginTop: "5px" }}>
-                    {latestResult?.insights
-                      .filter(t => t.accuracy < 75)
-                      .sort((a, b) => a.accuracy - b.accuracy)
-                      .map((topic) => (
-                        <li key={topic.topicId}>
-                          <strong>{topic.topicName}</strong>
-                          <div className="muted-copy">{topic.accuracy}% Accuracy • Focus here</div>
-                        </li>
-                      ))}
-                    {latestResult?.insights.filter(t => t.accuracy < 75).length === 0 && <li className="muted-copy">Excellent coverage!</li>}
-                  </ul>
+                <h4 style={{ marginTop: "20px", marginBottom: "12px", color: "var(--color-primary)" }}>Topic-wise Breakdown</h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {topicBreakdown.map(t => {
+                    const wrong = t.total - t.correct - t.unanswered;
+                    const pct = Math.round((t.correct / t.total) * 100);
+                    const color = pct >= 75 ? "#16a34a" : pct >= 40 ? "#f59e0b" : "#dc2626";
+                    return (
+                      <div key={t.name}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", marginBottom: "4px" }}>
+                          <span style={{ fontWeight: 600 }}>{t.name}</span>
+                          <span style={{ color, fontWeight: 700 }}>{t.correct}/{t.total}</span>
+                        </div>
+                        <div style={{ height: "6px", borderRadius: "3px", background: "#e2e8f0", overflow: "hidden" }}>
+                          <div style={{ display: "flex", height: "100%" }}>
+                            <div style={{ width: `${(t.correct/t.total)*100}%`, background: "#16a34a" }} />
+                            <div style={{ width: `${(wrong/t.total)*100}%`, background: "#ef4444" }} />
+                            <div style={{ width: `${(t.unanswered/t.total)*100}%`, background: "#94a3b8" }} />
+                          </div>
+                        </div>
+                        <div style={{ fontSize: "0.72rem", color: "#64748b", marginTop: "2px" }}>
+                          {t.correct} correct · {wrong} wrong · {t.unanswered} skipped
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -694,18 +725,27 @@ export function LiveExamPage() {
           ) : (
             <>
               <h3>Question Palette</h3>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", fontSize: "0.7rem", marginBottom: "10px" }}>
+                {[["#e2e8f0","#475569","Not visited"],["#bbf7d0","#15803d","Answered"],["#fef3c7","#92400e","Marked"],["#fed7aa","#9a3412","Answered+Marked"]].map(([bg,col,label]) => (
+                  <span key={label} style={{ display:"flex", alignItems:"center", gap:"4px", color: col }}>
+                    <span style={{ width:10, height:10, borderRadius:2, background:bg, display:"inline-block" }} />{label}
+                  </span>
+                ))}
+              </div>
               <div className="palette-grid">
                 {generatedExam.questions.map((question: any, index: number) => {
                   const attempted = (answers[question.id] ?? []).length > 0;
+                  const marked = markedForReview.has(index);
                   const isActive = currentIndex === index;
+                  let cls = "palette-button";
+                  if (isActive) cls += " active";
+                  else if (attempted && marked) cls += " answered-marked";
+                  else if (marked) cls += " marked-review";
+                  else if (attempted) cls += " answered";
                   return (
-                    <button
-                      type="button"
-                      key={question.id}
-                      className={`palette-button ${attempted ? "answered" : ""} ${isActive ? "active" : ""}`}
-                      onClick={() => setCurrentIndex(index)}
-                    >
-                      {index + 1}
+                    <button type="button" key={question.id} className={cls}
+                      onClick={() => setCurrentIndex(index)} title={`Q${index+1}${marked?" · Marked for Review":""}`}>
+                      {index + 1}{marked && !isActive ? "·" : ""}
                     </button>
                   );
                 })}
