@@ -14,6 +14,8 @@ export function DashboardPage() {
   const [batchPlans, setBatchPlans] = useState<BatchAdaptivePlan[]>([]);
   const [adaptiveStatus, setAdaptiveStatus] = useState("");
   const [teacherAdaptiveStatus, setTeacherAdaptiveStatus] = useState("");
+  const [startingExamId, setStartingExamId] = useState<string | null>(null);
+  const [examStartError, setExamStartError] = useState<string | null>(null);
 
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -87,13 +89,17 @@ export function DashboardPage() {
   }
 
   const startExam = async (examId: string) => {
+    setStartingExamId(examId);
+    setExamStartError(null);
     try {
       const payload = await apiClient.getExam(examId);
       liveExamState.generatedExam = payload;
       liveExamState.latestResult = null;
       navigate("/live-exam");
-    } catch (e) {
-      alert("Failed to load exam");
+    } catch (e: any) {
+      setExamStartError(e?.message || "Failed to load exam. Please try again.");
+    } finally {
+      setStartingExamId(null);
     }
   };
 
@@ -150,6 +156,11 @@ export function DashboardPage() {
               <p className="muted-copy">Official tests assigned to your batch</p>
             </div>
 
+            {examStartError && (
+              <div style={{ padding: "12px 16px", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "8px", color: "#dc2626", fontSize: "0.9rem", marginBottom: "12px" }}>
+                {examStartError}
+              </div>
+            )}
             {data.scheduledExams.length === 0 ? (
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "40px", background: "rgba(0,0,0,0.02)", borderRadius: "12px", border: "1px dashed var(--color-border)" }}>
                 <p className="muted-copy">No active scheduled exams right now.</p>
@@ -194,11 +205,11 @@ export function DashboardPage() {
                       </div>
                       <button
                         className={isAvailable ? "primary-button" : "secondary-button"}
-                        onClick={() => isAvailable && startExam(exam.id)}
-                        disabled={!isAvailable}
-                        style={{ padding: "8px 20px", minWidth: "100px" }}
+                        onClick={() => { if (isAvailable && !startingExamId) void startExam(exam.id); }}
+                        disabled={!isAvailable || !!startingExamId}
+                        style={{ padding: "8px 20px", minWidth: "110px" }}
                       >
-                        {hasEnded ? "Ended" : isAvailable ? "Start Exam" : "Upcoming"}
+                        {startingExamId === exam.id ? "Loading..." : hasEnded ? "Ended" : isAvailable ? "Start Exam" : "Upcoming"}
                       </button>
                     </article>
                   );

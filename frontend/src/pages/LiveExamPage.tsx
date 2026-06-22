@@ -13,6 +13,8 @@ export function LiveExamPage() {
   const [activeExam, setActiveExam] = useState<any | null>(() => liveExamState.generatedExam);
   const [scheduledExams, setScheduledExams] = useState<any[]>([]);
   const [loadingOverview, setLoadingOverview] = useState(false);
+  const [startingId, setStartingId] = useState<string | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
 
   useEffect(() => {
     setActiveExam(liveExamState.generatedExam);
@@ -31,13 +33,18 @@ export function LiveExamPage() {
   }, [activeExam]);
 
   const startScheduledExam = async (id: string) => {
+    setStartingId(id);
+    setStartError(null);
     try {
       const payload = await apiClient.getExam(id);
       liveExamState.generatedExam = payload;
       liveExamState.latestResult = null;
       setActiveExam(payload);
-    } catch (e) {
-      alert("Failed to load exam");
+    } catch (e: any) {
+      console.error("[startScheduledExam] failed:", e);
+      setStartError(e?.message || "Failed to load exam. Please try again or contact your administrator.");
+    } finally {
+      setStartingId(null);
     }
   };
 
@@ -159,6 +166,11 @@ export function LiveExamPage() {
           <p>Select an exam from your scheduled list to begin the test.</p>
         </section>
 
+        {startError && (
+          <div style={{ padding: "12px 16px", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "8px", color: "#dc2626", fontSize: "0.9rem", marginBottom: "16px" }}>
+            {startError}
+          </div>
+        )}
         {loadingOverview ? (
           <p>Loading scheduled exams...</p>
         ) : scheduledExams.length === 0 ? (
@@ -209,11 +221,11 @@ export function LiveExamPage() {
                   </div>
                   <button
                     className={isAvailable ? "primary-button" : "secondary-button"}
-                    onClick={() => isAvailable && startScheduledExam(exam.id)}
-                    disabled={!isAvailable}
-                    style={{ padding: "10px 24px" }}
+                    onClick={() => { if (isAvailable && !startingId) void startScheduledExam(exam.id); }}
+                    disabled={!isAvailable || !!startingId}
+                    style={{ padding: "10px 24px", minWidth: "110px" }}
                   >
-                    {hasEnded ? "Completed" : hasStarted ? "Start Exam" : "Upcoming"}
+                    {startingId === exam.id ? "Loading..." : hasEnded ? "Completed" : hasStarted ? "Start Exam" : "Upcoming"}
                   </button>
                 </article>
               );
