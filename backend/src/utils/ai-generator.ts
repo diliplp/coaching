@@ -1069,9 +1069,13 @@ JSON STRUCTURE:
       .replace(/\s*```\s*$/im, "")
       .trim();
 
-    const start = stripped.indexOf("{");
+    // Find the JSON object — prefer the last top-level { so reasoning preamble is skipped
+    // Look for {"  (object starting a key) rather than bare { which may appear in prose
+    let start = stripped.lastIndexOf('{"');
+    if (start === -1) start = stripped.indexOf("{");
     const end = stripped.lastIndexOf("}");
-    if (start === -1 || end === -1) throw new Error("No JSON object found in model response");
+    if (start === -1 || end === -1 || end < start)
+      throw new Error("No JSON object found in model response");
 
     const jsonSlice = stripped.slice(start, end + 1);
 
@@ -1154,13 +1158,13 @@ async function generateOfflinePaperContent(prompt: string): Promise<string> {
   const mainKey = process.env.OPENROUTER_API_KEY;
   if (mainKey) {
     console.warn("[OfflinePaper] Falling back to main OPENROUTER_API_KEY (last resort).");
+    // Instruction-tuned models first — reasoning models (Nemotron) burn tokens on thinking text
     const freeModels = [
-      "nvidia/nemotron-3-ultra-550b-a55b:free",
-      "nvidia/nemotron-3-super-120b-a12b:free",
-      "meta-llama/llama-3.3-70b-instruct:free",
-      "openai/gpt-oss-120b:free",
-      "nousresearch/hermes-3-llama-3.1-405b:free",
-      "google/gemma-4-31b-it:free",
+      "meta-llama/llama-3.3-70b-instruct:free",        // fast, instruction-tuned, good JSON
+      "google/gemma-4-31b-it:free",                    // instruction-tuned Gemma 4
+      "nousresearch/hermes-3-llama-3.1-405b:free",     // Hermes — strong JSON output
+      "openai/gpt-oss-120b:free",                      // OpenAI OSS 120B
+      "nvidia/nemotron-3-ultra-550b-a55b:free",        // large but reasoning model — last resort
     ];
     for (const model of freeModels) {
       const result = await callOpenRouter(mainKey, model, prompt, errors);
@@ -1197,8 +1201,12 @@ async function callOpenRouter(
       },
       body: JSON.stringify({
         model,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 4096,
+        messages: [
+          // System message suppresses chain-of-thought reasoning preamble
+          { role: "system", content: "You are a CBSE exam paper generator. Output ONLY a valid JSON object. No reasoning, no explanation, no markdown. Start your response with { and end with }." },
+          { role: "user", content: prompt }
+        ],
+        max_tokens: 7000,
       })
     });
     clearTimeout(timeout);
