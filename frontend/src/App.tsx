@@ -1,5 +1,32 @@
-import { useEffect, useState } from "react";
+import { Component, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
+
+class ExamErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(err: Error) {
+    return { error: err?.message || "Unknown error" };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="page">
+          <div style={{ padding: "40px", background: "#fef2f2", borderRadius: "12px", border: "1px solid #fca5a5", marginTop: "20px" }}>
+            <h2 style={{ color: "#dc2626", marginTop: 0 }}>Exam failed to load</h2>
+            <p style={{ color: "#991b1b", fontFamily: "monospace", fontSize: "0.85rem" }}>{this.state.error}</p>
+            <button className="primary-button" onClick={() => { this.setState({ error: null }); window.location.href = "/live-exam"; }}>
+              Try Again
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -100,7 +127,7 @@ export default function App() {
             path="/subject-books" 
             element={<ProtectedRoute roles={["super_admin"]}><SubjectBooksPage /></ProtectedRoute>} 
           />
-          <Route path="/live-exam" element={<LiveExamPage />} />
+          <Route path="/live-exam" element={<ExamErrorBoundary><LiveExamPage /></ExamErrorBoundary>} />
           <Route
             path="/my-results"
             element={<ProtectedRoute roles={["student"]}><MyResultsPage /></ProtectedRoute>}

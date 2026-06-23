@@ -259,6 +259,20 @@ export function LiveExamPage() {
 
   const currentQuestion = generatedExam.questions[currentIndex];
 
+  // Guard: if questions array has no valid item at currentIndex, reset to 0
+  if (!currentQuestion) {
+    if (currentIndex !== 0) {
+      setCurrentIndex(0);
+    }
+    return (
+      <div className="page">
+        <p style={{ padding: "40px", color: "#dc2626" }}>
+          Question {currentIndex + 1} could not be loaded. Returning to question 1...
+        </p>
+      </div>
+    );
+  }
+
   const toggleOption = (questionId: string, optionId: string, multiCorrect: boolean) => {
     if (isReviewMode) return;
 

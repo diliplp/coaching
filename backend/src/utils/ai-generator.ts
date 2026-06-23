@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { jsonrepair } from "jsonrepair";
 import { Question, QuestionOption, QuestionType, QuestionSource } from "../types.js";
 import { listRecords } from "../data/database.js";
 import crypto from "node:crypto";
@@ -1097,8 +1098,15 @@ JSON STRUCTURE:
       return JSON.parse(repaired);
     } catch { /* fall through to repairJsonString */ }
 
+    // Try our character-level repair (handles LaTeX backslashes, control chars)
     console.warn("[OfflinePaper] Basic repair failed — trying repairJsonString...");
-    return JSON.parse(repairJsonString(repaired));
+    try {
+      return JSON.parse(repairJsonString(repaired));
+    } catch { /* fall through */ }
+
+    // Last resort: jsonrepair handles unescaped quotes, missing commas, etc.
+    console.warn("[OfflinePaper] repairJsonString failed — trying jsonrepair...");
+    return JSON.parse(jsonrepair(jsonSlice));
 
   } catch (error) {
     console.error("Offline Paper Generation failed:", error);
