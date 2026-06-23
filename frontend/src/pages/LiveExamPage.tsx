@@ -56,6 +56,7 @@ export function LiveExamPage() {
   const [isReviewMode, setIsReviewMode] = useState(false);
   const [resultVersion, setResultVersion] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [markedForReview, setMarkedForReview] = useState<Set<number>>(new Set());
   const toggleMarkForReview = () =>
     setMarkedForReview(prev => {
@@ -650,7 +651,7 @@ export function LiveExamPage() {
                 disabled={isSubmitting || (isReviewMode && currentIndex === generatedExam.questions.length - 1)}
                 onClick={() => {
                   if (!isReviewMode && currentIndex === generatedExam.questions.length - 1) {
-                    void submitExam();
+                    setShowSubmitConfirm(true);
                   } else {
                     setCurrentIndex((index) => Math.min(generatedExam.questions.length - 1, index + 1));
                   }
@@ -763,9 +764,9 @@ export function LiveExamPage() {
                 })}
               </div>
 
-              <button 
-                className="primary-button full-width" 
-                onClick={() => void submitExam()} 
+              <button
+                className="primary-button full-width"
+                onClick={() => setShowSubmitConfirm(true)}
                 disabled={isSubmitting}
               >
                 {isSubmitting ? "Submitting Results..." : "Submit Exam"}
@@ -896,6 +897,66 @@ export function LiveExamPage() {
           </div>
         </section>
       )}
+      {/* ── Submit Confirmation Modal ───────────────────────────────────────── */}
+      {showSubmitConfirm && !isReviewMode && (() => {
+        const total = generatedExam.questions.length;
+        const attempted = Object.values(answers).filter(a => a.length > 0).length;
+        const unattempted = total - attempted;
+        const markedCount = markedForReview.size;
+        return (
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)",
+            zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "20px"
+          }}>
+            <div style={{
+              background: "white", borderRadius: "16px", padding: "32px",
+              maxWidth: "420px", width: "100%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)"
+            }}>
+              <h2 style={{ margin: "0 0 8px 0", fontSize: "1.3rem" }}>Submit Exam?</h2>
+              <p style={{ color: "#64748b", margin: "0 0 20px 0", fontSize: "0.9rem" }}>
+                This action cannot be undone.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "24px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", background: "#f0fdf4", borderRadius: "8px" }}>
+                  <span style={{ color: "#166534" }}>Answered</span>
+                  <strong style={{ color: "#16a34a" }}>{attempted} / {total}</strong>
+                </div>
+                {unattempted > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", background: "#fef2f2", borderRadius: "8px" }}>
+                    <span style={{ color: "#991b1b" }}>Not Answered</span>
+                    <strong style={{ color: "#dc2626" }}>{unattempted}</strong>
+                  </div>
+                )}
+                {markedCount > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", background: "#fffbeb", borderRadius: "8px" }}>
+                    <span style={{ color: "#92400e" }}>Marked for Review</span>
+                    <strong style={{ color: "#f59e0b" }}>{markedCount}</strong>
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: "12px" }}>
+                <button
+                  className="secondary-button"
+                  style={{ flex: 1 }}
+                  onClick={() => setShowSubmitConfirm(false)}
+                  disabled={isSubmitting}
+                >
+                  Go Back
+                </button>
+                <button
+                  className="primary-button"
+                  style={{ flex: 1, background: "#dc2626", borderColor: "#dc2626" }}
+                  onClick={() => { setShowSubmitConfirm(false); void submitExam(); }}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? "Submitting..." : "Yes, Submit"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
