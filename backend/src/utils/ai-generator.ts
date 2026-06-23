@@ -348,17 +348,25 @@ export async function generateQuestionsFromText(params: {
     throw new Error("Neither GEMINI_API_KEY nor OPENROUTER_API_KEY is configured.");
   }
 
+  const textLower = text.toLowerCase();
+  const subjectLower = (subject ?? "").toLowerCase();
+
   const chemKeywords = ["chemistry", "molecule", "reaction", "bond", "acid", "organic", "compound", "structure", "formula", "chemical"];
-  const isChemistry = subject?.toLowerCase().includes("chemistry") || chemKeywords.some(k => text.toLowerCase().includes(k));
+  const isChemistry = subjectLower.includes("chemistry") || chemKeywords.some(k => textLower.includes(k));
 
   const physicsKeywords = ["physics", "force", "velocity", "acceleration", "momentum", "energy", "wave", "optics", "electric", "magnetic", "thermodynamic", "motion", "kinematics", "gravitation", "pressure", "current", "resistance"];
-  const isPhysics = subject?.toLowerCase().includes("physics") || physicsKeywords.some(k => text.toLowerCase().includes(k));
+  const isPhysics = subjectLower.includes("physics") || physicsKeywords.some(k => textLower.includes(k));
 
   const mathKeywords = ["mathematics", "calculus", "algebra", "geometry", "trigonometry", "integration", "differentiation", "probability", "matrix", "determinant", "vector", "coordinate", "parabola", "ellipse"];
-  const isMath = subject?.toLowerCase().includes("math") || mathKeywords.some(k => text.toLowerCase().includes(k));
+  const isMath = subjectLower.includes("math") || mathKeywords.some(k => textLower.includes(k));
 
   const bioKeywords = ["biology", "cell", "organism", "photosynthesis", "respiration", "genetics", "dna", "rna", "enzyme", "ecosystem", "evolution", "hormone", "neuron", "mitosis", "meiosis"];
-  const isBiology = subject?.toLowerCase().includes("bio") || bioKeywords.some(k => text.toLowerCase().includes(k));
+  const isBiology = subjectLower.includes("bio") || bioKeywords.some(k => textLower.includes(k));
+
+  // Detect target competitive exam from subject name / topic names / text
+  const topicStr = (topicNames ?? []).join(" ").toLowerCase();
+  const isJEE = subjectLower.includes("jee") || topicStr.includes("jee") || textLower.includes("jee") || textLower.includes("iit");
+  const isNEET = subjectLower.includes("neet") || topicStr.includes("neet") || textLower.includes("neet") || textLower.includes("aiims");
 
   const needsGraph = isPhysics || isMath || isBiology;
 
@@ -437,8 +445,40 @@ export async function generateQuestionsFromText(params: {
         ? `\nFOCUS: Generate questions EXCLUSIVELY about the chapter "${chapterName}"${topicNames?.length ? `, covering these topics: ${topicNames.join(', ')}` : ''}. Do NOT generate questions about any other chapter or unrelated content.\n`
         : "";
 
+      // Exam-type specific syllabus enforcement block
+      const examScopeInstruction = (() => {
+        if (isJEE) return `
+EXAM SCOPE — JEE (Joint Entrance Examination):
+- ALL questions MUST be within the official JEE Main/Advanced syllabus. Do NOT ask about topics not covered in JEE syllabus.
+- Physics: Mechanics, Thermodynamics, Electrostatics, Magnetism, Optics, Modern Physics, Waves, SHM, Rotation, Gravitation, Fluid Mechanics. NOT general science trivia.
+- Chemistry: Physical (Equilibrium, Electrochemistry, Kinetics, Thermodynamics), Inorganic (Periodicity, Coordination, p/d-block elements), Organic (Named reactions, Mechanisms, Functional groups, Polymers, Biomolecules). Do NOT go outside the JEE chemistry syllabus.
+- Mathematics: Calculus, Coordinate Geometry, Algebra (Complex numbers, Matrices, Sequences), Trigonometry, Vectors, 3D Geometry, Probability, Permutations & Combinations. NOT topics outside JEE scope.
+- Style: Application-based, multi-step numerical problems. No straight-recall trivia. Marks: 4 per question, negative: -1.
+`;
+        if (isNEET) return `
+EXAM SCOPE — NEET (National Eligibility cum Entrance Test):
+- ALL questions MUST be within the official NEET syllabus (Classes XI and XII NCERT topics). Do NOT ask about topics beyond NEET scope.
+- Physics: Laws of Motion, Work-Energy, Thermal Properties, Electrostatics, Current Electricity, Magnetic Effects, Optics, Dual Nature, Atoms and Nuclei. NCERT-aligned only.
+- Chemistry: Physical (Mole concept, Equilibrium, Electrochemistry), Inorganic (Periodic table, Chemical bonding, p-block, d-block), Organic (Biomolecules, Polymers, Mechanisms). NCERT-aligned only.
+- Biology: Cell Biology, Genetics, Ecology, Plant Physiology, Human Physiology, Reproduction, Evolution, Biotechnology. STRICTLY based on NCERT XI–XII content.
+- Style: Concept-based MCQs, NCERT level. 1–2 mark per question, negative: -1/4.
+`;
+        return "";
+      })();
+
+      const topicScopeInstruction = topicNames?.length
+        ? `TOPIC SCOPE — Generate questions ONLY from these specific topics: ${topicNames.join(", ")}. Questions about ANY other topic, even from the same subject, must NOT be generated.`
+        : "";
+
       const prompt = `
-You are an expert educator creating exam questions from a textbook. Generate exactly ${currentBatchCount} NEW multiple-choice questions from the textbook content below.
+You are an expert educator creating exam questions STRICTLY from the provided textbook content. Generate exactly ${currentBatchCount} NEW multiple-choice questions.
+
+SYLLABUS ENFORCEMENT (HIGHEST PRIORITY — OVERRIDE EVERYTHING ELSE):
+1. ONLY use concepts, facts, and formulas that APPEAR IN THE TEXT BELOW or are direct implications of it. Do NOT use general knowledge or anything not in the text.
+2. If the text does not contain enough material for ${currentBatchCount} questions on the topic, generate fewer high-quality on-topic questions rather than inventing off-topic ones.
+3. Every question must be traceable to a specific sentence, formula, or concept in the provided text.
+${topicScopeInstruction}
+${examScopeInstruction}
 ${chapterFocusInstruction}
 ${exampleInstruction}
 ${avoidanceInstruction}

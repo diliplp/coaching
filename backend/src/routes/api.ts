@@ -1239,15 +1239,31 @@ apiRouter.post("/exams/generate-from-prompt", requireRole(["super_admin"]), asyn
     const book = (state as any).subjectBooks?.find((b: any) => b.subjectId === subject.id && b.parsedText)
       ?? null;
 
+    // Detect competitive exam type from the original user prompt
+    const promptLower = prompt.toLowerCase();
+    const isJEEPrompt = promptLower.includes("jee") || promptLower.includes("iit");
+    const isNEETPrompt = promptLower.includes("neet") || promptLower.includes("aiims");
+    const examTypeHint = isJEEPrompt ? "JEE" : isNEETPrompt ? "NEET" : "";
+
     // Step 6 — synthesize source text if no book is available
-    // The AI will generate questions from its own knowledge about these topics
+    // Build a structured scope document so the AI knows exactly what it can and cannot use
     const sourceText = book?.parsedText ?? [
-      `Subject: ${subject.name}`,
-      `Topics: ${targetTopics.map(t => t.name).join(", ")}`,
-      `Difficulty: ${parsed.difficulty}`,
-      `Generate ${totalQuestions} high-quality multiple-choice questions suitable for Class 11/12`,
-      `students covering the above topics in ${subject.name}.`,
-      `Each question should test conceptual understanding, not just memorisation.`,
+      `EXAM TYPE: ${examTypeHint || "Class 11/12 Board / Competitive entrance"}`,
+      `SUBJECT: ${subject.name}`,
+      `TOPICS IN SCOPE: ${targetTopics.map(t => t.name).join(", ")}`,
+      `DIFFICULTY: ${parsed.difficulty}`,
+      ``,
+      `SCOPE RULES — THE AI MUST STRICTLY FOLLOW THESE:`,
+      `- Only generate questions that test the concepts listed under TOPICS IN SCOPE above.`,
+      `- Do NOT introduce concepts, topics, or subtopics not listed above.`,
+      `- Do NOT use examples or questions from chapters not mentioned above.`,
+      `- Every question must be derivable from standard Class 11/12 NCERT textbook content for the listed topics.`,
+      ...(isJEEPrompt ? [
+        `JEE SCOPE: Use only JEE Main/Advanced syllabus for ${subject.name}. Questions must be application-based with 4 marks each. No trivia.`,
+      ] : []),
+      ...(isNEETPrompt ? [
+        `NEET SCOPE: Use only NEET UG syllabus (XI–XII NCERT) for ${subject.name}. Questions must be NCERT-aligned, concept-based.`,
+      ] : []),
     ].join("\n");
 
     // Step 7 — generate questions fresh from AI, distributed across topics
@@ -1262,7 +1278,7 @@ apiRouter.post("/exams/generate-from-prompt", requireRole(["super_admin"]), asyn
         text: sourceText,
         topicId: topic.id,
         subjectId: subject.id,
-        subject: subject.name,
+        subject: `${examTypeHint ? examTypeHint + " " : ""}${subject.name}`,
         chapterName: topic.name,
         topicNames: [topic.name],
         questionCount: needed,
