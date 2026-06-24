@@ -63,6 +63,16 @@ export function OfflineExamBuilderPage() {
         </div>
         
         <div id="printable-paper" style={{ maxWidth: "800px", margin: "0 auto", padding: "40px", fontSize: "16px", lineHeight: "1.5" }}>
+          {/* Academy header */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "16px", marginBottom: "10px" }}>
+            <img src="/logo.jpeg" alt="BSA Logo" style={{ width: "68px", height: "68px", objectFit: "contain" }} />
+            <div style={{ textAlign: "left" }}>
+              <div style={{ fontSize: "22px", fontWeight: "bold", letterSpacing: "0.3px" }}>Brainwave Science Academy</div>
+              <div style={{ fontSize: "13px", color: "#444", marginTop: "2px" }}>Excellence in Education</div>
+            </div>
+          </div>
+          <hr style={{ border: "none", borderTop: "2px solid black", marginBottom: "14px" }} />
+
           <div style={{ textAlign: "center", marginBottom: "20px" }}>
             <h1 style={{ textTransform: "uppercase", fontSize: "22px", margin: "0 0 10px 0" }}>{paper.title}</h1>
             <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", borderBottom: "2px solid black", paddingBottom: "10px" }}>

@@ -75,14 +75,99 @@ export function MyResultsPage() {
     const total = review.length;
 
     return (
-      <div className="page">
-        <section className="section-heading">
-          <p className="eyebrow">Exam Review</p>
-          <h2>{selected.examName}</h2>
-          <button className="secondary-button" style={{ marginTop: "0.5rem" }} onClick={() => setSelected(null)}>
-            ← Back to All Results
-          </button>
-        </section>
+      <>
+        <style>{`
+          @media print {
+            .sidebar, .sidebar-toggle, header, nav { display: none !important; }
+            .app-shell, .content { display: block !important; margin: 0 !important; padding: 0 !important; width: 100% !important; }
+            .page { display: none !important; }
+            #bsa-report-card {
+              display: block !important;
+              padding: 30px !important;
+              font-family: 'Times New Roman', Times, serif !important;
+              color: black !important;
+            }
+          }
+        `}</style>
+
+        {/* Printable report card — hidden on screen, visible on print */}
+        <div id="bsa-report-card" style={{ display: "none" }}>
+          <div style={{ textAlign: "center", borderBottom: "2px solid black", paddingBottom: "14px", marginBottom: "20px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "14px", marginBottom: "8px" }}>
+              <img src="/logo.jpeg" alt="BSA Logo" style={{ width: "62px", height: "62px", objectFit: "contain" }} />
+              <div style={{ textAlign: "left" }}>
+                <div style={{ fontSize: "20px", fontWeight: "bold" }}>Brainwave Science Academy</div>
+                <div style={{ fontSize: "12px", color: "#555", marginTop: "2px" }}>Performance Report Card</div>
+              </div>
+            </div>
+            <div style={{ fontSize: "16px", fontWeight: "bold", marginTop: "10px" }}>{selected.examName}</div>
+            <div style={{ fontSize: "12px", color: "#555", marginTop: "4px" }}>Date: {formatDate(selected.submittedAt)}</div>
+          </div>
+
+          <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "22px" }}>
+            <tbody>
+              <tr>
+                {[
+                  { label: "Marks Obtained", value: `${selected.obtainedMarks} / ${selected.totalMarks}` },
+                  { label: "Percentage", value: `${selected.percentage}%` },
+                  { label: "Correct", value: selected.correctAnswers },
+                  { label: "Wrong", value: selected.incorrectAnswers },
+                  { label: "Unattempted", value: selected.unattemptedAnswers },
+                ].map((stat) => (
+                  <td key={stat.label} style={{ border: "1px solid #bbb", padding: "10px 14px", textAlign: "center" }}>
+                    <div style={{ fontSize: "20px", fontWeight: "bold" }}>{stat.value}</div>
+                    <div style={{ fontSize: "11px", color: "#555", marginTop: "3px" }}>{stat.label}</div>
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+
+          {selected.insights?.length > 0 && (
+            <>
+              <div style={{ fontWeight: "bold", fontSize: "13px", marginBottom: "8px", textDecoration: "underline" }}>Topic-wise Performance</div>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                <thead>
+                  <tr style={{ background: "#f0f0f0" }}>
+                    {["Topic", "Total Qs", "Correct", "Wrong", "Skipped", "Accuracy"].map((h) => (
+                      <th key={h} style={{ border: "1px solid #bbb", padding: "7px 10px", textAlign: "left" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {selected.insights.map((ins, i) => (
+                    <tr key={i}>
+                      <td style={{ border: "1px solid #bbb", padding: "6px 10px" }}>{ins.topicName}</td>
+                      <td style={{ border: "1px solid #bbb", padding: "6px 10px", textAlign: "center" }}>{ins.totalQuestions}</td>
+                      <td style={{ border: "1px solid #bbb", padding: "6px 10px", textAlign: "center" }}>{ins.correctAnswers}</td>
+                      <td style={{ border: "1px solid #bbb", padding: "6px 10px", textAlign: "center" }}>{ins.incorrectAnswers}</td>
+                      <td style={{ border: "1px solid #bbb", padding: "6px 10px", textAlign: "center" }}>{ins.unattemptedAnswers}</td>
+                      <td style={{ border: "1px solid #bbb", padding: "6px 10px", textAlign: "center", fontWeight: "bold" }}>{ins.accuracy.toFixed(1)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          <div style={{ marginTop: "30px", paddingTop: "10px", borderTop: "1px solid #ccc", textAlign: "center", fontSize: "11px", color: "#888" }}>
+            Brainwave Science Academy · Generated on {new Date().toLocaleDateString("en-IN", { dateStyle: "long" })}
+          </div>
+        </div>
+
+        <div className="page">
+          <section className="section-heading">
+            <p className="eyebrow">Exam Review</p>
+            <h2>{selected.examName}</h2>
+            <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.5rem", flexWrap: "wrap" }}>
+              <button className="secondary-button" onClick={() => setSelected(null)}>
+                ← Back to All Results
+              </button>
+              <button className="secondary-button" onClick={() => window.print()}>
+                🖨 Print Report Card
+              </button>
+            </div>
+          </section>
 
         {/* Score summary */}
         <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginBottom: "2rem" }}>
@@ -206,7 +291,8 @@ export function MyResultsPage() {
             )}
           </>
         )}
-      </div>
+        </div>
+      </>
     );
   }
 
