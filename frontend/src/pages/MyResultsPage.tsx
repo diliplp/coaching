@@ -57,7 +57,8 @@ export function MyResultsPage() {
     }
   };
 
-  const formatDate = (ts: string) => {
+  const formatDate = (ts: string | undefined | null) => {
+    if (!ts) return "—";
     const ms = parseInt(ts, 10);
     if (isNaN(ms)) return ts;
     return new Date(ms).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
@@ -150,6 +151,44 @@ export function MyResultsPage() {
             </>
           )}
 
+          {selected.insights?.length > 0 && (() => {
+            const urgentPrint = selected.insights.filter(t => t.accuracy < 40).sort((a, b) => a.accuracy - b.accuracy);
+            const practicePrint = selected.insights.filter(t => t.accuracy >= 40 && t.accuracy < 70).sort((a, b) => a.accuracy - b.accuracy);
+            const masteredPrint = selected.insights.filter(t => t.accuracy >= 70);
+            if (urgentPrint.length === 0 && practicePrint.length === 0) return null;
+            return (
+              <div style={{ marginTop: "18px", border: "1px solid #fcd34d", borderRadius: "6px", padding: "14px 16px", background: "#fffbeb" }}>
+                <div style={{ fontWeight: "bold", fontSize: "13px", marginBottom: "10px" }}>📚 Study Priority Suggestions</div>
+                <div style={{ display: "flex", gap: "16px" }}>
+                  {urgentPrint.length > 0 && (
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: "11px", fontWeight: "bold", color: "#dc2626", marginBottom: "6px" }}>🔴 WORK ON FIRST</div>
+                      <ul style={{ margin: 0, paddingLeft: "14px", fontSize: "12px" }}>
+                        {urgentPrint.map((t, i) => <li key={i}><strong>{t.topicName}</strong> — {t.correctAnswers}/{t.totalQuestions} correct ({t.accuracy.toFixed(0)}%)</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {practicePrint.length > 0 && (
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: "11px", fontWeight: "bold", color: "#b45309", marginBottom: "6px" }}>🟡 NEEDS PRACTICE</div>
+                      <ul style={{ margin: 0, paddingLeft: "14px", fontSize: "12px" }}>
+                        {practicePrint.map((t, i) => <li key={i}><strong>{t.topicName}</strong> — {t.correctAnswers}/{t.totalQuestions} correct ({t.accuracy.toFixed(0)}%)</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {masteredPrint.length > 0 && (
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: "11px", fontWeight: "bold", color: "#15803d", marginBottom: "6px" }}>✅ MASTERED</div>
+                      <ul style={{ margin: 0, paddingLeft: "14px", fontSize: "12px" }}>
+                        {masteredPrint.map((t, i) => <li key={i}><strong>{t.topicName}</strong> — {t.accuracy.toFixed(0)}%</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
           <div style={{ marginTop: "30px", paddingTop: "10px", borderTop: "1px solid #ccc", textAlign: "center", fontSize: "11px", color: "#888" }}>
             Brainwave Science Academy · Generated on {new Date().toLocaleDateString("en-IN", { dateStyle: "long" })}
           </div>
@@ -159,6 +198,9 @@ export function MyResultsPage() {
           <section className="section-heading">
             <p className="eyebrow">Exam Review</p>
             <h2>{selected.examName}</h2>
+            <p style={{ margin: "2px 0 0 0", fontSize: "0.82rem", color: "var(--color-text-muted)" }}>
+              Submitted: {formatDate(selected.submittedAt)}
+            </p>
             <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.5rem", flexWrap: "wrap" }}>
               <button className="secondary-button" onClick={() => setSelected(null)}>
                 ← Back to All Results
@@ -214,6 +256,53 @@ export function MyResultsPage() {
             </div>
           </div>
         )}
+
+        {/* Topic priority suggestions */}
+        {selected.insights?.length > 0 && (() => {
+          const urgentTopics = selected.insights.filter(t => t.accuracy < 40).sort((a, b) => a.accuracy - b.accuracy);
+          const practiceTopics = selected.insights.filter(t => t.accuracy >= 40 && t.accuracy < 70).sort((a, b) => a.accuracy - b.accuracy);
+          if (urgentTopics.length === 0 && practiceTopics.length === 0) return null;
+          return (
+            <div className="panel" style={{ marginBottom: "2rem", background: "#fffbeb", border: "1px solid #fcd34d" }}>
+              <h3 style={{ marginBottom: "0.5rem", fontSize: "1rem", color: "#92400e" }}>📚 Study Priority Suggestions</h3>
+              <p style={{ fontSize: "0.8rem", color: "#78350f", marginBottom: "1rem", marginTop: 0 }}>
+                Topics to focus on based on your accuracy in this exam:
+              </p>
+              <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
+                {urgentTopics.length > 0 && (
+                  <div style={{ flex: 1, minWidth: "200px" }}>
+                    <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#dc2626", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      🔴 Work on These First
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: "16px", display: "flex", flexDirection: "column", gap: "5px" }}>
+                      {urgentTopics.map((t, i) => (
+                        <li key={i} style={{ fontSize: "0.85rem", color: "#991b1b" }}>
+                          <strong>{t.topicName}</strong>
+                          <span style={{ color: "#6b7280", fontSize: "0.78rem" }}> — {t.correctAnswers}/{t.totalQuestions} correct ({t.accuracy.toFixed(0)}%)</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {practiceTopics.length > 0 && (
+                  <div style={{ flex: 1, minWidth: "200px" }}>
+                    <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#b45309", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      🟡 Needs More Practice
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: "16px", display: "flex", flexDirection: "column", gap: "5px" }}>
+                      {practiceTopics.map((t, i) => (
+                        <li key={i} style={{ fontSize: "0.85rem", color: "#92400e" }}>
+                          <strong>{t.topicName}</strong>
+                          <span style={{ color: "#6b7280", fontSize: "0.78rem" }}> — {t.correctAnswers}/{t.totalQuestions} correct ({t.accuracy.toFixed(0)}%)</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Question navigator */}
         {review.length > 0 && (
