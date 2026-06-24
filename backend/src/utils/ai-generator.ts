@@ -368,6 +368,28 @@ export async function generateQuestionsFromText(params: {
   const isJEE = subjectLower.includes("jee") || topicStr.includes("jee") || textLower.includes("jee") || textLower.includes("iit");
   const isNEET = subjectLower.includes("neet") || topicStr.includes("neet") || textLower.includes("neet") || textLower.includes("aiims");
 
+  // Hard topics require Pro model even in draft phase — cheap models produce wrong answers here
+  const hardTopicKeywords = [
+    // Organic chemistry mechanisms
+    "organic", "mechanism", "named reaction", "carbonyl", "nucleophilic", "electrophilic",
+    "sn1", "sn2", "elimination", "aldol", "cannizzaro", "grignard", "beckmann",
+    "rearrangement", "addition reaction", "substitution reaction", "stereochemistry",
+    "chirality", "enantiomer", "diastereomer",
+    // Complex physics
+    "rotational mechanics", "moment of inertia", "electromagnetic induction",
+    "alternating current", "ac circuit", "lcr", "kirchhoff", "wheatstone",
+    // Complex maths
+    "complex number", "differential equation", "integration by parts",
+    "triple integral", "vector calculus", "fourier",
+  ];
+  const isHardTopic = isChemistry
+    ? hardTopicKeywords.some(k => topicStr.includes(k) || subjectLower.includes(k))
+    : hardTopicKeywords.some(k => topicStr.includes(k));
+
+  const draftGenerator = isHardTopic
+    ? (p: string) => { console.log("[Draft] Hard topic detected — routing to Pro model."); return generateContentWithFallback(p, '{"questions": []}'); }
+    : generateContentForDraft;
+
   const needsGraph = isPhysics || isMath || isBiology;
 
   // Fetch existing questions for this topic to avoid duplication
@@ -593,7 +615,7 @@ ${textChunk}
         batchAttempts++;
         try {
           console.log(`Generating batch ${batchIndex + 1} (attempt ${batchAttempts}, count: ${currentBatchCount})...`);
-          let rawResponse = await generateContentWithFallback(prompt, '{"questions": []}');
+          let rawResponse = await draftGenerator(prompt);
           
           const startIdx = rawResponse.indexOf("{");
           const endIdx = rawResponse.lastIndexOf("}");
@@ -679,6 +701,50 @@ ${textChunk}
   }
 
   return allQuestions.slice(0, questionCount);
+}
+
+/**
+ * Cheap draft generator for question generation batches.
+ * Uses QUESTION_GEN_MODEL (e.g. deepseek/deepseek-v4-flash or qwen/qwen3-max).
+ * Falls back to the primary OPENROUTER_MODEL if the draft model fails.
+ */
+async function generateContentForDraft(prompt: string): Promise<string> {
+  const draftModel = process.env.QUESTION_GEN_MODEL || "deepseek/deepseek-v4-flash";
+
+  if (process.env.OPENROUTER_API_KEY) {
+    try {
+      console.log(`[Draft] Trying ${draftModel}...`);
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://railway.app",
+          "X-Title": "Coaching Portal Question Draft"
+        },
+        body: JSON.stringify({
+          model: draftModel,
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+          max_tokens: 8000
+        }),
+        signal: AbortSignal.timeout(90_000)
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const text = data.choices?.[0]?.message?.content;
+        if (text) { console.log(`[Draft] ${draftModel} succeeded.`); return text; }
+      } else {
+        console.warn(`[Draft] ${draftModel} failed (${response.status}) — falling back to primary model.`);
+      }
+    } catch (e: any) {
+      console.warn(`[Draft] ${draftModel} threw: ${e.message} — falling back to primary model.`);
+    }
+  }
+
+  // Fall back to the standard primary model (Pro) if draft model fails
+  console.log("[Draft] Falling back to generateContentWithFallback (primary model)...");
+  return generateContentWithFallback(prompt, '{"questions": []}');
 }
 
 async function generateContentForCritic(prompt: string): Promise<string> {
