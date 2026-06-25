@@ -3,6 +3,68 @@ import fs from "fs";
 import path from "path";
 import { getAppState } from "../data/database.js";
 
+async function generateAIGuidance(data: {
+  studentName: string;
+  overallAvg: number;
+  classAvg: number;
+  batchRank: number | string;
+  batchSize: number | string;
+  totalExams: number;
+  weakTopics: { name: string; accuracy: number; correct: number; total: number }[];
+  strongTopics: { name: string; accuracy: number }[];
+  subjectSummary: { name: string; avg: number }[];
+}): Promise<string> {
+  if (!process.env.OPENROUTER_API_KEY) return "";
+
+  const { studentName, overallAvg, classAvg, batchRank, batchSize, totalExams, weakTopics, strongTopics, subjectSummary } = data;
+
+  const weakStr   = weakTopics.slice(0, 4).map(t => `${t.name}: ${t.accuracy.toFixed(0)}% (${t.correct}/${t.total} correct)`).join("; ");
+  const strongStr = strongTopics.slice(0, 3).map(t => `${t.name}: ${t.accuracy.toFixed(0)}%`).join("; ");
+  const subjStr   = subjectSummary.map(s => `${s.name}: ${s.avg.toFixed(1)}%`).join(", ");
+
+  const prompt = `You are an academic mentor at Brainwave Science Academy writing a parent report card.
+
+Write a single personalized performance guidance paragraph (4–5 sentences) for the parent of this student. Be warm, professional, and specific — mention actual topic names and numbers. Do NOT use bullet points, headers, or quotes. Plain paragraph only.
+
+Student: ${studentName}
+Exams attempted: ${totalExams}
+Overall average: ${overallAvg.toFixed(1)}% (Class average: ${classAvg.toFixed(1)}%)
+Batch rank: ${batchRank} out of ${batchSize}
+Subject-wise: ${subjStr || "N/A"}
+Topics needing improvement: ${weakStr || "None"}
+Strong topics: ${strongStr || "None yet"}
+
+Write the paragraph now:`;
+
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://railway.app",
+        "X-Title": "Coaching Portal Report Card"
+      },
+      body: JSON.stringify({
+        model: "meta-llama/llama-3.3-70b-instruct:free",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 300,
+        temperature: 0.7
+      }),
+      signal: AbortSignal.timeout(30_000)
+    });
+
+    if (res.ok) {
+      const json = await res.json();
+      const text = (json.choices?.[0]?.message?.content as string || "").trim();
+      if (text.length > 40) return text;
+    }
+  } catch (e: any) {
+    console.warn("[ReportCard] Free model guidance failed:", e.message);
+  }
+  return "";
+}
+
 function loadLogoBase64(): string {
   // Production: set FRONTEND_URL env var → puppeteer fetches the logo as a network URL
   // Development: read from monorepo frontend/public
@@ -119,17 +181,29 @@ export async function generateStudentReportPDF(studentId: string, options: Repor
   const strongTopics = allTopics.filter(t => t.accuracy >= 70).sort((a, b) => b.accuracy - a.accuracy);
   const weakTopics   = allTopics.filter(t => t.accuracy <  70).sort((a, b) => a.accuracy - b.accuracy);
 
-  // ── AI guidance ─────────────────────────────────────────────────────────────
-  const weakList = weakTopics.slice(0, 3).map(t => `${t.name} (${t.accuracy.toFixed(0)}%)`).join(", ");
-  let guidance = "";
-  if (overallAvg >= 85) {
-    guidance = `${studentName} is performing at the top tier of their batch with exceptional conceptual clarity. ${weakList ? `A focused revision of ${weakList} will help achieve near-perfect scores.` : "Continue with HOTS and timed mock sets to sharpen speed and accuracy."}`;
-  } else if (overallAvg >= 70) {
-    guidance = `${studentName} shows strong understanding across most topics. ${weakList ? `Priority attention to ${weakList} is recommended to break into the 85%+ bracket.` : "Consistent practice on timed sets will consolidate this performance."} Regular mock attempts over the next few weeks will build the required exam stamina.`;
-  } else if (overallAvg >= 50) {
-    guidance = `${studentName} has a developing foundational understanding but requires focused effort on core concept retention. ${weakList ? `Immediate revision of ${weakList} is advised` : "Targeted weak-topic revision is advised"}, alongside daily practice worksheets. Re-attempting weak-topic questions until accuracy exceeds 75% will noticeably improve overall scores.`;
-  } else {
-    guidance = `${studentName} is currently facing conceptual challenges that require structured intervention. ${weakList ? `Topics needing urgent attention: ${weakList}.` : ""} We recommend daily revision sheets starting from foundation chapters, one-on-one instructor sessions for doubts, and dedicated weak-area practice modules before the next mock examination.`;
+  // ── AI guidance (free model) with template fallback ─────────────────────────
+  const subjectSummary = Object.values(subjectScores).map(s => ({
+    name: s.name,
+    avg: s.count > 0 ? s.totalPct / s.count : 0
+  }));
+
+  let guidance = await generateAIGuidance({
+    studentName, overallAvg, classAvg, batchRank, batchSize,
+    totalExams, weakTopics, strongTopics, subjectSummary
+  });
+
+  if (!guidance) {
+    // Template fallback if AI unavailable or rate-limited
+    const weakList = weakTopics.slice(0, 3).map(t => `${t.name} (${t.accuracy.toFixed(0)}%)`).join(", ");
+    if (overallAvg >= 85) {
+      guidance = `${studentName} is performing at the top tier of their batch with exceptional conceptual clarity. ${weakList ? `A focused revision of ${weakList} will help achieve near-perfect scores.` : "Continue with HOTS and timed mock sets to sharpen speed and accuracy."}`;
+    } else if (overallAvg >= 70) {
+      guidance = `${studentName} shows strong understanding across most topics. ${weakList ? `Priority attention to ${weakList} is recommended to break into the 85%+ bracket.` : "Consistent practice on timed sets will consolidate this performance."} Regular mock attempts over the next few weeks will build the required exam stamina.`;
+    } else if (overallAvg >= 50) {
+      guidance = `${studentName} has a developing foundational understanding but requires focused effort on core concept retention. ${weakList ? `Immediate revision of ${weakList} is advised` : "Targeted weak-topic revision is advised"}, alongside daily practice worksheets. Re-attempting weak-topic questions until accuracy exceeds 75% will noticeably improve overall scores.`;
+    } else {
+      guidance = `${studentName} is currently facing conceptual challenges that require structured intervention. ${weakList ? `Topics needing urgent attention: ${weakList}.` : ""} We recommend daily revision sheets starting from foundation chapters, one-on-one instructor sessions for doubts, and dedicated weak-area practice modules before the next mock examination.`;
+    }
   }
 
   // ── Dates ───────────────────────────────────────────────────────────────────
