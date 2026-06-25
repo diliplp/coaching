@@ -29,6 +29,13 @@ export function ExamBuilderPage() {
   const [combinedExamName, setCombinedExamName] = useState("PCM/PCB Combined Test");
   const [combinedDuration, setCombinedDuration] = useState(180);
   const [subjectAllocations, setSubjectAllocations] = useState<Record<string, string>>({});
+  // AI Prompt Builder structured state
+  const [promptClassId, setPromptClassId] = useState("");
+  const [promptSubjectId, setPromptSubjectId] = useState("");
+  const [promptTopicIds, setPromptTopicIds] = useState<string[]>([]);
+  const [promptQuestionCount, setPromptQuestionCount] = useState(15);
+  const [promptDifficulty, setPromptDifficulty] = useState("mixed");
+  const [promptExtraText, setPromptExtraText] = useState("");
 
   useEffect(() => {
     Promise.all([apiClient.getBlueprints(), apiClient.getQuestionBank(), apiClient.getOverview()])
@@ -289,45 +296,132 @@ export function ExamBuilderPage() {
                 </div>
               </div>
 
-              <div style={{ marginTop: "20px" }}>
-                <textarea 
-                  placeholder="e.g., Create a 15-question Physics exam on Thermodynamics for Batch A. Make it difficult."
-                  style={{ 
-                    width: "100%", 
-                    minHeight: "100px", 
-                    borderRadius: "12px", 
-                    padding: "20px", 
-                    border: "none", 
-                    fontSize: "1.1rem",
-                    color: "#1f2937",
-                    background: "rgba(255,255,255,0.95)",
-                    boxShadow: "inset 0 2px 4px rgba(0,0,0,0.1)"
-                  }}
-                  id="ai-prompt-input"
+              {/* ── Structured selectors ── */}
+              <div style={{ marginTop: "20px", display: "flex", flexDirection: "column", gap: "12px" }}>
+
+                {/* Row 1: Class / Subject / Count / Difficulty */}
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                  {/* Class */}
+                  <select
+                    value={promptClassId}
+                    onChange={e => { setPromptClassId(e.target.value); setPromptSubjectId(""); setPromptTopicIds([]); }}
+                    style={{ flex: 1, minWidth: "130px", borderRadius: "10px", padding: "10px 12px", border: "none", fontSize: "0.9rem", color: "#1f2937", background: "rgba(255,255,255,0.95)" }}
+                  >
+                    <option value="">All Classes</option>
+                    {overview?.classes.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+
+                  {/* Subject */}
+                  <select
+                    value={promptSubjectId}
+                    onChange={e => { setPromptSubjectId(e.target.value); setPromptTopicIds([]); }}
+                    style={{ flex: 2, minWidth: "160px", borderRadius: "10px", padding: "10px 12px", border: "none", fontSize: "0.9rem", color: "#1f2937", background: "rgba(255,255,255,0.95)" }}
+                  >
+                    <option value="">Select Subject *</option>
+                    {(questionBank?.subjects ?? [])
+                      .filter((s: any) => !promptClassId || s.classId === promptClassId)
+                      .map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+
+                  {/* Question count */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(255,255,255,0.95)", borderRadius: "10px", padding: "8px 12px" }}>
+                    <span style={{ fontSize: "0.82rem", color: "#6b7280", whiteSpace: "nowrap" }}>Qs:</span>
+                    <input
+                      type="number" min={5} max={50} value={promptQuestionCount}
+                      onChange={e => setPromptQuestionCount(Math.min(50, Math.max(5, Number(e.target.value))))}
+                      style={{ width: "52px", border: "none", fontSize: "0.95rem", fontWeight: 600, color: "#1f2937", background: "transparent", outline: "none" }}
+                    />
+                  </div>
+
+                  {/* Difficulty */}
+                  <select
+                    value={promptDifficulty}
+                    onChange={e => setPromptDifficulty(e.target.value)}
+                    style={{ flex: 1, minWidth: "120px", borderRadius: "10px", padding: "10px 12px", border: "none", fontSize: "0.9rem", color: "#1f2937", background: "rgba(255,255,255,0.95)" }}
+                  >
+                    <option value="mixed">Mixed Difficulty</option>
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                  </select>
+                </div>
+
+                {/* Row 2: Topic chips (only when subject selected) */}
+                {promptSubjectId && (() => {
+                  const topics = (questionBank?.topics ?? []).filter((t: any) => t.subjectId === promptSubjectId);
+                  if (topics.length === 0) return null;
+                  return (
+                    <div style={{ background: "rgba(0,0,0,0.2)", borderRadius: "12px", padding: "14px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                        <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>
+                          TOPICS — {promptTopicIds.length === 0 ? "All topics selected" : `${promptTopicIds.length} selected`}
+                        </span>
+                        <div style={{ display: "flex", gap: "8px" }}>
+                          <button onClick={() => setPromptTopicIds(topics.map((t: any) => t.id))}
+                            style={{ fontSize: "0.75rem", padding: "3px 10px", background: "rgba(255,255,255,0.2)", border: "none", borderRadius: "6px", color: "white", cursor: "pointer" }}>
+                            All
+                          </button>
+                          <button onClick={() => setPromptTopicIds([])}
+                            style={{ fontSize: "0.75rem", padding: "3px 10px", background: "rgba(255,255,255,0.2)", border: "none", borderRadius: "6px", color: "white", cursor: "pointer" }}>
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "7px" }}>
+                        {topics.map((t: any) => {
+                          const selected = promptTopicIds.includes(t.id);
+                          return (
+                            <button
+                              key={t.id}
+                              onClick={() => setPromptTopicIds(prev =>
+                                prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]
+                              )}
+                              style={{
+                                padding: "5px 14px", borderRadius: "20px", border: "none", cursor: "pointer", fontSize: "0.8rem",
+                                background: selected ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.15)",
+                                color: selected ? "#6366f1" : "rgba(255,255,255,0.9)",
+                                fontWeight: selected ? 700 : 400,
+                                transition: "all 0.15s"
+                              }}
+                            >
+                              {t.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Row 3: Additional instructions */}
+                <textarea
+                  placeholder="Additional instructions (optional) — e.g. Focus on numericals, include assertion-reason questions, avoid theory questions..."
+                  value={promptExtraText}
+                  onChange={e => setPromptExtraText(e.target.value)}
+                  style={{ width: "100%", minHeight: "70px", borderRadius: "10px", padding: "14px", border: "none", fontSize: "0.9rem", color: "#1f2937", background: "rgba(255,255,255,0.95)", resize: "vertical" }}
                 />
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "15px" }}>
-                  <button 
-                    className="primary-button" 
-                    style={{ 
-                      background: "white", 
-                      color: "#6366f1", 
-                      padding: "12px 30px", 
-                      fontSize: "1.1rem", 
-                      fontWeight: "bold",
-                      border: "none",
-                      boxShadow: "0 4px 10px rgba(0,0,0,0.1)"
-                    }}
+
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    className="primary-button"
+                    disabled={!promptSubjectId}
+                    style={{ background: "white", color: "#6366f1", padding: "12px 30px", fontSize: "1rem", fontWeight: "bold", border: "none", boxShadow: "0 4px 10px rgba(0,0,0,0.15)", opacity: promptSubjectId ? 1 : 0.5 }}
                     onClick={async () => {
-                      const prompt = (document.getElementById("ai-prompt-input") as HTMLTextAreaElement).value;
-                      if (!prompt) return;
-                      setStatus("AI Magic is working... parsing your request.");
+                      if (!promptSubjectId) return;
+                      setStatus("AI is generating questions from your curriculum...");
                       try {
-                        const result = await apiClient.generateExamFromPrompt(prompt);
+                        const result = await apiClient.generateExamFromPrompt({
+                          subjectId: promptSubjectId,
+                          topicIds: promptTopicIds.length > 0 ? promptTopicIds : undefined,
+                          questionCount: promptQuestionCount,
+                          difficulty: promptDifficulty,
+                          additionalInstructions: promptExtraText.trim() || undefined,
+                        });
                         liveExamState.generatedExam = result;
                         liveExamState.latestResult = null;
                         setStatus(`Successfully generated "${result.exam.name}" with ${result.questions.length} questions!`);
                       } catch (e: any) {
-                        setStatus(`AI error: ${e.message}`);
+                        setStatus(`Error: ${e.message}`);
                       }
                     }}
                   >

@@ -324,10 +324,17 @@ export const apiClient = {
     request<{ message: string; count: number }>(`/exams/${examId}/force-submit-all`, {
       method: "POST"
     }),
-  generateExamFromPrompt: (prompt: string) =>
+  generateExamFromPrompt: (params: {
+    prompt?: string;
+    subjectId?: string;
+    topicIds?: string[];
+    questionCount?: number;
+    difficulty?: string;
+    additionalInstructions?: string;
+  }) =>
     request<ExamPayload>("/exams/generate-from-prompt", {
       method: "POST",
-      body: JSON.stringify({ prompt })
+      body: JSON.stringify(params)
     }),
   startGenerateQuestionsJob: (bookId: string, payload: { chapterId?: string; topicIds?: string[]; questionCount: number }) =>
     request<{ jobId: string }>(`/subject-books/${bookId}/generate-questions`, {

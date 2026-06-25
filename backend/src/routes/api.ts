@@ -1194,70 +1194,107 @@ apiRouter.post("/students/me/adaptive-generate", requireRole(["student"]), async
 });
 
 apiRouter.post("/exams/generate-from-prompt", requireRole(["super_admin"]), async (req, res) => {
-  const { prompt } = req.body as { prompt?: string };
-  if (!prompt) {
-    return res.status(400).json({ message: "Prompt is required" });
+  const {
+    prompt,
+    subjectId: structuredSubjectId,
+    topicIds: structuredTopicIds,
+    questionCount: structuredCount,
+    difficulty: structuredDifficulty,
+    additionalInstructions,
+  } = req.body as {
+    prompt?: string;
+    subjectId?: string;
+    topicIds?: string[];
+    questionCount?: number;
+    difficulty?: string;
+    additionalInstructions?: string;
+  };
+
+  if (!structuredSubjectId && !prompt) {
+    return res.status(400).json({ message: "Either subjectId or a prompt is required." });
   }
 
   try {
-    // Step 1 — parse natural language prompt with AI
-    const parsed = await parseExamPrompt(prompt);
     const state = await getAppState();
+    let subject: any, targetTopics: any[], totalQuestions: number, difficulty: string, examName: string, batch: any;
+    let isJEEPrompt = false, isNEETPrompt = false, examTypeHint = "";
+    let parsed: any = null;
 
-    // Step 2 — match batch
-    const batch = state.batches.find(b =>
-      b.name.toLowerCase().includes(parsed.batchName.toLowerCase()) ||
-      parsed.batchName.toLowerCase().includes(b.name.toLowerCase())
-    ) || state.batches[0];
+    if (structuredSubjectId) {
+      // ── STRUCTURED PATH — IDs come from dropdowns, no AI parsing needed ──
+      subject = state.subjects.find((s: any) => s.id === structuredSubjectId);
+      if (!subject) return res.status(404).json({ message: "Subject not found." });
 
-    if (!batch) {
-      return res.status(404).json({ message: "No batches found. Please create a batch first." });
+      const allSubjectTopics = state.topics.filter((t: any) => t.subjectId === subject.id);
+      targetTopics = Array.isArray(structuredTopicIds) && structuredTopicIds.length > 0
+        ? allSubjectTopics.filter((t: any) => structuredTopicIds.includes(t.id))
+        : allSubjectTopics;
+
+      if (targetTopics.length === 0) {
+        return res.status(404).json({ message: `No topics found for "${subject.name}". Set up the curriculum first.` });
+      }
+
+      totalQuestions = Math.min(Math.max(5, structuredCount ?? 15), 50);
+      difficulty     = structuredDifficulty || "mixed";
+      batch          = state.batches.find((b: any) => b.classId === subject.classId) || state.batches[0];
+
+      const topicLabel = targetTopics.length <= 3
+        ? targetTopics.map((t: any) => t.name).join(", ")
+        : `${targetTopics.length} Topics`;
+      examName = `${subject.name} — ${topicLabel} Practice`;
+
+      const sLower = subject.name.toLowerCase();
+      isJEEPrompt  = sLower.includes("jee");
+      isNEETPrompt = sLower.includes("neet");
+      examTypeHint = isJEEPrompt ? "JEE" : isNEETPrompt ? "NEET" : "";
+
+    } else {
+      // ── FREE TEXT PATH — existing AI-parse flow ──
+      parsed = await parseExamPrompt(prompt!);
+
+      batch = state.batches.find((b: any) =>
+        b.name.toLowerCase().includes(parsed.batchName.toLowerCase()) ||
+        parsed.batchName.toLowerCase().includes(b.name.toLowerCase())
+      ) || state.batches[0];
+      if (!batch) return res.status(404).json({ message: "No batches found. Please create a batch first." });
+
+      subject = state.subjects.find((s: any) =>
+        s.name.toLowerCase().includes(parsed.subjectName.toLowerCase()) ||
+        parsed.subjectName.toLowerCase().includes(s.name.toLowerCase())
+      ) || state.subjects.find((s: any) => s.classId === batch.classId) || state.subjects[0];
+      if (!subject) return res.status(404).json({ message: `No subject found matching "${parsed.subjectName}".` });
+
+      const allSubjectTopics = state.topics.filter((t: any) => t.subjectId === subject.id);
+      const matchedTopics = parsed.topicKeywords.length > 0
+        ? allSubjectTopics.filter((t: any) => parsed.topicKeywords.some((k: string) => t.name.toLowerCase().includes(k.toLowerCase())))
+        : [];
+      targetTopics = matchedTopics.length > 0 ? matchedTopics : allSubjectTopics.slice(0, 3);
+      if (targetTopics.length === 0) return res.status(404).json({ message: `No topics found for "${subject.name}". Set up the curriculum first.` });
+
+      totalQuestions = Math.min(parsed.questionCount, 50);
+      difficulty     = parsed.difficulty;
+      examName       = parsed.examName;
+
+      const promptLower = prompt!.toLowerCase();
+      isJEEPrompt  = promptLower.includes("jee") || promptLower.includes("iit");
+      isNEETPrompt = promptLower.includes("neet") || promptLower.includes("aiims");
+      examTypeHint = isJEEPrompt ? "JEE" : isNEETPrompt ? "NEET" : "";
     }
 
-    // Step 3 — match subject
-    const subject = state.subjects.find(s =>
-      s.name.toLowerCase().includes(parsed.subjectName.toLowerCase()) ||
-      parsed.subjectName.toLowerCase().includes(s.name.toLowerCase())
-    ) || state.subjects.find(s => s.classId === batch.classId) || state.subjects[0];
-
-    if (!subject) {
-      return res.status(404).json({ message: `No subject found matching "${parsed.subjectName}".` });
-    }
-
-    // Step 4 — match topics from curriculum
-    const allSubjectTopics = state.topics.filter(t => t.subjectId === subject.id);
-    const matchedTopics = parsed.topicKeywords.length > 0
-      ? allSubjectTopics.filter(t =>
-          parsed.topicKeywords.some(k => t.name.toLowerCase().includes(k.toLowerCase()))
-        )
-      : [];
-    const targetTopics = matchedTopics.length > 0
-      ? matchedTopics
-      : allSubjectTopics.slice(0, 3);
-
-    if (targetTopics.length === 0) {
-      return res.status(404).json({ message: `No topics found for subject "${subject.name}". Please set up the curriculum first.` });
-    }
-
-    const totalQuestions = Math.min(parsed.questionCount, 50);
+    if (!batch) return res.status(404).json({ message: "No batch found. Please create a batch first." });
 
     // Step 5 — find parsed textbook content for this subject (improves question quality)
     const book = (state as any).subjectBooks?.find((b: any) => b.subjectId === subject.id && b.parsedText)
       ?? null;
-
-    // Detect competitive exam type from the original user prompt
-    const promptLower = prompt.toLowerCase();
-    const isJEEPrompt = promptLower.includes("jee") || promptLower.includes("iit");
-    const isNEETPrompt = promptLower.includes("neet") || promptLower.includes("aiims");
-    const examTypeHint = isJEEPrompt ? "JEE" : isNEETPrompt ? "NEET" : "";
 
     // Step 6 — synthesize source text if no book is available
     // Build a structured scope document so the AI knows exactly what it can and cannot use
     const sourceText = book?.parsedText ?? [
       `EXAM TYPE: ${examTypeHint || "Class 11/12 Board / Competitive entrance"}`,
       `SUBJECT: ${subject.name}`,
-      `TOPICS IN SCOPE: ${targetTopics.map(t => t.name).join(", ")}`,
-      `DIFFICULTY: ${parsed.difficulty}`,
+      `TOPICS IN SCOPE: ${targetTopics.map((t: any) => t.name).join(", ")}`,
+      `DIFFICULTY: ${difficulty}`,
+      ...(additionalInstructions ? [`ADDITIONAL INSTRUCTIONS: ${additionalInstructions}`] : []),
       ``,
       `SCOPE RULES — THE AI MUST STRICTLY FOLLOW THESE:`,
       `- Only generate questions that test the concepts listed under TOPICS IN SCOPE above.`,
@@ -1314,15 +1351,15 @@ apiRouter.post("/exams/generate-from-prompt", requireRole(["super_admin"]), asyn
     const exam = {
       id: examId,
       blueprintId: `ai-prompt-${Date.now()}`,
-      name: parsed.examName,
-      classId: batch.classId,
-      streamId: batch.streamId,
-      batchId: batch.id,
+      name: examName,
+      classId: batch?.classId ?? subject.classId,
+      streamId: batch?.streamId ?? "",
+      batchId: batch?.id ?? "",
       subjectId: subject.id,
-      durationMinutes: parsed.durationMinutes,
+      durationMinutes: parsed?.durationMinutes ?? Math.max(totalQuestions * 2, 30),
       generatedAt: new Date().toISOString(),
       generationMode: "custom" as const,
-      adaptiveSummary: `AI-generated from prompt · Topics: ${targetTopics.map(t => t.name).join(", ")} · Difficulty: ${parsed.difficulty}`,
+      adaptiveSummary: `AI-generated · Topics: ${targetTopics.map((t: any) => t.name).join(", ")} · Difficulty: ${difficulty}`,
       questions: allGeneratedQuestions.slice(0, totalQuestions).map((q, i) => ({
         questionId: q.id,
         order: i + 1,
