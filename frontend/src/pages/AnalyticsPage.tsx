@@ -12,6 +12,9 @@ export function AnalyticsPage() {
   const [selectedBatchId, setSelectedBatchId] = useState<string>(isStudent && session?.user ? "student-batch" : "");
   const [studentSearchQuery, setStudentSearchQuery] = useState<string>("");
   const [isDownloading, setIsDownloading] = useState(false);
+  const [reportFrom, setReportFrom] = useState<string>("");
+  const [reportTo, setReportTo] = useState<string>("");
+  const [downloadError, setDownloadError] = useState<string>("");
 
   useEffect(() => {
     apiClient.getAnalytics().then((res: any) => {
@@ -25,15 +28,17 @@ export function AnalyticsPage() {
   const downloadParentReport = async (studentId: string, studentName: string) => {
     try {
       setIsDownloading(true);
+      setDownloadError("");
       const session = getStoredSession();
       const headers: Record<string, string> = {};
-      if (session?.token) {
-        headers["Authorization"] = `Bearer ${session.token}`;
-      }
-      
-      const response = await fetch(`/api/students/${studentId}/report-pdf`, {
-        headers
-      });
+      if (session?.token) headers["Authorization"] = `Bearer ${session.token}`;
+
+      const params = new URLSearchParams();
+      if (reportFrom) params.set("from", String(new Date(reportFrom).getTime()));
+      if (reportTo)   params.set("to",   String(new Date(reportTo + "T23:59:59").getTime()));
+      const qs = params.toString() ? `?${params.toString()}` : "";
+
+      const response = await fetch(`/api/students/${studentId}/report-pdf${qs}`, { headers });
 
       if (!response.ok) {
         let errText = "Failed to generate report";
@@ -54,7 +59,7 @@ export function AnalyticsPage() {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (error: any) {
-      alert(error.message || "An error occurred while downloading the PDF");
+      setDownloadError(error.message || "Failed to generate report. Please try again.");
     } finally {
       setIsDownloading(false);
     }
@@ -260,32 +265,45 @@ export function AnalyticsPage() {
                     <h4 style={{ margin: 0, fontSize: "1.1rem" }}>{student.name}</h4>
                     <span className="muted-copy" style={{ fontSize: "0.85rem" }}>{student.email} • {studentSubmissions.length} Exams</span>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
-                    <button 
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                    {/* Date range pickers */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
+                      <label style={{ fontWeight: 600 }}>From</label>
+                      <input
+                        type="date"
+                        value={reportFrom}
+                        onChange={e => setReportFrom(e.target.value)}
+                        style={{ fontSize: "0.8rem", padding: "5px 8px", border: "1px solid var(--color-border)", borderRadius: "6px", background: "var(--color-bg-secondary)" }}
+                      />
+                      <label style={{ fontWeight: 600 }}>To</label>
+                      <input
+                        type="date"
+                        value={reportTo}
+                        onChange={e => setReportTo(e.target.value)}
+                        style={{ fontSize: "0.8rem", padding: "5px 8px", border: "1px solid var(--color-border)", borderRadius: "6px", background: "var(--color-bg-secondary)" }}
+                      />
+                    </div>
+                    <button
                       onClick={() => downloadParentReport(student.id, student.name)}
                       disabled={isDownloading}
                       style={{
-                        padding: "8px 16px",
-                        background: "#0f172a",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "8px",
-                        fontSize: "0.85rem",
-                        fontWeight: "600",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
+                        padding: "8px 16px", background: "#0f172a", color: "white",
+                        border: "none", borderRadius: "8px", fontSize: "0.85rem",
+                        fontWeight: "600", cursor: isDownloading ? "not-allowed" : "pointer",
                         opacity: isDownloading ? 0.7 : 1,
-                        transition: "background 0.2s"
                       }}
                     >
-                      {isDownloading ? "⏳ Compiling Report..." : "🖨️ Download Parent Report"}
+                      {isDownloading ? "⏳ Compiling..." : "🖨️ Download Parent Report"}
                     </button>
-                    <div style={{ fontSize: "1.2rem", fontWeight: "bold", color: overallPercentage >= 70 ? "green" : (overallPercentage >= 40 ? "orange" : "red") }}>
-                      {overallPercentage.toFixed(1)}% Overall
+                    <div style={{ fontSize: "1.1rem", fontWeight: "bold", color: overallPercentage >= 70 ? "#15803d" : (overallPercentage >= 40 ? "#b45309" : "#dc2626") }}>
+                      {overallPercentage.toFixed(1)}%
                     </div>
                   </div>
+                  {downloadError && (
+                    <div style={{ marginTop: "8px", padding: "8px 12px", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "6px", fontSize: "0.82rem", color: "#dc2626" }}>
+                      {downloadError}
+                    </div>
+                  )}
                 </div>
 
 

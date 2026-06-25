@@ -487,8 +487,14 @@ apiRouter.get("/students/:studentId/report-pdf", requireRole(["super_admin", "te
       return;
     }
 
+    const fromParam = typeof req.query.from === "string" ? parseInt(req.query.from, 10) : undefined;
+    const toParam   = typeof req.query.to   === "string" ? parseInt(req.query.to,   10) : undefined;
+
     const { generateStudentReportPDF } = await import("../utils/pdf-generator.js");
-    const pdfBuffer = await generateStudentReportPDF(studentId);
+    const pdfBuffer = await generateStudentReportPDF(studentId, {
+      from: isNaN(fromParam as number) ? undefined : fromParam,
+      to:   isNaN(toParam   as number) ? undefined : toParam,
+    });
     
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename=report_${studentId}.pdf`);
