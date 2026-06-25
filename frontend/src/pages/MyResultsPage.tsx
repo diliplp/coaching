@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../api/client";
 import { RichText } from "../components/RichText";
+import { getStoredSession } from "../auth";
 
 type SubmissionSummary = {
   id: string;
@@ -31,6 +32,7 @@ type SubmissionDetail = SubmissionSummary & {
 };
 
 export function MyResultsPage() {
+  const studentName = getStoredSession()?.user?.name ?? "";
   const [submissions, setSubmissions] = useState<SubmissionSummary[]>([]);
   const [selected, setSelected] = useState<SubmissionDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -101,8 +103,11 @@ export function MyResultsPage() {
                 <div style={{ fontSize: "12px", color: "#555", marginTop: "2px" }}>Performance Report Card</div>
               </div>
             </div>
-            <div style={{ fontSize: "16px", fontWeight: "bold", marginTop: "10px" }}>{selected.examName}</div>
-            <div style={{ fontSize: "12px", color: "#555", marginTop: "4px" }}>Date: {formatDate(selected.submittedAt)}</div>
+            {studentName && (
+              <div style={{ fontSize: "15px", fontWeight: "bold", marginTop: "10px" }}>Student: {studentName}</div>
+            )}
+            <div style={{ fontSize: "14px", marginTop: "4px" }}>{selected.examName}</div>
+            <div style={{ fontSize: "12px", color: "#555", marginTop: "4px" }}>Submitted: {formatDate(selected.submittedAt)}</div>
           </div>
 
           <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "22px" }}>
