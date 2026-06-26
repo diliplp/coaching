@@ -44,6 +44,7 @@ import { LiveExamMonitorPage } from "./pages/LiveExamMonitorPage";
 import { MyResultsPage } from "./pages/MyResultsPage";
 import { AdmissionFormPage } from "./pages/AdmissionFormPage";
 import { AdminAdmissionsPage } from "./pages/AdminAdmissionsPage";
+import { SyllabusTrackerPage } from "./pages/SyllabusTrackerPage";
 import { getStoredSession, clearSession } from "./auth";
 import { apiClient } from "./api/client";
 
@@ -159,6 +160,10 @@ export default function App() {
           <Route
             path="/admissions"
             element={<ProtectedRoute roles={["super_admin", "teacher"]}><AdminAdmissionsPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/syllabus-tracker"
+            element={<ProtectedRoute roles={["student"]}><SyllabusTrackerPage /></ProtectedRoute>}
           />
         </Route>
       </Routes>

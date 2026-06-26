@@ -15,6 +15,7 @@ const navItems = [
   { to: "/offline-board-paper", label: "Offline Exam", roles: ["super_admin", "teacher"], icon: "🖨️" },
   { to: "/live-exam", label: "Live Exam", roles: ["super_admin", "teacher", "student"], icon: "⚡" },
   { to: "/my-results", label: "My Results", roles: ["student"], icon: "📋" },
+  { to: "/syllabus-tracker", label: "Syllabus Tracker", roles: ["student"], icon: "📅" },
   { to: "/admissions", label: "Admissions", roles: ["super_admin", "teacher"], icon: "🎓" },
   { to: "/admin", label: "Admin Settings", roles: ["super_admin"], icon: "⚙️" }
 ];

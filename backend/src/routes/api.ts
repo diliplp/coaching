@@ -1953,6 +1953,116 @@ apiRouter.post("/offline-exams/generate", requireAuth, requireRole(["teacher", "
   })();
 });
 
+// ── Syllabus Tracker ────────────────────────────────────────────────────────
+
+apiRouter.get("/students/me/syllabus-profile", requireAuth, async (req, res) => {
+  const auth = (req as AuthenticatedRequest).auth!;
+  const record = await getRecord("syllabusProfiles", `syllabusProfile-${auth.sub}`);
+  res.json(record ?? null);
+});
+
+apiRouter.post("/students/me/syllabus-profile", requireAuth, async (req, res) => {
+  const auth = (req as AuthenticatedRequest).auth!;
+  const { classLevel, subjectKeys } = req.body as { classLevel: string; subjectKeys: string[] };
+  if (!classLevel || !Array.isArray(subjectKeys)) {
+    res.status(400).json({ message: "classLevel and subjectKeys are required" });
+    return;
+  }
+  const profile = { id: `syllabusProfile-${auth.sub}`, userId: auth.sub, classLevel, subjectKeys, setupDone: true };
+  await upsertRecord("syllabusProfiles", profile);
+  res.json(profile);
+});
+
+apiRouter.get("/students/me/syllabus-progress", requireAuth, async (req, res) => {
+  const auth = (req as AuthenticatedRequest).auth!;
+  const record = await getRecord("syllabusProgress", `syllabusProgress-${auth.sub}`);
+  res.json((record as any)?.progress ?? {});
+});
+
+apiRouter.post("/students/me/syllabus-progress", requireAuth, async (req, res) => {
+  const auth = (req as AuthenticatedRequest).auth!;
+  const { chapterKey, status } = req.body as { chapterKey: string; status: string };
+  if (!chapterKey || !status) {
+    res.status(400).json({ message: "chapterKey and status are required" });
+    return;
+  }
+  const existing = await getRecord("syllabusProgress", `syllabusProgress-${auth.sub}`);
+  const progress = { ...((existing as any)?.progress ?? {}), [chapterKey]: status };
+  await upsertRecord("syllabusProgress", { id: `syllabusProgress-${auth.sub}`, userId: auth.sub, progress });
+  res.json({ ok: true });
+});
+
+apiRouter.get("/admin/syllabus-coverage", requireAuth, requireRole(["super_admin", "teacher"]), async (_req, res) => {
+  const [profiles, progressRecords] = await Promise.all([
+    listRecords("syllabusProfiles"),
+    listRecords("syllabusProgress"),
+  ]);
+
+  const progressMap = Object.fromEntries(
+    (progressRecords as any[]).map((r: any) => [r.userId, r.progress ?? {}])
+  );
+
+  // Aggregate by classLevel → subjectKey → chapterIndex
+  const byClass: Record<string, {
+    totalStudents: number;
+    subjects: Record<string, {
+      name: string;
+      chapters: { studied: number; inProgress: number; notStarted: number; total: number }[];
+    }>;
+  }> = {};
+
+  for (const profile of profiles as any[]) {
+    if (!profile.setupDone) continue;
+    const { userId, classLevel, subjectKeys } = profile;
+    if (!byClass[classLevel]) byClass[classLevel] = { totalStudents: 0, subjects: {} };
+    byClass[classLevel].totalStudents++;
+
+    const studentProgress = progressMap[userId] ?? {};
+    for (const subjectKey of (subjectKeys ?? [])) {
+      // Count chapters — use max index found in progress + 1, or just track from progress
+      const chapterEntries = Object.entries(studentProgress as Record<string, string>)
+        .filter(([k]) => k.startsWith(`${subjectKey}::`));
+
+      // Find max chapter index to size the array
+      let maxIdx = -1;
+      for (const [k] of chapterEntries) {
+        const idx = parseInt(k.split("::")[1], 10);
+        if (!isNaN(idx) && idx > maxIdx) maxIdx = idx;
+      }
+
+      if (!byClass[classLevel].subjects[subjectKey]) {
+        byClass[classLevel].subjects[subjectKey] = { name: subjectKey.split("-").slice(1).join(" "), chapters: [] };
+      }
+      const subjectData = byClass[classLevel].subjects[subjectKey];
+
+      // Ensure chapter array is large enough
+      while (subjectData.chapters.length <= maxIdx) {
+        subjectData.chapters.push({ studied: 0, inProgress: 0, notStarted: 0, total: 0 });
+      }
+
+      for (const [k, status] of chapterEntries) {
+        const idx = parseInt(k.split("::")[1], 10);
+        if (isNaN(idx)) continue;
+        subjectData.chapters[idx].total++;
+        if (status === "studied") subjectData.chapters[idx].studied++;
+        else if (status === "in_progress") subjectData.chapters[idx].inProgress++;
+        else subjectData.chapters[idx].notStarted++;
+      }
+
+      // Students who haven't marked this chapter are implicitly notStarted
+      for (let i = 0; i <= maxIdx; i++) {
+        subjectData.chapters[i].total = byClass[classLevel].totalStudents;
+        const marked = subjectData.chapters[i].studied + subjectData.chapters[i].inProgress + subjectData.chapters[i].notStarted;
+        subjectData.chapters[i].notStarted += byClass[classLevel].totalStudents - marked;
+      }
+    }
+  }
+
+  res.json({ totalStudentsWithTracker: (profiles as any[]).filter((p: any) => p.setupDone).length, byClass });
+});
+
+// ── End Syllabus Tracker ─────────────────────────────────────────────────────
+
 function getSingleFormValue(value: unknown) {
   return Array.isArray(value) ? value[0] : value;
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../api/client";
 import { getStoredSession } from "../auth";
+import { getSubjectByKey } from "../data/ncert-syllabus";
 
 export function AnalyticsPage() {
   const session = getStoredSession();
@@ -15,6 +16,8 @@ export function AnalyticsPage() {
   const [reportFrom, setReportFrom] = useState<string>("");
   const [reportTo, setReportTo] = useState<string>("");
   const [downloadError, setDownloadError] = useState<string>("");
+  const [syllabusCoverage, setSyllabusCoverage] = useState<any>(null);
+  const [expandedClass, setExpandedClass] = useState<string>("");
 
   useEffect(() => {
     apiClient.getAnalytics().then((res: any) => {
@@ -23,6 +26,9 @@ export function AnalyticsPage() {
         setSelectedStudentId(res.students[0].id);
       }
     }).catch(console.error);
+    if (!isStudent) {
+      apiClient.getAdminSyllabusCoverage().then(setSyllabusCoverage).catch(() => {});
+    }
   }, []);
 
   const downloadParentReport = async (studentId: string, studentName: string) => {
@@ -342,6 +348,84 @@ export function AnalyticsPage() {
           )}
         </div>
       </section>
+
+      {/* ── Syllabus Coverage (admin/teacher) ─────────────────────────── */}
+      {!isStudent && syllabusCoverage && (
+        <section className="panel" style={{ marginTop: "20px" }}>
+          <div style={{ marginBottom: "16px" }}>
+            <h3 style={{ margin: 0 }}>Batch Syllabus Coverage</h3>
+            <p className="muted-copy" style={{ margin: "4px 0 0", fontSize: "0.88rem" }}>
+              {syllabusCoverage.totalStudentsWithTracker} student{syllabusCoverage.totalStudentsWithTracker !== 1 ? "s" : ""} using the Syllabus Tracker
+              {syllabusCoverage.totalStudentsWithTracker === 0 && " — students need to set up their tracker first."}
+            </p>
+          </div>
+
+          {Object.entries(syllabusCoverage.byClass as Record<string, any>).map(([classLevel, classData]: [string, any]) => (
+            <div key={classLevel} style={{ marginBottom: "16px", border: "1px solid var(--color-border)", borderRadius: "10px", overflow: "hidden" }}>
+              {/* Class header */}
+              <button
+                onClick={() => setExpandedClass(expandedClass === classLevel ? "" : classLevel)}
+                style={{
+                  width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "12px 16px", background: "#f8fafc", border: "none", cursor: "pointer",
+                  fontWeight: 600, fontSize: "0.95rem", color: "var(--color-text)",
+                }}
+              >
+                <span>Class {classLevel} — {classData.totalStudents} student{classData.totalStudents !== 1 ? "s" : ""}</span>
+                <span style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>{expandedClass === classLevel ? "▲ collapse" : "▼ expand"}</span>
+              </button>
+
+              {expandedClass === classLevel && (
+                <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
+                  {Object.entries(classData.subjects as Record<string, any>).map(([subjectKey, subData]: [string, any]) => {
+                    const subjectInfo = getSubjectByKey(subjectKey);
+                    const name = subjectInfo?.name ?? subData.name;
+                    const chapters = subData.chapters as { studied: number; inProgress: number; notStarted: number; total: number }[];
+                    const totalStudied = chapters.reduce((a: number, c: any) => a + c.studied, 0);
+                    const totalChapters = chapters.length;
+                    const pct = totalChapters && classData.totalStudents
+                      ? Math.round((totalStudied / (totalChapters * classData.totalStudents)) * 100) : 0;
+
+                    return (
+                      <div key={subjectKey}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+                          <span style={{ fontWeight: 600, fontSize: "0.88rem" }}>{name}</span>
+                          <span style={{ fontSize: "0.78rem", color: "var(--color-text-muted)" }}>{pct}% class-wide studied</span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                          {chapters.map((ch: any, i: number) => {
+                            const chName = subjectInfo?.chapters[i]?.name ?? `Chapter ${i + 1}`;
+                            const studiedPct = classData.totalStudents > 0 ? Math.round((ch.studied / classData.totalStudents) * 100) : 0;
+                            return (
+                              <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "0.8rem" }}>
+                                <span style={{ width: "22px", color: "var(--color-text-muted)", flexShrink: 0 }}>{String(i + 1).padStart(2, "0")}</span>
+                                <span style={{ flex: 1, color: "var(--color-text)" }}>{chName}</span>
+                                <div style={{ width: "80px", height: "5px", borderRadius: "3px", background: "#e5e7eb", flexShrink: 0 }}>
+                                  <div style={{ height: "100%", width: `${studiedPct}%`, background: studiedPct === 100 ? "#16a34a" : "#0070f3", borderRadius: "3px" }} />
+                                </div>
+                                <span style={{ width: "70px", textAlign: "right", color: "var(--color-text-muted)", flexShrink: 0 }}>
+                                  {ch.studied}/{classData.totalStudents} studied
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {Object.keys(classData.subjects).length === 0 && (
+                    <p className="muted-copy" style={{ margin: 0, fontSize: "0.85rem" }}>No chapter data recorded yet for this class.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {Object.keys(syllabusCoverage.byClass).length === 0 && (
+            <p className="muted-copy" style={{ margin: 0, fontSize: "0.85rem" }}>No syllabus tracker data yet. Students need to set up their tracker first.</p>
+          )}
+        </section>
+      )}
     </div>
   );
 }

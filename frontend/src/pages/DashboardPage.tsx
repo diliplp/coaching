@@ -4,6 +4,8 @@ import { apiClient } from "../api/client";
 import { getStoredSession } from "../auth";
 import { liveExamState } from "../data/mockExamContext";
 import type { AdaptivePlan, BatchAdaptivePlan, OverviewResponse, QuestionBankResponse } from "../types";
+import { getSubjectByKey, chapterKey } from "../data/ncert-syllabus";
+import type { ChapterStatus } from "../data/ncert-syllabus";
 
 export function DashboardPage() {
   const navigate = useNavigate();
@@ -14,6 +16,8 @@ export function DashboardPage() {
   const [batchPlans, setBatchPlans] = useState<BatchAdaptivePlan[]>([]);
   const [adaptiveStatus, setAdaptiveStatus] = useState("");
   const [teacherAdaptiveStatus, setTeacherAdaptiveStatus] = useState("");
+  const [syllabusProfile, setSyllabusProfile] = useState<{ classLevel: string; subjectKeys: string[]; setupDone: boolean } | null>(null);
+  const [syllabusProgress, setSyllabusProgress] = useState<Record<string, ChapterStatus>>({});
   const [startingExamId, setStartingExamId] = useState<string | null>(null);
   const [examStartError, setExamStartError] = useState<string | null>(null);
 
@@ -43,6 +47,12 @@ export function DashboardPage() {
     apiClient.getOverview().then(setData).catch(console.error);
     if (session?.user.role === "student") {
       apiClient.getQuestionBank().then(setQuestionBank).catch(console.error);
+      Promise.all([apiClient.getSyllabusProfile(), apiClient.getSyllabusProgress()])
+        .then(([p, prog]) => {
+          setSyllabusProfile(p);
+          setSyllabusProgress((prog ?? {}) as Record<string, ChapterStatus>);
+        })
+        .catch(() => {});
     }
   }, []);
 
@@ -136,18 +146,70 @@ export function DashboardPage() {
     <div className="page">
       <section className="hero-card">
         <div>
-          <p className="eyebrow">{session?.user.role === "student" ? "Student Dashboard" : "Institute Control Panel"}</p>
-          <h2>{session?.user.role === "student" ? `Welcome back, ${session.user.name}` : "Smart exam operations for tuition classes"}</h2>
-          <p className="hero-copy">
+          <p className="eyebrow" style={{ margin: 0 }}>{session?.user.role === "student" ? "Student Dashboard" : "Institute Control Panel"}</p>
+          <h2 style={{ margin: "4px 0 2px", fontSize: "1.4rem" }}>{session?.user.role === "student" ? `Welcome back, ${session.user.name}` : "Smart exam operations for tuition classes"}</h2>
+          <p className="hero-copy" style={{ margin: 0, fontSize: "0.85rem", opacity: 0.8 }}>
             {session?.user.role === "student"
               ? "Access your scheduled exams, create custom practice tests, and review your performance insights."
-              : "This MVP already models classes, streams, batches, question banks, dynamic exam creation, and automated weak-topic analytics."}
+              : "Manage classes, streams, batches, question banks, dynamic exam creation, and automated analytics."}
           </p>
         </div>
       </section>
 
+      {/* ── Syllabus Progress Widget (students) ───────────────────────── */}
       {session?.user.role === "student" && (
-        <div className="grid-two" style={{ marginTop: "30px", gap: "30px" }}>
+        <section className="panel" style={{ marginTop: "16px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+            <div>
+              <p className="eyebrow" style={{ margin: 0 }}>Syllabus Tracker</p>
+              <h3 style={{ margin: "4px 0 0", fontSize: "1.1rem" }}>
+                {syllabusProfile?.setupDone ? `Class ${syllabusProfile.classLevel} Progress` : "Track Your NCERT Syllabus"}
+              </h3>
+            </div>
+            <button
+              className="secondary-button"
+              style={{ fontSize: "0.82rem", padding: "6px 14px" }}
+              onClick={() => navigate("/syllabus-tracker")}
+            >
+              {syllabusProfile?.setupDone ? "View Full Tracker" : "Set Up Tracker"}
+            </button>
+          </div>
+
+          {syllabusProfile?.setupDone ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "10px" }}>
+              {(syllabusProfile.subjectKeys ?? []).map((key) => {
+                const sub = getSubjectByKey(key);
+                if (!sub) return null;
+                const total = sub.chapters.length;
+                const studied = sub.chapters.filter(
+                  (_, i) => syllabusProgress[chapterKey(key, i)] === "studied"
+                ).length;
+                const pct = total ? Math.round((studied / total) * 100) : 0;
+                const color = pct === 100 ? "#16a34a" : pct >= 50 ? "#0070f3" : "#64748b";
+                return (
+                  <div
+                    key={key}
+                    style={{ padding: "12px", background: "var(--color-bg-secondary)", borderRadius: "10px", border: "1px solid var(--color-border)" }}
+                  >
+                    <div style={{ fontSize: "0.82rem", fontWeight: 600, marginBottom: "6px", color }}>{sub.shortName}</div>
+                    <div style={{ height: "5px", borderRadius: "3px", background: "#e5e7eb", overflow: "hidden", marginBottom: "5px" }}>
+                      <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: "3px", transition: "width 0.3s" }} />
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>{studied}/{total} · {pct}%</div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p style={{ color: "var(--color-text-muted)", margin: 0, fontSize: "0.9rem" }}>
+              Set up your syllabus tracker to monitor chapter-wise NCERT 2024 progress and board exam priorities.
+            </p>
+          )}
+        </section>
+      )}
+
+      {session?.user.role === "student" && (
+        <div className="grid-two" style={{ marginTop: "20px", gap: "30px" }}>
           {/* Left Column: Scheduled Exams */}
           <section className="panel" style={{ display: "flex", flexDirection: "column" }}>
             <div style={{ marginBottom: "20px" }}>

@@ -483,4 +483,33 @@ export const apiClient = {
 
   deleteAdmission: (id: string) =>
     request<{ success: boolean }>(`/admin/admissions/${id}`, { method: "DELETE" }),
+
+  // ── Syllabus Tracker ────────────────────────────────────────────────────────
+  getSyllabusProfile: () =>
+    request<{ classLevel: string; subjectKeys: string[]; setupDone: boolean } | null>(
+      "/students/me/syllabus-profile"
+    ),
+  saveSyllabusProfile: (payload: { classLevel: string; subjectKeys: string[] }) =>
+    request<{ classLevel: string; subjectKeys: string[]; setupDone: boolean }>(
+      "/students/me/syllabus-profile",
+      { method: "POST", body: JSON.stringify(payload) }
+    ),
+  getSyllabusProgress: () =>
+    request<Record<string, string>>("/students/me/syllabus-progress"),
+  updateSyllabusProgress: (payload: { chapterKey: string; status: string }) =>
+    request<{ ok: boolean }>("/students/me/syllabus-progress", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  getAdminSyllabusCoverage: () =>
+    request<{
+      totalStudentsWithTracker: number;
+      byClass: Record<string, {
+        totalStudents: number;
+        subjects: Record<string, {
+          name: string;
+          chapters: { studied: number; inProgress: number; notStarted: number; total: number }[];
+        }>;
+      }>;
+    }>("/admin/syllabus-coverage"),
 };
