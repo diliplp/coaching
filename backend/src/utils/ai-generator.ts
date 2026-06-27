@@ -308,6 +308,22 @@ async function generateContentWithFallback(prompt: string, fallbackJson: string 
 }
 
 /**
+ * Strips markdown code fences and extracts the first valid JSON object/array.
+ * Free models often wrap responses in ```json ... ``` blocks.
+ */
+function cleanJson(raw: string): string {
+  // Remove ```json ... ``` or ``` ... ``` fences
+  let cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+  // If there's still non-JSON preamble, find the first { or [
+  const firstBrace = cleaned.search(/[{[]/);
+  if (firstBrace > 0) cleaned = cleaned.slice(firstBrace);
+  // Trim trailing content after the last } or ]
+  const lastBrace = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
+  if (lastBrace >= 0 && lastBrace < cleaned.length - 1) cleaned = cleaned.slice(0, lastBrace + 1);
+  return cleaned;
+}
+
+/**
  * Free-only generator — used for non-question tasks (curriculum detection,
  * topic extraction) where paid model quality is not needed.
  * Tries Gemini first (free tier), then free OpenRouter models.
@@ -326,7 +342,7 @@ async function generateContentFreeOnly(prompt: string, fallbackJson: string = "{
           config: { responseMimeType: "application/json" }
         });
         const text = result.text;
-        if (text) { console.log(`[FreeGen] Gemini ${name} succeeded.`); return text; }
+        if (text) { console.log(`[FreeGen] Gemini ${name} succeeded.`); return cleanJson(text); }
       } catch (e: any) {
         console.warn(`[FreeGen] Gemini ${name} failed:`, e?.message ?? e);
       }
@@ -350,14 +366,14 @@ async function generateContentFreeOnly(prompt: string, fallbackJson: string = "{
           body: JSON.stringify({
             model,
             messages: [{ role: "user", content: prompt }],
-            response_format: { type: "json_object" },
+            // omit response_format — free models often ignore it and wrap in markdown anyway
             max_tokens: 4000
           })
         });
         if (response.ok) {
           const data = await response.json();
           const text = data.choices?.[0]?.message?.content;
-          if (text) { console.log(`[FreeGen] ${model} succeeded.`); return text; }
+          if (text) { console.log(`[FreeGen] ${model} succeeded.`); return cleanJson(text); }
         } else {
           console.warn(`[FreeGen] ${model} failed (${response.status})`);
         }
