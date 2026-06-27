@@ -385,9 +385,13 @@ async function generateContentFreeOnly(prompt: string, fallbackJson: string = "{
     }
   }
 
-  // 2. Free OpenRouter models
+  // 2. Free OpenRouter models — prefer instruction-following models, avoid reasoning/thinking ones
   if (process.env.OPENROUTER_API_KEY) {
-    const freeModels = ["meta-llama/llama-3.3-70b-instruct:free", "nvidia/nemotron-3-super-120b-a12b:free"];
+    const freeModels = [
+      "meta-llama/llama-3.3-70b-instruct:free",
+      "google/gemma-3-27b-it:free",
+      "mistralai/mistral-7b-instruct:free",
+    ];
     for (const model of freeModels) {
       try {
         console.log(`[FreeGen] Trying ${model}...`);
@@ -424,8 +428,9 @@ async function generateContentFreeOnly(prompt: string, fallbackJson: string = "{
     }
   }
 
-  console.warn("[FreeGen] All free providers failed, returning fallback.");
-  return fallbackJson;
+  // 3. Last resort: paid model — only reached if all free options failed
+  console.warn("[FreeGen] All free providers failed — falling back to paid model for curriculum detection.");
+  return generateContentWithFallback(prompt, fallbackJson);
 }
 
 function findChapterStart(text: string, chapterName: string): number {
