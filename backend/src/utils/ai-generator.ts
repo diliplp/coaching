@@ -1801,7 +1801,13 @@ JSON FORMAT:
 Set isCorrect: true only if there is an explicit answer marker on this page (circled option, asterisk, bold). Otherwise leave all options as isCorrect: false — the answer key will be applied separately.`;
 
 
-const TEXT_PROMPT = (chunk: string) => `You are extracting MCQ questions from exam paper text. Extract EVERY multiple-choice question present.
+const TEXT_PROMPT = (chunk: string, topicNames?: string[]) => {
+  const topicLine = topicNames && topicNames.length > 0
+    ? `\nAVAILABLE TOPICS: ${topicNames.join(" | ")}\nFor each question, set "topicName" to the single best matching topic from the list above.`
+    : "";
+  const topicField = topicNames && topicNames.length > 0
+    ? `"topicName": "matching topic name",` : "";
+  return `You are extracting MCQ questions from exam paper text. Extract EVERY multiple-choice question present.
 
 RULES:
 - The text may be from a two-column PDF and can appear scrambled — use question numbers to identify boundaries.
@@ -1810,16 +1816,27 @@ RULES:
 - Chemical formulas: $\\text{H}_2\\text{O}$, $\\text{CO}_2$, $\\text{K}_2\\text{SO}_4$.
 - Chemical structures (SMILES or structural): output [SMILES: ...] notation.
 - Leave isCorrect: false for all options — the answer key is applied separately.
-- Output ONLY valid JSON.
+- Output ONLY valid JSON.${topicLine}
 
-JSON FORMAT: { "questions": [{ "questionNumber": 1, "prompt": "...", "difficulty": "medium", "marks": 4, "negativeMarks": 1, "options": [{"label":"A","value":"...","isCorrect":false},{"label":"B","value":"...","isCorrect":false},{"label":"C","value":"...","isCorrect":false},{"label":"D","value":"...","isCorrect":false}], "explanation": "" }] }
+JSON FORMAT: { "questions": [{ "questionNumber": 1, ${topicField}"prompt": "...", "difficulty": "medium", "marks": 4, "negativeMarks": 1, "options": [{"label":"A","value":"...","isCorrect":false},{"label":"B","value":"...","isCorrect":false},{"label":"C","value":"...","isCorrect":false},{"label":"D","value":"...","isCorrect":false}], "explanation": "" }] }
 
 TEXT:
 ---
 ${chunk}
 ---`;
+};
 
-async function extractFromChunkText(chunkText: string, pageImageBase64?: string): Promise<any[]> {
+/** Fuzzy-match an AI-returned topic name to an actual topic ID. */
+function matchTopicId(name: string | undefined, topics: { id: string; name: string }[]): string | null {
+  if (!name || topics.length === 0) return null;
+  const n = name.toLowerCase().trim();
+  const exact = topics.find(t => t.name.toLowerCase().trim() === n);
+  if (exact) return exact.id;
+  const partial = topics.find(t => t.name.toLowerCase().includes(n) || n.includes(t.name.toLowerCase()));
+  return partial?.id ?? null;
+}
+
+async function extractFromChunkText(chunkText: string, pageImageBase64?: string, topicNames?: string[]): Promise<any[]> {
   let rawResponse = "";
   let repaired = "";
   try {
@@ -1832,10 +1849,10 @@ async function extractFromChunkText(chunkText: string, pageImageBase64?: string)
         rawResponse = visionResult;
       } else {
         console.warn("[Extract] Vision failed, falling back to text-only.");
-        rawResponse = await generateContentWithFallback(TEXT_PROMPT(chunkText), '{"questions": []}');
+        rawResponse = await generateContentWithFallback(TEXT_PROMPT(chunkText, topicNames), '{"questions": []}');
       }
     } else {
-      rawResponse = await generateContentWithFallback(TEXT_PROMPT(chunkText), '{"questions": []}');
+      rawResponse = await generateContentWithFallback(TEXT_PROMPT(chunkText, topicNames), '{"questions": []}');
     }
 
     const startIdx = rawResponse.indexOf("{");
@@ -1903,6 +1920,7 @@ export async function extractQuestionsFromPdfText(params: {
   text: string;
   subjectId: string;
   topicId: string;
+  topics?: { id: string; name: string }[];
   sourceType: QuestionSource;
   bookId?: string;
   pdfPath?: string;
@@ -1946,6 +1964,8 @@ export async function extractQuestionsFromPdfText(params: {
     }
   }
 
+  const topicNames = (params.topics ?? []).map(t => t.name);
+
   // Fallback if no page delimiters are found
   if (pages.length <= 1) {
     const chunkSize = 6000;
@@ -1955,8 +1975,8 @@ export async function extractQuestionsFromPdfText(params: {
     }
     for (let i = 0; i < chunks.length; i++) {
       console.log(`Extracting from chunk ${i + 1}/${chunks.length} sequentially...`);
-      const qList = await extractFromChunkText(chunks[i]);
-      
+      const qList = await extractFromChunkText(chunks[i], undefined, topicNames);
+
       const validList = qList.filter((q: any) => {
         const prompt = q.prompt || "";
         if (!prompt) return false;
@@ -2016,7 +2036,7 @@ export async function extractQuestionsFromPdfText(params: {
 
       if (pageImageBase64) {
         // Vision path: one call per page, no chunking needed — model reads the full page image
-        const qList = await extractFromChunkText(pageTextWithOverlap, pageImageBase64);
+        const qList = await extractFromChunkText(pageTextWithOverlap, pageImageBase64, topicNames);
         allParsedQuestions.push(...qList.map((q: any) => ({ ...q, pageNumber: i + 1 })));
         await new Promise(resolve => setTimeout(resolve, 15000));
       } else {
@@ -2027,7 +2047,7 @@ export async function extractQuestionsFromPdfText(params: {
             console.log(`  Processing sub-chunk ${c + 1}/${chunks.length}...`);
             params.onProgress?.(`Reading page ${i + 1} of ${pages.length}, part ${c + 1}/${chunks.length}...`);
           }
-          const qList = await extractFromChunkText(chunks[c]);
+          const qList = await extractFromChunkText(chunks[c], undefined, topicNames);
           const validList = qList.filter((q: any) => {
             const prompt = q.prompt || "";
             if (!prompt || prompt.length < 15) return !!prompt;
@@ -2547,10 +2567,11 @@ Return JSON:
     const promptHash = crypto.createHash("sha256").update(normalizedPrompt).digest("hex").substring(0, 16);
     const qId = `que-pdf-${params.bookId || "book"}-${promptHash}`;
 
+    const resolvedTopicId = matchTopicId(q.topicName, params.topics ?? []) ?? params.topicId;
     return {
       id: qId,
       subjectId: params.subjectId,
-      topicId: params.topicId,
+      topicId: resolvedTopicId,
       type: correctOptionIds.length > 1 ? "multi_correct" : "single_correct",
       prompt: promptText,
       difficulty: q.difficulty || "medium",

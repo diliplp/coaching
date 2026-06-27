@@ -1037,10 +1037,16 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
         crops.map(c => [c.questionNumber, c.cropUrl])
       );
 
+      const subjectTopics = state.topics
+        .filter(t => t.subjectId === book.subjectId)
+        .map(t => ({ id: t.id, name: t.name }));
+      console.log(`[ExtractMCQ] Passing ${subjectTopics.length} topics for auto-tagging: ${subjectTopics.map(t => t.name).join(", ")}`);
+
       const extracted = await extractQuestionsFromPdfText({
         text: parsedText,
         subjectId: book.subjectId,
         topicId: topicIds[0],
+        topics: subjectTopics,
         sourceType: book.bookType || "reference",
         bookId: book.id,
         pdfPath,
