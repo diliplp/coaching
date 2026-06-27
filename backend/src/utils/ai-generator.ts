@@ -1048,9 +1048,14 @@ export async function ensureEnoughQuestions(params: {
 }
 
 function isMcqPaper(text: string): boolean {
-  // MCQ papers have many (A)/(B)/(C)/(D) option markers; textbooks rarely do
-  const optionHits = (text.match(/\(A\)|\(B\)|\(C\)|\(D\)/g) ?? []).length;
-  return optionHits >= 12; // at least 3 complete 4-option MCQs
+  // pdfjs joins text items with spaces, so (A) may become "( A )" or "A )" — be lenient
+  const optionPattern = /\(\s*[AaBbCcDd]\s*\)|\b[AaBbCcDd]\s*\)\s/g;
+  const optionHits = (text.match(optionPattern) ?? []).length;
+  // Also count numbered questions: "1." or "1)" at start of a word boundary
+  const questionHits = (text.match(/\b\d{1,2}[.)]\s/g) ?? []).length;
+  const detected = optionHits >= 8 || (questionHits >= 10 && optionHits >= 4);
+  console.log(`[CurriculumDetect] optionHits=${optionHits} questionHits=${questionHits} isMcq=${detected}`);
+  return detected;
 }
 
 export async function detectCurriculumFromText(text: string): Promise<{

@@ -1926,6 +1926,7 @@ apiRouter.post("/subject-books/:bookId/detect-curriculum", requireRole(["super_a
   }
 
   try {
+    console.log(`[AnalyzeCurriculum] bookId=${book.id} textLen=${book.parsedText.length} preview="${book.parsedText.substring(0, 200).replace(/\n/g, " ")}"`);
     const curriculum = await detectCurriculumFromText(book.parsedText);
     res.json(curriculum);
   } catch (error: any) {
