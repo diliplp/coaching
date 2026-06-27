@@ -307,6 +307,70 @@ async function generateContentWithFallback(prompt: string, fallbackJson: string 
   throw new Error("All AI providers failed. Check OPENROUTER_API_KEY in .env");
 }
 
+/**
+ * Free-only generator — used for non-question tasks (curriculum detection,
+ * topic extraction) where paid model quality is not needed.
+ * Tries Gemini first (free tier), then free OpenRouter models.
+ * Does NOT touch the question generation pipeline.
+ */
+async function generateContentFreeOnly(prompt: string, fallbackJson: string = "{}"): Promise<string> {
+  // 1. Gemini Flash — free tier, handles text extraction well
+  if (process.env.SKIP_GEMINI !== "true") {
+    const clients = getGeminiClients();
+    for (const { client, name } of clients) {
+      try {
+        console.log(`[FreeGen] Gemini ${name} trying...`);
+        const result = await client.models.generateContent({
+          model: GEMINI_MODEL,
+          contents: prompt,
+          config: { responseMimeType: "application/json" }
+        });
+        const text = result.text;
+        if (text) { console.log(`[FreeGen] Gemini ${name} succeeded.`); return text; }
+      } catch (e: any) {
+        console.warn(`[FreeGen] Gemini ${name} failed:`, e?.message ?? e);
+      }
+    }
+  }
+
+  // 2. Free OpenRouter models
+  if (process.env.OPENROUTER_API_KEY) {
+    const freeModels = ["meta-llama/llama-3.3-70b-instruct:free", "nvidia/nemotron-3-super-120b-a12b:free"];
+    for (const model of freeModels) {
+      try {
+        console.log(`[FreeGen] Trying ${model}...`);
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://railway.app",
+            "X-Title": "Coaching Portal"
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "user", content: prompt }],
+            response_format: { type: "json_object" },
+            max_tokens: 4000
+          })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          const text = data.choices?.[0]?.message?.content;
+          if (text) { console.log(`[FreeGen] ${model} succeeded.`); return text; }
+        } else {
+          console.warn(`[FreeGen] ${model} failed (${response.status})`);
+        }
+      } catch (e: any) {
+        console.warn(`[FreeGen] ${model} threw:`, e.message);
+      }
+    }
+  }
+
+  console.warn("[FreeGen] All free providers failed, returning fallback.");
+  return fallbackJson;
+}
+
 function findChapterStart(text: string, chapterName: string): number {
   const lower = text.toLowerCase();
   const nameLower = chapterName.toLowerCase().trim();
@@ -1122,7 +1186,7 @@ ${text.substring(0, 20000)}
   `;
 
   try {
-    const rawResponse = await generateContentWithFallback(prompt, '{"chapters": []}');
+    const rawResponse = await generateContentFreeOnly(prompt, '{"chapters": []}');
     return JSON.parse(rawResponse);
   } catch (error) {
     console.error("Curriculum detection failed:", error);
