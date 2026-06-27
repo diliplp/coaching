@@ -6,6 +6,7 @@ import { liveExamState } from "../data/mockExamContext";
 import type { AdaptivePlan, BatchAdaptivePlan, OverviewResponse, QuestionBankResponse } from "../types";
 import { getSubjectByKey, chapterKey } from "../data/ncert-syllabus";
 import type { ChapterStatus } from "../data/ncert-syllabus";
+import { chapterPriority } from "../data/cbse-weightage";
 
 export function DashboardPage() {
   const navigate = useNavigate();
@@ -142,6 +143,37 @@ export function DashboardPage() {
     }
   };
 
+  const todayFocus = useMemo(() => {
+    if (!syllabusProfile?.setupDone) return null;
+    let best: { subjectKey: string; subjectName: string; chapterName: string; priority: number } | null = null;
+    for (const key of syllabusProfile.subjectKeys) {
+      const sub = getSubjectByKey(key);
+      if (!sub) continue;
+      sub.chapters.forEach((ch, i) => {
+        const status = (syllabusProgress[chapterKey(key, i)] ?? "not_started") as ChapterStatus;
+        if (status === "studied") return;
+        const score = chapterPriority(key, i, status);
+        if (score > 0 && (!best || score > best.priority)) {
+          best = { subjectKey: key, subjectName: sub.shortName, chapterName: ch.name, priority: score };
+        }
+      });
+    }
+    if (!best) {
+      // Fall back to first in_progress or not_started chapter (no CBSE marks, e.g. Class XI)
+      for (const key of syllabusProfile.subjectKeys) {
+        const sub = getSubjectByKey(key);
+        if (!sub) continue;
+        for (let i = 0; i < sub.chapters.length; i++) {
+          const status = (syllabusProgress[chapterKey(key, i)] ?? "not_started") as ChapterStatus;
+          if (status !== "studied") {
+            return { subjectKey: key, subjectName: sub.shortName, chapterName: sub.chapters[i].name, priority: 0 };
+          }
+        }
+      }
+    }
+    return best;
+  }, [syllabusProfile, syllabusProgress]);
+
   return (
     <div className="page">
       <section className="hero-card">
@@ -205,6 +237,27 @@ export function DashboardPage() {
               Set up your syllabus tracker to monitor chapter-wise NCERT 2024 progress and board exam priorities.
             </p>
           )}
+        </section>
+      )}
+
+      {/* ── Today's Focus (students with tracker set up) ───────────────── */}
+      {session?.user.role === "student" && todayFocus && (
+        <section style={{ marginTop: "12px", padding: "14px 18px", borderRadius: "10px", background: "linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)", border: "1px solid #bbf7d0", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div style={{ fontSize: "1.6rem", lineHeight: 1 }}>🎯</div>
+            <div>
+              <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#15803d", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "2px" }}>Today's Focus</div>
+              <div style={{ fontSize: "0.95rem", fontWeight: 600, color: "#064e3b" }}>{todayFocus.chapterName}</div>
+              <div style={{ fontSize: "0.78rem", color: "#047857", marginTop: "1px" }}>{todayFocus.subjectName}{todayFocus.priority > 0 ? ` · ~${todayFocus.priority} CBSE marks` : ""}</div>
+            </div>
+          </div>
+          <button
+            className="secondary-button"
+            style={{ fontSize: "0.8rem", padding: "6px 14px", flexShrink: 0 }}
+            onClick={() => navigate("/syllabus-tracker")}
+          >
+            Mark as Studied
+          </button>
         </section>
       )}
 

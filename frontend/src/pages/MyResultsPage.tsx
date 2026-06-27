@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { RichText } from "../components/RichText";
 import { getStoredSession } from "../auth";
+import { liveExamState } from "../data/mockExamContext";
 
 type SubmissionSummary = {
   id: string;
@@ -27,17 +29,33 @@ type ReviewItem = {
 
 type SubmissionDetail = SubmissionSummary & {
   examId: string;
-  insights: { topicName: string; totalQuestions: number; correctAnswers: number; incorrectAnswers: number; unattemptedAnswers: number; accuracy: number }[];
+  insights: { topicId: string; topicName: string; totalQuestions: number; correctAnswers: number; incorrectAnswers: number; unattemptedAnswers: number; accuracy: number }[];
   review: ReviewItem[];
 };
 
 export function MyResultsPage() {
   const studentName = getStoredSession()?.user?.name ?? "";
+  const navigate = useNavigate();
   const [submissions, setSubmissions] = useState<SubmissionSummary[]>([]);
   const [selected, setSelected] = useState<SubmissionDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [reviewIndex, setReviewIndex] = useState(0);
+  const [practicingTopic, setPracticingTopic] = useState<string | null>(null);
+
+  const generatePractice = async (topicId: string, topicName: string) => {
+    setPracticingTopic(topicId);
+    try {
+      const payload = await apiClient.selfGenerateExam({ topicIds: [topicId], questionCount: 10 });
+      liveExamState.generatedExam = payload;
+      liveExamState.latestResult = null;
+      navigate("/live-exam");
+    } catch (e: any) {
+      alert(e?.message || `Could not generate practice test for "${topicName}". Try again.`);
+    } finally {
+      setPracticingTopic(null);
+    }
+  };
 
   useEffect(() => {
     apiClient.getMySubmissions()
@@ -279,14 +297,23 @@ export function MyResultsPage() {
                     <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#dc2626", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                       🔴 Work on These First
                     </div>
-                    <ul style={{ margin: 0, paddingLeft: "16px", display: "flex", flexDirection: "column", gap: "5px" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                       {urgentTopics.map((t, i) => (
-                        <li key={i} style={{ fontSize: "0.85rem", color: "#991b1b" }}>
-                          <strong>{t.topicName}</strong>
-                          <span style={{ color: "#6b7280", fontSize: "0.78rem" }}> — {t.correctAnswers}/{t.totalQuestions} correct ({t.accuracy.toFixed(0)}%)</span>
-                        </li>
+                        <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                          <span style={{ fontSize: "0.85rem", color: "#991b1b" }}>
+                            <strong>{t.topicName}</strong>
+                            <span style={{ color: "#6b7280", fontSize: "0.78rem" }}> — {t.correctAnswers}/{t.totalQuestions} ({t.accuracy.toFixed(0)}%)</span>
+                          </span>
+                          <button
+                            onClick={() => generatePractice(t.topicId, t.topicName)}
+                            disabled={practicingTopic !== null}
+                            style={{ fontSize: "0.72rem", padding: "3px 10px", borderRadius: "6px", border: "1px solid #dc2626", background: practicingTopic === t.topicId ? "#fee2e2" : "white", color: "#dc2626", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}
+                          >
+                            {practicingTopic === t.topicId ? "..." : "Practice"}
+                          </button>
+                        </div>
                       ))}
-                    </ul>
+                    </div>
                   </div>
                 )}
                 {practiceTopics.length > 0 && (
@@ -294,14 +321,23 @@ export function MyResultsPage() {
                     <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#b45309", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                       🟡 Needs More Practice
                     </div>
-                    <ul style={{ margin: 0, paddingLeft: "16px", display: "flex", flexDirection: "column", gap: "5px" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                       {practiceTopics.map((t, i) => (
-                        <li key={i} style={{ fontSize: "0.85rem", color: "#92400e" }}>
-                          <strong>{t.topicName}</strong>
-                          <span style={{ color: "#6b7280", fontSize: "0.78rem" }}> — {t.correctAnswers}/{t.totalQuestions} correct ({t.accuracy.toFixed(0)}%)</span>
-                        </li>
+                        <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                          <span style={{ fontSize: "0.85rem", color: "#92400e" }}>
+                            <strong>{t.topicName}</strong>
+                            <span style={{ color: "#6b7280", fontSize: "0.78rem" }}> — {t.correctAnswers}/{t.totalQuestions} ({t.accuracy.toFixed(0)}%)</span>
+                          </span>
+                          <button
+                            onClick={() => generatePractice(t.topicId, t.topicName)}
+                            disabled={practicingTopic !== null}
+                            style={{ fontSize: "0.72rem", padding: "3px 10px", borderRadius: "6px", border: "1px solid #b45309", background: practicingTopic === t.topicId ? "#fef3c7" : "white", color: "#b45309", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}
+                          >
+                            {practicingTopic === t.topicId ? "..." : "Practice"}
+                          </button>
+                        </div>
                       ))}
-                    </ul>
+                    </div>
                   </div>
                 )}
               </div>

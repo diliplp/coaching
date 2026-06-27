@@ -1,7 +1,28 @@
 import puppeteer from "puppeteer";
 import fs from "fs";
 import path from "path";
-import { getAppState } from "../data/database.js";
+import { getAppState, getRecord } from "../data/database.js";
+
+// Subject key → display name + chapter count (mirrors frontend ncert-syllabus.ts)
+const SUBJECT_INFO: Record<string, { name: string; chapters: number }> = {
+  "X-Mathematics": { name: "Mathematics", chapters: 14 },
+  "X-Science": { name: "Science", chapters: 13 },
+  "X-English": { name: "English", chapters: 21 },
+  "X-History": { name: "History", chapters: 5 },
+  "X-Geography": { name: "Geography", chapters: 7 },
+  "X-Political-Science": { name: "Political Science", chapters: 5 },
+  "X-Economics": { name: "Economics", chapters: 5 },
+  "XI-Physics": { name: "Physics", chapters: 15 },
+  "XI-Chemistry": { name: "Chemistry", chapters: 13 },
+  "XI-Mathematics": { name: "Mathematics", chapters: 14 },
+  "XI-Biology": { name: "Biology", chapters: 22 },
+  "XI-English": { name: "English", chapters: 16 },
+  "XII-Physics": { name: "Physics", chapters: 14 },
+  "XII-Chemistry": { name: "Chemistry", chapters: 16 },
+  "XII-Mathematics": { name: "Mathematics", chapters: 13 },
+  "XII-Biology": { name: "Biology", chapters: 15 },
+  "XII-English": { name: "English", chapters: 16 },
+};
 
 async function generateAIGuidance(data: {
   studentName: string;
@@ -88,6 +109,16 @@ export async function generateStudentReportPDF(studentId: string, options: Repor
 
   const student = state.students.find(s => s.id === studentId);
   const user    = state.users.find(u => u.id === studentId || u.studentId === studentId);
+
+  // Load syllabus tracker data (stored in custom record collections)
+  const userId = user?.id ?? studentId;
+  const syllabusProfile = await getRecord<{ classLevel: string; subjectKeys: string[]; setupDone: boolean }>(
+    "syllabusProfiles", `syllabusProfile-${userId}`
+  );
+  const syllabusProgressRec = await getRecord<{ progress: Record<string, string> }>(
+    "syllabusProgress", `syllabusProgress-${userId}`
+  );
+  const syllabusProgress: Record<string, string> = syllabusProgressRec?.progress ?? {};
 
   const studentName  = student?.name  || user?.name  || "Student";
   const studentEmail = user?.email || "";
@@ -313,6 +344,14 @@ export async function generateStudentReportPDF(studentId: string, options: Repor
     .sig-sub   { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.4px; margin-top: 2px; }
     .sig-center { font-size: 10.5px; color: #94a3b8; text-align: center; }
 
+    /* ── Syllabus tracker ── */
+    .syl-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 30px; }
+    .syl-card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px; }
+    .syl-name { font-size: 11px; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+    .syl-bar-bg { height: 5px; border-radius: 3px; background: #e2e8f0; margin-bottom: 5px; overflow: hidden; }
+    .syl-bar-fill { height: 100%; border-radius: 3px; }
+    .syl-count { font-size: 10px; color: #64748b; }
+
     @media print {
       .wrap { padding: 0; }
       .page-break { page-break-before: always; }
@@ -429,6 +468,27 @@ export async function generateStudentReportPDF(studentId: string, options: Repor
         : `<p style="font-size:11.5px;color:#991b1b;font-style:italic;margin:0;">Excellent — no weak topics detected at this level!</p>`}
     </div>
   </div>
+
+  ${syllabusProfile?.setupDone && syllabusProfile.subjectKeys?.length > 0 ? `
+  <!-- SYLLABUS PROGRESS -->
+  <h3 class="sec-title">NCERT Syllabus Coverage (Class ${syllabusProfile.classLevel})</h3>
+  <div class="syl-grid">
+    ${syllabusProfile.subjectKeys.map(key => {
+      const info = SUBJECT_INFO[key];
+      if (!info) return "";
+      const total = info.chapters;
+      const studied = Array.from({ length: total }, (_, i) => syllabusProgress[`${key}::${i}`] === "studied").filter(Boolean).length;
+      const inProgress = Array.from({ length: total }, (_, i) => syllabusProgress[`${key}::${i}`] === "in_progress").filter(Boolean).length;
+      const pct = total > 0 ? Math.round((studied / total) * 100) : 0;
+      const color = pct === 100 ? "#16a34a" : pct >= 50 ? "#3b82f6" : pct > 0 ? "#f59e0b" : "#94a3b8";
+      return `<div class="syl-card">
+        <div class="syl-name">${info.name}</div>
+        <div class="syl-bar-bg"><div class="syl-bar-fill" style="width:${pct}%;background:${color};"></div></div>
+        <div class="syl-count">${studied}/${total} studied${inProgress > 0 ? ` · ${inProgress} in progress` : ""} · ${pct}%</div>
+      </div>`;
+    }).join("")}
+  </div>
+  ` : ""}
 
   <!-- GUIDANCE -->
   <div class="guidance">
