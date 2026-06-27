@@ -385,52 +385,46 @@ async function generateContentFreeOnly(prompt: string, fallbackJson: string = "{
     }
   }
 
-  // 2. Free OpenRouter models — prefer instruction-following models, avoid reasoning/thinking ones
+  // 2. DeepSeek V4 Flash — cheap, reliable JSON, same key used for question generation
   if (process.env.OPENROUTER_API_KEY) {
-    const freeModels = [
-      "meta-llama/llama-3.3-70b-instruct:free",
-      "google/gemma-3-27b-it:free",
-      "mistralai/mistral-7b-instruct:free",
-    ];
-    for (const model of freeModels) {
-      try {
-        console.log(`[FreeGen] Trying ${model}...`);
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://railway.app",
-            "X-Title": "Coaching Portal"
-          },
-          body: JSON.stringify({
-            model,
-            messages: [
-              { role: "system", content: "You are a JSON-only API. Always respond with valid JSON. Never include any text outside the JSON object." },
-              { role: "user", content: jsonPrompt }
-            ],
-            max_tokens: 4000
-          })
-        });
-        if (response.ok) {
-          const data = await response.json();
-          const text = data.choices?.[0]?.message?.content;
-          if (text) {
-            const cleaned = tryClean(text, model);
-            if (cleaned) { console.log(`[FreeGen] ${model} succeeded.`); return cleaned; }
-          }
-        } else {
-          console.warn(`[FreeGen] ${model} failed (${response.status})`);
+    const model = "deepseek/deepseek-v4-flash";
+    try {
+      console.log(`[FreeGen] Trying ${model}...`);
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://railway.app",
+          "X-Title": "Coaching Portal"
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: "You are a JSON-only API. Always respond with valid JSON. Never include any text outside the JSON object." },
+            { role: "user", content: jsonPrompt }
+          ],
+          response_format: { type: "json_object" },
+          max_tokens: 4000
+        })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const text = data.choices?.[0]?.message?.content;
+        if (text) {
+          const cleaned = tryClean(text, model);
+          if (cleaned) { console.log(`[FreeGen] ${model} succeeded.`); return cleaned; }
         }
-      } catch (e: any) {
-        console.warn(`[FreeGen] ${model} threw:`, e.message);
+      } else {
+        console.warn(`[FreeGen] ${model} failed (${response.status})`);
       }
+    } catch (e: any) {
+      console.warn(`[FreeGen] ${model} threw:`, e.message);
     }
   }
 
-  // 3. Last resort: paid model — only reached if all free options failed
-  console.warn("[FreeGen] All free providers failed — falling back to paid model for curriculum detection.");
-  return generateContentWithFallback(prompt, fallbackJson);
+  console.warn("[FreeGen] All providers failed, returning fallback.");
+  return fallbackJson;
 }
 
 function findChapterStart(text: string, chapterName: string): number {
