@@ -1,4 +1,16 @@
 :root {
+  --color-primary: #0f766e;
+  --color-primary-dark: #0d5e57;
+  --color-primary-light: #ccfbf1;
+  --color-text: #10203b;
+  --color-text-dark: #0f172a;
+  --color-text-muted: #64748b;
+  --color-text-secondary: #475569;
+  --color-bg: #f8fbff;
+  --color-bg-secondary: #f1f5f9;
+  --color-border: #e2e8f0;
+  --color-error: #dc2626;
+
   font-family: "Lato", sans-serif;
   color: #10203b;
   background:

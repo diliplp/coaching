@@ -98,7 +98,7 @@ apiRouter.post("/auth/login", async (req, res) => {
   // Block parallel sessions for students only — protects exam integrity.
   // Teachers and admins may log in from multiple devices simultaneously.
   if (user.role === "student") {
-    const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+    const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes since last login
     if (user.sessionId && user.sessionStartedAt) {
       const sessionAge = Date.now() - new Date(user.sessionStartedAt).getTime();
       if (sessionAge < SESSION_TTL_MS) {
