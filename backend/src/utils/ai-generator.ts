@@ -1047,6 +1047,12 @@ export async function ensureEnoughQuestions(params: {
   }
 }
 
+function isMcqPaper(text: string): boolean {
+  // MCQ papers have many (A)/(B)/(C)/(D) option markers; textbooks rarely do
+  const optionHits = (text.match(/\(A\)|\(B\)|\(C\)|\(D\)/g) ?? []).length;
+  return optionHits >= 12; // at least 3 complete 4-option MCQs
+}
+
 export async function detectCurriculumFromText(text: string): Promise<{
   chapters: { name: string; topics: string[] }[];
 }> {
@@ -1054,7 +1060,37 @@ export async function detectCurriculumFromText(text: string): Promise<{
     throw new Error("Neither GEMINI_API_KEY nor OPENROUTER_API_KEY is configured.");
   }
 
-  const prompt = `
+  const mcq = isMcqPaper(text);
+
+  const prompt = mcq
+    ? `
+You are an expert academic analyst. The text below is an MCQ exam paper (multiple-choice questions with options A/B/C/D).
+
+Your task: read every question, identify the specific concept or sub-topic each question is testing, then group those concepts into broad chapter-level categories.
+
+Return ONLY valid JSON in this exact structure:
+{
+  "chapters": [
+    {
+      "name": "Broad Chapter / Unit Name",
+      "topics": ["Specific concept 1", "Specific concept 2", "Specific concept 3"]
+    }
+  ]
+}
+
+Rules:
+1. Each topic must name the specific concept tested (e.g. "Markovnikov's Rule", "Free Radical Substitution", "Hückel's Rule") — NOT the question number.
+2. Group related concepts under one chapter. A single chapter may cover 3–10 topics.
+3. Do NOT include option text or answer choices in topic names.
+4. Do NOT create a topic called "General" or "Miscellaneous" — always be specific.
+5. Output ONLY the JSON.
+
+MCQ PAPER TEXT:
+---
+${text.substring(0, 20000)}
+---
+`
+    : `
     Analyze the educational text provided below and extract the academic structure (Chapters and their respective Topics).
     Return the result in JSON format.
 
@@ -1082,7 +1118,6 @@ export async function detectCurriculumFromText(text: string): Promise<{
 
   try {
     const rawResponse = await generateContentWithFallback(prompt, '{"chapters": []}');
-
     return JSON.parse(rawResponse);
   } catch (error) {
     console.error("Curriculum detection failed:", error);
