@@ -308,19 +308,40 @@ async function generateContentWithFallback(prompt: string, fallbackJson: string 
 }
 
 /**
- * Strips markdown code fences and extracts the first valid JSON object/array.
- * Free models often wrap responses in ```json ... ``` blocks.
+ * Extracts the first complete JSON object/array from a free-model response.
+ * Handles markdown code fences, preamble text, and trailing content by using
+ * bracket-depth counting rather than lastIndexOf (which breaks on nested JSON).
  */
 function cleanJson(raw: string): string {
-  // Remove ```json ... ``` or ``` ... ``` fences
-  let cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
-  // If there's still non-JSON preamble, find the first { or [
-  const firstBrace = cleaned.search(/[{[]/);
-  if (firstBrace > 0) cleaned = cleaned.slice(firstBrace);
-  // Trim trailing content after the last } or ]
-  const lastBrace = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
-  if (lastBrace >= 0 && lastBrace < cleaned.length - 1) cleaned = cleaned.slice(0, lastBrace + 1);
-  return cleaned;
+  // Strip markdown fences (multiline — free models put them on their own lines)
+  let s = raw.replace(/```(?:json|JSON)?\s*/g, "").replace(/```/g, "").trim();
+
+  // Skip any preamble before the first { or [
+  const start = s.search(/[{[]/);
+  if (start === -1) return raw;
+  s = s.slice(start);
+
+  // Walk forward counting brackets to find the exact closing bracket
+  const openChar = s[0] as "{" | "[";
+  const closeChar = openChar === "{" ? "}" : "]";
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (escape)             { escape = false; continue; }
+    if (c === "\\" && inString) { escape = true;  continue; }
+    if (c === '"')          { inString = !inString; continue; }
+    if (inString)           continue;
+    if (c === openChar)     depth++;
+    else if (c === closeChar) {
+      depth--;
+      if (depth === 0) return s.slice(0, i + 1);
+    }
+  }
+
+  return s; // best-effort if brackets never balanced
 }
 
 /**
