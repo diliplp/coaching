@@ -351,6 +351,18 @@ function cleanJson(raw: string): string {
  * Does NOT touch the question generation pipeline.
  */
 async function generateContentFreeOnly(prompt: string, fallbackJson: string = "{}"): Promise<string> {
+  // Prepend a hard JSON-only instruction that models attend to before the main prompt
+  const jsonPrompt = `IMPORTANT: Respond with ONLY a valid JSON object. No explanation, no markdown, no text before or after the JSON.\n\n${prompt}`;
+
+  const tryClean = (raw: string, source: string): string | null => {
+    const cleaned = cleanJson(raw);
+    if (!cleaned.startsWith("{") && !cleaned.startsWith("[")) {
+      console.warn(`[FreeGen] ${source} returned non-JSON text, skipping. Preview: "${raw.slice(0, 80)}"`);
+      return null;
+    }
+    return cleaned;
+  };
+
   // 1. Gemini Flash — free tier, handles text extraction well
   if (process.env.SKIP_GEMINI !== "true") {
     const clients = getGeminiClients();
@@ -359,11 +371,14 @@ async function generateContentFreeOnly(prompt: string, fallbackJson: string = "{
         console.log(`[FreeGen] Gemini ${name} trying...`);
         const result = await client.models.generateContent({
           model: GEMINI_MODEL,
-          contents: prompt,
+          contents: jsonPrompt,
           config: { responseMimeType: "application/json" }
         });
         const text = result.text;
-        if (text) { console.log(`[FreeGen] Gemini ${name} succeeded.`); return cleanJson(text); }
+        if (text) {
+          const cleaned = tryClean(text, `Gemini ${name}`);
+          if (cleaned) { console.log(`[FreeGen] Gemini ${name} succeeded.`); return cleaned; }
+        }
       } catch (e: any) {
         console.warn(`[FreeGen] Gemini ${name} failed:`, e?.message ?? e);
       }
@@ -386,15 +401,20 @@ async function generateContentFreeOnly(prompt: string, fallbackJson: string = "{
           },
           body: JSON.stringify({
             model,
-            messages: [{ role: "user", content: prompt }],
-            // omit response_format — free models often ignore it and wrap in markdown anyway
+            messages: [
+              { role: "system", content: "You are a JSON-only API. Always respond with valid JSON. Never include any text outside the JSON object." },
+              { role: "user", content: jsonPrompt }
+            ],
             max_tokens: 4000
           })
         });
         if (response.ok) {
           const data = await response.json();
           const text = data.choices?.[0]?.message?.content;
-          if (text) { console.log(`[FreeGen] ${model} succeeded.`); return cleanJson(text); }
+          if (text) {
+            const cleaned = tryClean(text, model);
+            if (cleaned) { console.log(`[FreeGen] ${model} succeeded.`); return cleaned; }
+          }
         } else {
           console.warn(`[FreeGen] ${model} failed (${response.status})`);
         }
