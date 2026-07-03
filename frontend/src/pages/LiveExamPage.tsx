@@ -79,6 +79,21 @@ export function LiveExamPage() {
   answersRef.current = answers;
   integerAnswersRef.current = integerAnswers;
 
+  // Per-question time tracking
+  const questionTimesRef = useRef<Record<string, number>>({});  // accumulated seconds per question
+  const questionVisitStartRef = useRef<number | null>(null);    // epoch ms when current Q was opened
+  const timerQuestionIdRef = useRef<string | null>(null);       // which question the timer is running for
+
+  const flushQuestionTime = () => {
+    const qId = timerQuestionIdRef.current;
+    const start = questionVisitStartRef.current;
+    if (qId && start !== null) {
+      const elapsed = Math.floor((Date.now() - start) / 1000);
+      questionTimesRef.current[qId] = (questionTimesRef.current[qId] ?? 0) + elapsed;
+      questionVisitStartRef.current = Date.now(); // reset so re-visits accumulate correctly
+    }
+  };
+
   useEffect(() => {
     if (!generatedExam) {
       return;
@@ -154,6 +169,17 @@ export function LiveExamPage() {
   useEffect(() => {
     if (!generatedExam || isReviewMode) return;
     apiClient.saveExamSessionIndex(generatedExam.exam.id, currentIndex).catch(() => {});
+  }, [currentIndex, generatedExam, isReviewMode]);
+
+  // Per-question timer: flush previous question's time, start clock for new question
+  useEffect(() => {
+    if (!generatedExam || isReviewMode) return;
+    flushQuestionTime();
+    const q = generatedExam.questions[currentIndex];
+    if (q) {
+      timerQuestionIdRef.current = q.id;
+      questionVisitStartRef.current = Date.now();
+    }
   }, [currentIndex, generatedExam, isReviewMode]);
 
   const formattedTime = useMemo(() => {
@@ -336,8 +362,14 @@ export function LiveExamPage() {
     }
 
     setIsSubmitting(true);
+
+    // Flush time for the question currently open before building the payload
+    flushQuestionTime();
+    questionVisitStartRef.current = null;
+
     const payload = {
       studentId: session?.user.studentId ?? undefined,
+      timeSpentSeconds: { ...questionTimesRef.current },
       answers: liveExamState.generatedExam.questions.map((question) => {
         const base: any = {
           questionId: question.id,
@@ -580,7 +612,28 @@ export function LiveExamPage() {
                   </span>
                 )}
               </p>
-              {currentQuestion.sourceType && (
+              <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                {isReviewMode && (() => {
+                  const rd = reviewData as any;
+                  const secs = rd?.timeSpentSeconds;
+                  const zone = rd?.speedZone;
+                  if (secs === undefined) return null;
+                  const mins = Math.floor(secs / 60);
+                  const s = secs % 60;
+                  const label = mins > 0 ? `${mins}m ${s}s` : `${s}s`;
+                  const zoneColors: Record<string, { bg: string; color: string; text: string }> = {
+                    fast: { bg: "#dcfce7", color: "#15803d", text: "Fast" },
+                    normal: { bg: "#dbeafe", color: "#1d4ed8", text: "Normal" },
+                    slow: { bg: "#fef9c3", color: "#854d0e", text: "Slow" }
+                  };
+                  const zc = zone ? zoneColors[zone] : { bg: "#f1f5f9", color: "#475569", text: "" };
+                  return (
+                    <span style={{ fontSize: "0.72rem", padding: "2px 8px", borderRadius: "4px", background: zc.bg, color: zc.color, fontWeight: "bold" }}>
+                      ⏱ {label}{zone ? ` · ${zc.text}` : ""}
+                    </span>
+                  );
+                })()}
+                {currentQuestion.sourceType && (
                 <span
                   className="tag"
                   style={{
@@ -593,7 +646,8 @@ export function LiveExamPage() {
                 >
                   {currentQuestion.sourceType === "pyq" ? "PREVIOUS YEAR" : (currentQuestion.sourceType === "reference" ? "REFERENCE BOOK" : currentQuestion.sourceType.toUpperCase())}
                 </span>
-              )}
+                )}
+              </div>
             </div>
             <h3><RichText content={currentQuestion.prompt} /></h3>
 
@@ -772,7 +826,32 @@ export function LiveExamPage() {
                 <div style={{ fontSize: "2rem", fontWeight: "bold", margin: "10px 0" }}>{latestResult?.percentage}%</div>
                 <p>{latestResult?.obtainedMarks} / {latestResult?.totalMarks} marks</p>
                 <p>{latestResult?.correctAnswers} Correct • {latestResult?.incorrectAnswers} Incorrect</p>
-                
+
+                {latestResult?.timingStats && (() => {
+                  const ts = latestResult.timingStats!;
+                  const totalMins = Math.floor(ts.totalTimeSeconds / 60);
+                  const totalSecs = ts.totalTimeSeconds % 60;
+                  const avgMins = Math.floor(ts.avgTimePerQuestion / 60);
+                  const avgSecs = ts.avgTimePerQuestion % 60;
+                  return (
+                    <div style={{ marginTop: "16px", padding: "12px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                      <div style={{ fontWeight: "bold", fontSize: "0.82rem", marginBottom: "8px", color: "#374151" }}>⏱ Time Analysis</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "0.8rem" }}>
+                        <div><span style={{ color: "#64748b" }}>Total time:</span> <strong>{totalMins}m {totalSecs}s</strong></div>
+                        <div><span style={{ color: "#64748b" }}>Avg per Q:</span> <strong>{avgMins > 0 ? `${avgMins}m ` : ""}{avgSecs}s</strong></div>
+                        {ts.impulseErrors > 0 && <div style={{ color: "#b45309" }}>⚡ Impulse errors: <strong>{ts.impulseErrors}</strong></div>}
+                        {ts.stuckCount > 0 && <div style={{ color: "#dc2626" }}>🔴 Stuck questions: <strong>{ts.stuckCount}</strong></div>}
+                      </div>
+                      {(ts.impulseErrors > 0 || ts.stuckCount > 0) && (
+                        <div style={{ marginTop: "8px", fontSize: "0.75rem", color: "#64748b", lineHeight: 1.5 }}>
+                          {ts.impulseErrors > 0 && <div>⚡ <em>Impulse error</em> = answered in &lt;30s but got it wrong. Slow down on these.</div>}
+                          {ts.stuckCount > 0 && <div>🔴 <em>Stuck</em> = spent &gt;3 min and still got it wrong. Skip and return next time.</div>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 <h4 style={{ marginTop: "20px", marginBottom: "12px", color: "var(--color-primary)" }}>Topic-wise Breakdown</h4>
                 <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                   {topicBreakdown.map(t => {

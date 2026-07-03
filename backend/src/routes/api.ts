@@ -1456,7 +1456,7 @@ apiRouter.get("/exams/:examId", async (req, res) => {
 });
 
 apiRouter.post("/exams/:examId/submit", async (req, res) => {
-  const { studentId, answers } = req.body as { studentId?: string; answers?: Array<{ questionId: string; selectedOptionIds: string[] }> };
+  const { studentId, answers, timeSpentSeconds } = req.body as { studentId?: string; answers?: Array<{ questionId: string; selectedOptionIds: string[]; integerAnswer?: number }>; timeSpentSeconds?: Record<string, number> };
   const authUserId = (req as AuthenticatedRequest).auth?.sub;
   const state = await getAppState();
   const authUser = state.users.find((item) => item.id === authUserId);
@@ -1467,7 +1467,11 @@ apiRouter.post("/exams/:examId/submit", async (req, res) => {
     return;
   }
 
-  const result = await evaluateExamSubmission(req.params.examId, effectiveStudentId, answers);
+  const answersWithTime = answers.map(a => ({
+    ...a,
+    timeSpentSeconds: timeSpentSeconds?.[a.questionId]
+  }));
+  const result = await evaluateExamSubmission(req.params.examId, effectiveStudentId, answersWithTime);
   if (!result) {
     res.status(404).json({ message: "Exam not found" });
     return;

@@ -127,6 +127,15 @@ export interface TopicInsight {
   unattemptedAnswers: number;
 }
 
+export interface TimingStats {
+  totalTimeSeconds: number;
+  avgTimePerQuestion: number;
+  slowestQuestionId: string | null;
+  fastestAnsweredQuestionId: string | null;
+  impulseErrors: number;
+  stuckCount: number;
+}
+
 export interface ExamResult {
   id?: string;
   examId: string;
@@ -139,6 +148,7 @@ export interface ExamResult {
   percentage: number;
   weakestTopics: TopicInsight[];
   insights: TopicInsight[];
+  timingStats?: TimingStats;
   review?: Array<{
     questionId: string;
     prompt: string;
@@ -147,6 +157,8 @@ export interface ExamResult {
     explanation: string;
     isCorrect: boolean;
     options: any[];
+    timeSpentSeconds?: number;
+    speedZone?: "fast" | "normal" | "slow";
   }>;
 }
 

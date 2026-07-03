@@ -884,7 +884,12 @@ export async function evaluateExamSubmission(
   const review = questions.map(question => {
     const answer = answers.find(a => a.questionId === question.id);
     const correct = isAnswerCorrect(question, answer);
+    const attempted = isAnswerAttempted(question, answer);
     const sIdx = questionSectionIndex.get(question.id);
+    const timeSecs = answer?.timeSpentSeconds;
+    const speedZone: "fast" | "normal" | "slow" | undefined = timeSecs !== undefined
+      ? timeSecs < 60 ? "fast" : timeSecs <= 180 ? "normal" : "slow"
+      : undefined;
     return {
       questionId: question.id,
       prompt: question.prompt,
@@ -895,10 +900,32 @@ export async function evaluateExamSubmission(
       correctIntegerAnswer: question.integerAnswer,
       explanation: question.explanation,
       isCorrect: correct,
+      attempted,
       options: question.options,
-      sectionName: sIdx !== undefined && exam.sections ? exam.sections[sIdx].name : undefined
+      sectionName: sIdx !== undefined && exam.sections ? exam.sections[sIdx].name : undefined,
+      timeSpentSeconds: timeSecs,
+      speedZone
     };
   });
+
+  // Timing stats — only computed when at least some time data was sent
+  const answeredTimes = review.filter(r => r.timeSpentSeconds !== undefined && r.attempted);
+  let timingStats = undefined;
+  if (answeredTimes.length > 0) {
+    const totalTimeSeconds = review.reduce((s, r) => s + (r.timeSpentSeconds ?? 0), 0);
+    const sorted = [...answeredTimes].sort((a, b) => (b.timeSpentSeconds ?? 0) - (a.timeSpentSeconds ?? 0));
+    const fastAnswered = [...answeredTimes].sort((a, b) => (a.timeSpentSeconds ?? 0) - (b.timeSpentSeconds ?? 0));
+    const impulseErrors = review.filter(r => (r.timeSpentSeconds ?? 99) < 30 && r.attempted && !r.isCorrect).length;
+    const stuckCount = review.filter(r => (r.timeSpentSeconds ?? 0) > 180 && r.attempted && !r.isCorrect).length;
+    timingStats = {
+      totalTimeSeconds,
+      avgTimePerQuestion: Math.round(totalTimeSeconds / Math.max(1, review.length)),
+      slowestQuestionId: sorted[0]?.questionId ?? null,
+      fastestAnsweredQuestionId: fastAnswered[0]?.questionId ?? null,
+      impulseErrors,
+      stuckCount
+    };
+  }
 
   const insights = Array.from(insightsMap.values()).map((topic) => {
     const accuracy = topic.totalQuestions === 0 ? 0 : (topic.correctAnswers / topic.totalQuestions) * 100;
@@ -926,6 +953,7 @@ export async function evaluateExamSubmission(
     percentage: Number(((obtainedMarks / Math.max(1, totalMarks)) * 100).toFixed(2)),
     weakestTopics: [...insights].sort((a, b) => b.weaknessScore - a.weaknessScore).slice(0, 3),
     insights,
+    timingStats,
     review
   };
 

@@ -223,6 +223,7 @@ export interface StudentAnswerInput {
   selectedOptionIds: string[];
   integerAnswer?: number;     // for integer-type questions
   markedForReview?: boolean;
+  timeSpentSeconds?: number;  // per-question time (set at submit time)
 }
 
 export interface TopicInsight {
@@ -234,6 +235,15 @@ export interface TopicInsight {
   unattemptedAnswers: number;
   accuracy: number;
   weaknessScore: number;
+}
+
+export interface TimingStats {
+  totalTimeSeconds: number;
+  avgTimePerQuestion: number;
+  slowestQuestionId: string | null;
+  fastestAnsweredQuestionId: string | null;
+  impulseErrors: number;    // fast + wrong (< 30s and incorrect)
+  stuckCount: number;       // slow + wrong (> 180s and incorrect)
 }
 
 export interface ExamSubmissionResult {
@@ -248,6 +258,7 @@ export interface ExamSubmissionResult {
   percentage: number;
   weakestTopics: TopicInsight[];
   insights: TopicInsight[];
+  timingStats?: TimingStats;
   review?: Array<{
     questionId: string;
     prompt: string;
@@ -256,6 +267,8 @@ export interface ExamSubmissionResult {
     explanation: string;
     isCorrect: boolean;
     options: any[];
+    timeSpentSeconds?: number;
+    speedZone?: "fast" | "normal" | "slow";
   }>;
 }
 
