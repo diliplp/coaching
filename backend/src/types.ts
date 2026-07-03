@@ -149,6 +149,9 @@ export interface Question {
   bookId?: string;
   questionNumber?: number;
   integerAnswer?: number;     // for type === "integer" (JEE Section B)
+  pyqYear?: number;           // e.g. 2022
+  pyqExamName?: string;       // e.g. "JEE Mains", "NEET", "GUJCET", "JEE Advanced"
+  pyqSession?: string;        // e.g. "January Session", "Paper 1"
 }
 
 export interface ExamBlueprintTopicRule {
@@ -246,6 +249,19 @@ export interface TimingStats {
   stuckCount: number;       // slow + wrong (> 180s and incorrect)
 }
 
+export interface NegativeMarkingAnalysis {
+  totalNegativeMarks: number;       // marks actually deducted this exam
+  recoverableMarks: number;         // marks that would have been saved by skipping all wrong answers
+  counterfactualScore: number;      // obtainedMarks + recoverableMarks
+  counterfactualPercentage: number;
+  skipCandidates: Array<{
+    questionId: string;
+    marksLost: number;
+    timeSpentSeconds?: number;
+    category: "impulse" | "stuck" | "uncertain";  // impulse < 30s, stuck > 180s, else uncertain
+  }>;
+}
+
 export interface ExamSubmissionResult {
   id: string;
   examId: string;
@@ -259,6 +275,7 @@ export interface ExamSubmissionResult {
   weakestTopics: TopicInsight[];
   insights: TopicInsight[];
   timingStats?: TimingStats;
+  negativeMarkingAnalysis?: NegativeMarkingAnalysis;
   review?: Array<{
     questionId: string;
     prompt: string;
@@ -269,6 +286,8 @@ export interface ExamSubmissionResult {
     options: any[];
     timeSpentSeconds?: number;
     speedZone?: "fast" | "normal" | "slow";
+    marksLost?: number;    // marks deducted for this wrong answer (only set when > 0)
+    marksGained?: number;  // marks awarded for this correct answer
   }>;
 }
 

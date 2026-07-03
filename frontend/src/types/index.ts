@@ -139,6 +139,19 @@ export interface TimingStats {
   stuckCount: number;
 }
 
+export interface NegativeMarkingAnalysis {
+  totalNegativeMarks: number;
+  recoverableMarks: number;
+  counterfactualScore: number;
+  counterfactualPercentage: number;
+  skipCandidates: Array<{
+    questionId: string;
+    marksLost: number;
+    timeSpentSeconds?: number;
+    category: "impulse" | "stuck" | "uncertain";
+  }>;
+}
+
 export interface ExamResult {
   id?: string;
   examId: string;
@@ -152,6 +165,7 @@ export interface ExamResult {
   weakestTopics: TopicInsight[];
   insights: TopicInsight[];
   timingStats?: TimingStats;
+  negativeMarkingAnalysis?: NegativeMarkingAnalysis;
   review?: Array<{
     questionId: string;
     prompt: string;
@@ -162,6 +176,8 @@ export interface ExamResult {
     options: any[];
     timeSpentSeconds?: number;
     speedZone?: "fast" | "normal" | "slow";
+    marksLost?: number;
+    marksGained?: number;
   }>;
 }
 

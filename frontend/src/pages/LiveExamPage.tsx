@@ -633,6 +633,15 @@ export function LiveExamPage() {
                     </span>
                   );
                 })()}
+                {isReviewMode && (() => {
+                  const rd = reviewData as any;
+                  if (!rd || rd.isCorrect || !(rd.marksLost > 0)) return null;
+                  return (
+                    <span style={{ fontSize: "0.72rem", padding: "2px 8px", borderRadius: "4px", background: "#fef2f2", color: "#b91c1c", fontWeight: "bold" }}>
+                      −{rd.marksLost} marks
+                    </span>
+                  );
+                })()}
                 {currentQuestion.sourceType && (
                 <span
                   className="tag"
@@ -860,6 +869,35 @@ export function LiveExamPage() {
                         <div style={{ marginTop: "8px", fontSize: "0.75rem", color: "#64748b", lineHeight: 1.5 }}>
                           {ts.impulseErrors > 0 && <div>⚡ <em>Impulse error</em> = answered in &lt;30s but got it wrong. Slow down on these.</div>}
                           {ts.stuckCount > 0 && <div>🔴 <em>Stuck</em> = spent &gt;3 min and still got it wrong. Skip and return next time.</div>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {latestResult?.negativeMarkingAnalysis && (() => {
+                  const nma = latestResult.negativeMarkingAnalysis!;
+                  const impulseCount = nma.skipCandidates.filter(s => s.category === "impulse").length;
+                  const stuckCount = nma.skipCandidates.filter(s => s.category === "stuck").length;
+                  const gain = nma.counterfactualScore - latestResult.obtainedMarks;
+                  return (
+                    <div style={{ marginTop: "12px", padding: "12px", background: "#fffbeb", borderRadius: "8px", border: "1px solid #fde68a" }}>
+                      <div style={{ fontWeight: "bold", fontSize: "0.82rem", marginBottom: "8px", color: "#92400e" }}>📊 Skip Strategy</div>
+                      <div style={{ fontSize: "0.8rem", color: "#78350f", marginBottom: "8px", lineHeight: 1.5 }}>
+                        You lost <strong>{nma.totalNegativeMarks} marks</strong> to negative marking across {nma.skipCandidates.length} wrong answer{nma.skipCandidates.length !== 1 ? "s" : ""}.
+                      </div>
+                      <div style={{ padding: "8px 12px", background: "#fef3c7", borderRadius: "6px", fontSize: "0.82rem", marginBottom: "8px", textAlign: "center" }}>
+                        If you had skipped those {nma.skipCandidates.length} question{nma.skipCandidates.length !== 1 ? "s" : ""}:<br />
+                        <span style={{ fontSize: "1.1rem", fontWeight: 800, color: "#15803d" }}>
+                          {nma.counterfactualScore} / {latestResult.totalMarks} marks ({nma.counterfactualPercentage}%)
+                        </span>
+                        <span style={{ fontSize: "0.75rem", color: "#15803d", display: "block" }}>+{gain} marks over your actual score</span>
+                      </div>
+                      {(impulseCount > 0 || stuckCount > 0) && (
+                        <div style={{ fontSize: "0.75rem", color: "#78350f", lineHeight: 1.6 }}>
+                          {impulseCount > 0 && <div>⚡ <strong>{impulseCount}</strong> impulse guess{impulseCount !== 1 ? "es" : ""} (answered in &lt;30s and wrong)</div>}
+                          {stuckCount > 0 && <div>🔴 <strong>{stuckCount}</strong> stuck question{stuckCount !== 1 ? "s" : ""} (spent &gt;3 min and wrong)</div>}
+                          <div style={{ marginTop: "4px", color: "#92400e" }}>These are prime skip candidates next time.</div>
                         </div>
                       )}
                     </div>

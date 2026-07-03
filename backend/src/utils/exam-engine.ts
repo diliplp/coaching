@@ -816,6 +816,9 @@ export async function evaluateExamSubmission(
   let incorrectAnswers = 0;
   let unattemptedAnswers = 0;
 
+  // Track per-question marks for negative marking analysis
+  const questionMarkMap = new Map<string, { marksGained: number; marksLost: number }>();
+
   const insightsMap = new Map<string, TopicInsight>();
 
   questions.forEach((question) => {
@@ -868,14 +871,17 @@ export async function evaluateExamSubmission(
     if (!attempted) {
       unattemptedAnswers += 1;
       currentTopic.unattemptedAnswers += 1;
+      questionMarkMap.set(question.id, { marksGained: 0, marksLost: 0 });
     } else if (correct) {
       obtainedMarks += qMarks;
       correctAnswers += 1;
       currentTopic.correctAnswers += 1;
+      questionMarkMap.set(question.id, { marksGained: qMarks, marksLost: 0 });
     } else {
       obtainedMarks -= qNegative;
       incorrectAnswers += 1;
       currentTopic.incorrectAnswers += 1;
+      questionMarkMap.set(question.id, { marksGained: 0, marksLost: qNegative });
     }
 
     insightsMap.set(question.topicId, currentTopic);
@@ -904,7 +910,9 @@ export async function evaluateExamSubmission(
       options: question.options,
       sectionName: sIdx !== undefined && exam.sections ? exam.sections[sIdx].name : undefined,
       timeSpentSeconds: timeSecs,
-      speedZone
+      speedZone,
+      marksLost: questionMarkMap.get(question.id)?.marksLost || undefined,
+      marksGained: questionMarkMap.get(question.id)?.marksGained || undefined,
     };
   });
 
@@ -924,6 +932,27 @@ export async function evaluateExamSubmission(
       fastestAnsweredQuestionId: fastAnswered[0]?.questionId ?? null,
       impulseErrors,
       stuckCount
+    };
+  }
+
+  // Negative marking strategy analysis — only meaningful when some marks were deducted
+  let negativeMarkingAnalysis = undefined;
+  const wrongWithNegative = review.filter(r => r.attempted && !r.isCorrect && (r.marksLost ?? 0) > 0);
+  if (wrongWithNegative.length > 0) {
+    const recoverableMarks = wrongWithNegative.reduce((sum, r) => sum + (r.marksLost ?? 0), 0);
+    const counterfactualScore = Math.max(0, obtainedMarks + recoverableMarks);
+    negativeMarkingAnalysis = {
+      totalNegativeMarks: recoverableMarks,
+      recoverableMarks,
+      counterfactualScore,
+      counterfactualPercentage: Number(((counterfactualScore / Math.max(1, totalMarks)) * 100).toFixed(2)),
+      skipCandidates: wrongWithNegative.map(r => {
+        const t = r.timeSpentSeconds;
+        const category: "impulse" | "stuck" | "uncertain" =
+          t !== undefined && t < 30 ? "impulse" :
+          t !== undefined && t > 180 ? "stuck" : "uncertain";
+        return { questionId: r.questionId, marksLost: r.marksLost ?? 0, timeSpentSeconds: t, category };
+      })
     };
   }
 
@@ -954,6 +983,7 @@ export async function evaluateExamSubmission(
     weakestTopics: [...insights].sort((a, b) => b.weaknessScore - a.weaknessScore).slice(0, 3),
     insights,
     timingStats,
+    negativeMarkingAnalysis,
     review
   };
 
