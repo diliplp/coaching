@@ -256,7 +256,9 @@ export async function generateExamFromBlueprint(blueprintId: string): Promise<Ex
       subjectId: blueprint.subjectId,
       durationMinutes: blueprint.durationMinutes,
       generationMode: "blueprint",
-      sourceSignature
+      sourceSignature,
+      ...(blueprint.examPattern ? { examPattern: blueprint.examPattern } : {}),
+      ...(blueprint.sections ? { sections: blueprint.sections } : {})
     },
     questions: selectedQuestions
   });
@@ -765,6 +767,20 @@ export async function getExamQuestions(examId: string): Promise<Question[]> {
     .filter((question): question is Question => Boolean(question));
 }
 
+function isAnswerAttempted(question: Question, answer: StudentAnswerInput | undefined): boolean {
+  if (!answer) return false;
+  if (question.type === "integer") return answer.integerAnswer !== undefined && answer.integerAnswer !== null;
+  return (answer.selectedOptionIds ?? []).length > 0;
+}
+
+function isAnswerCorrect(question: Question, answer: StudentAnswerInput | undefined): boolean {
+  if (!answer) return false;
+  if (question.type === "integer") {
+    return answer.integerAnswer !== undefined && answer.integerAnswer === question.integerAnswer;
+  }
+  return sameSelections(answer.selectedOptionIds ?? [], question.correctOptionIds);
+}
+
 export async function evaluateExamSubmission(
   examId: string,
   studentId: string,
@@ -777,6 +793,23 @@ export async function evaluateExamSubmission(
   }
 
   const questions = await getExamQuestions(examId);
+
+  // Build section membership: questionId → section index (when exam has sections)
+  // Questions are assigned to sections in order: first section.totalQuestions go to section[0], next to section[1], etc.
+  const questionSectionIndex = new Map<string, number>();
+  if (exam.sections && exam.sections.length > 0) {
+    let pos = 0;
+    exam.sections.forEach((section, sIdx) => {
+      for (let i = 0; i < section.totalQuestions && pos < questions.length; i++, pos++) {
+        questionSectionIndex.set(questions[pos].id, sIdx);
+      }
+    });
+  }
+
+  // For optional sections (attemptQuestions < totalQuestions), track how many attempted per section
+  // Only grade up to attemptQuestions per section (in question order)
+  const sectionAttemptedCount = new Map<number, number>();
+
   let obtainedMarks = 0;
   let totalMarks = 0;
   let correctAnswers = 0;
@@ -786,10 +819,37 @@ export async function evaluateExamSubmission(
   const insightsMap = new Map<string, TopicInsight>();
 
   questions.forEach((question) => {
-    totalMarks += question.marks;
-
     const answer = answers.find((item) => item.questionId === question.id);
-    const selectedOptionIds = answer?.selectedOptionIds ?? [];
+    const attempted = isAnswerAttempted(question, answer);
+    const correct = attempted && isAnswerCorrect(question, answer);
+
+    // Determine marks/negative for this question based on section or question-level config
+    let qMarks = question.marks;
+    let qNegative = question.negativeMarks;
+    let countForTotal = true;
+
+    const sIdx = questionSectionIndex.get(question.id);
+    if (sIdx !== undefined && exam.sections) {
+      const section = exam.sections[sIdx];
+      qMarks = section.marksCorrect;
+      qNegative = section.marksIncorrect;
+
+      // Optional section: only grade up to attemptQuestions (in question order)
+      if (section.attemptQuestions < section.totalQuestions) {
+        const alreadyAttempted = sectionAttemptedCount.get(sIdx) ?? 0;
+        if (attempted) {
+          if (alreadyAttempted >= section.attemptQuestions) {
+            // This question is beyond the attempt limit — skip from grading
+            countForTotal = false;
+          } else {
+            sectionAttemptedCount.set(sIdx, alreadyAttempted + 1);
+          }
+        }
+      }
+    }
+
+    if (countForTotal) totalMarks += qMarks;
+
     const topic = state.topics.find((item) => item.id === question.topicId);
     const topicName = topic?.name ?? "Unknown Topic";
     const currentTopic = insightsMap.get(question.topicId) ?? {
@@ -805,15 +865,15 @@ export async function evaluateExamSubmission(
 
     currentTopic.totalQuestions += 1;
 
-    if (selectedOptionIds.length === 0) {
+    if (!attempted) {
       unattemptedAnswers += 1;
       currentTopic.unattemptedAnswers += 1;
-    } else if (sameSelections(selectedOptionIds, question.correctOptionIds)) {
-      obtainedMarks += question.marks;
+    } else if (correct) {
+      obtainedMarks += qMarks;
       correctAnswers += 1;
       currentTopic.correctAnswers += 1;
     } else {
-      obtainedMarks -= question.negativeMarks;
+      obtainedMarks -= qNegative;
       incorrectAnswers += 1;
       currentTopic.incorrectAnswers += 1;
     }
@@ -823,16 +883,20 @@ export async function evaluateExamSubmission(
 
   const review = questions.map(question => {
     const answer = answers.find(a => a.questionId === question.id);
-    const selectedOptionIds = answer?.selectedOptionIds ?? [];
-    const isCorrect = sameSelections(selectedOptionIds, question.correctOptionIds);
+    const correct = isAnswerCorrect(question, answer);
+    const sIdx = questionSectionIndex.get(question.id);
     return {
       questionId: question.id,
       prompt: question.prompt,
-      selectedOptionIds,
+      type: question.type,
+      selectedOptionIds: answer?.selectedOptionIds ?? [],
+      integerAnswer: answer?.integerAnswer,
       correctOptionIds: question.correctOptionIds,
+      correctIntegerAnswer: question.integerAnswer,
       explanation: question.explanation,
-      isCorrect,
-      options: question.options
+      isCorrect: correct,
+      options: question.options,
+      sectionName: sIdx !== undefined && exam.sections ? exam.sections[sIdx].name : undefined
     };
   });
 

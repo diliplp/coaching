@@ -259,14 +259,14 @@ export const apiClient = {
       body: JSON.stringify({ type }),
     }),
   getExamSession: (examId: string) =>
-    request<{ id: string; examId: string; answers: Record<string, string[]>; startedAt: string; status: string; timeRemainingSeconds: number; currentQuestionIndex: number }>(
+    request<{ id: string; examId: string; answers: Record<string, string[]>; integerAnswers?: Record<string, string>; startedAt: string; status: string; timeRemainingSeconds: number; currentQuestionIndex: number }>(
       `/exams/${examId}/session`
     ),
   createExamSession: (examId: string) =>
-    request<{ id: string; examId: string; answers: Record<string, string[]>; startedAt: string; status: string; timeRemainingSeconds: number; currentQuestionIndex: number }>(
+    request<{ id: string; examId: string; answers: Record<string, string[]>; integerAnswers?: Record<string, string>; startedAt: string; status: string; timeRemainingSeconds: number; currentQuestionIndex: number }>(
       `/exams/${examId}/session`, { method: "POST" }
     ),
-  saveExamSessionAnswer: (examId: string, payload: { questionId: string; selectedOptionIds: string[] }) =>
+  saveExamSessionAnswer: (examId: string, payload: { questionId: string; selectedOptionIds: string[]; integerAnswer?: number }) =>
     request<{ status: string }>(`/exams/${examId}/session/answer`, {
       method: "PATCH",
       body: JSON.stringify(payload)

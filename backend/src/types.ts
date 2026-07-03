@@ -22,9 +22,21 @@ export interface Admission {
   createdAt: string;
 }
 
-export type QuestionType = "single_correct" | "multi_correct";
+export type QuestionType = "single_correct" | "multi_correct" | "integer";
 
 export type QuestionSource = "pyq" | "reference" | "textbook" | "ai_generated" | "custom";
+
+export type ExamPattern = "jee_mains" | "neet" | "gujcet" | "custom";
+
+export interface ExamSection {
+  name: string;               // "Section A", "Section B"
+  questionType: "mcq" | "integer";
+  totalQuestions: number;
+  attemptQuestions: number;   // for optional sections (NEET); equals totalQuestions when all compulsory
+  marksCorrect: number;
+  marksIncorrect: number;     // 0 for no negative marking
+  topicIds?: string[];        // which topics feed this section
+}
 
 export interface ClassNode {
   id: string;
@@ -136,6 +148,7 @@ export interface Question {
   isVerified?: boolean;
   bookId?: string;
   questionNumber?: number;
+  integerAnswer?: number;     // for type === "integer" (JEE Section B)
 }
 
 export interface ExamBlueprintTopicRule {
@@ -160,6 +173,8 @@ export interface ExamBlueprint {
   durationMinutes: number;
   negativeMarkingEnabled: boolean;
   topicRules: ExamBlueprintTopicRule[];
+  examPattern?: ExamPattern;
+  sections?: ExamSection[];   // when set, section-aware grading applies
 }
 
 export interface GeneratedExamQuestion {
@@ -185,6 +200,8 @@ export interface Exam {
   questions: GeneratedExamQuestion[];
   scheduledStartTime?: string;
   scheduledEndTime?: string;
+  examPattern?: ExamPattern;
+  sections?: ExamSection[];   // carried from blueprint; drives UI and grading
 }
 
 export interface TeacherCustomExamRequest {
@@ -204,6 +221,7 @@ export interface TeacherCustomExamRequest {
 export interface StudentAnswerInput {
   questionId: string;
   selectedOptionIds: string[];
+  integerAnswer?: number;     // for integer-type questions
   markedForReview?: boolean;
 }
 

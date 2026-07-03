@@ -53,6 +53,8 @@ export function LiveExamPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const answersRef = useRef<Record<string, string[]>>({});
+  const [integerAnswers, setIntegerAnswers] = useState<Record<string, string>>({});
+  const integerAnswersRef = useRef<Record<string, string>>({});
   const [isReviewMode, setIsReviewMode] = useState(false);
   const [resultVersion, setResultVersion] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -73,8 +75,9 @@ export function LiveExamPage() {
   const submitRef = useRef<() => Promise<void>>(async () => {});
   const examLiveRef = useRef(false);
 
-  // Keep answersRef in sync so toggleOption can read current answers without stale closure
+  // Keep refs in sync so handlers can read current answers without stale closure
   answersRef.current = answers;
+  integerAnswersRef.current = integerAnswers;
 
   useEffect(() => {
     if (!generatedExam) {
@@ -88,6 +91,7 @@ export function LiveExamPage() {
         // Try to restore an existing in-progress session
         const session = await apiClient.getExamSession(generatedExam.exam.id);
         setAnswers(session.answers ?? {});
+        setIntegerAnswers(session.integerAnswers ?? {});
         setCurrentIndex(session.currentQuestionIndex ?? 0);
         setTimeLeft(session.timeRemainingSeconds);
       } catch {
@@ -127,7 +131,8 @@ export function LiveExamPage() {
       return;
     }
 
-    const answeredCount = Object.values(answers).filter(val => val && val.length > 0).length;
+    const answeredCount = Object.values(answers).filter(val => val && val.length > 0).length
+      + Object.values(integerAnswers).filter(val => val !== "").length;
     const totalQuestions = generatedExam.questions.length;
 
     const sendHeartbeat = () => {
@@ -273,6 +278,24 @@ export function LiveExamPage() {
     );
   }
 
+  // Compute which section each question index belongs to (if exam has sections)
+  const sectionBoundaries = useMemo(() => {
+    const sections = (generatedExam?.exam as any)?.sections as Array<{ name: string; totalQuestions: number; attemptQuestions: number; questionType: string }> | undefined;
+    if (!sections || sections.length === 0) return null;
+    const boundaries: Array<{ name: string; start: number; end: number; attemptQuestions: number; totalQuestions: number; questionType: string }> = [];
+    let pos = 0;
+    sections.forEach((s: { name: string; totalQuestions: number; attemptQuestions: number; questionType: string }) => {
+      boundaries.push({ name: s.name, start: pos, end: pos + s.totalQuestions - 1, attemptQuestions: s.attemptQuestions, totalQuestions: s.totalQuestions, questionType: s.questionType });
+      pos += s.totalQuestions;
+    });
+    return boundaries;
+  }, [generatedExam]);
+
+  const currentSection = useMemo(() => {
+    if (!sectionBoundaries) return null;
+    return sectionBoundaries.find(s => currentIndex >= s.start && currentIndex <= s.end) ?? null;
+  }, [sectionBoundaries, currentIndex]);
+
   const toggleOption = (questionId: string, optionId: string, multiCorrect: boolean) => {
     if (isReviewMode) return;
 
@@ -291,6 +314,20 @@ export function LiveExamPage() {
     }
   };
 
+  const setIntegerInput = (questionId: string, value: string) => {
+    if (isReviewMode) return;
+    // Allow only non-negative integers (0–9999)
+    if (value !== "" && !/^\d{1,4}$/.test(value)) return;
+    setIntegerAnswers(curr => ({ ...curr, [questionId]: value }));
+    if (generatedExam) {
+      apiClient.saveExamSessionAnswer(generatedExam.exam.id, {
+        questionId,
+        selectedOptionIds: [],
+        ...(value !== "" ? { integerAnswer: Number(value) } : {})
+      } as any).catch(() => {});
+    }
+  };
+
 
 
   const submitExam = async () => {
@@ -301,10 +338,17 @@ export function LiveExamPage() {
     setIsSubmitting(true);
     const payload = {
       studentId: session?.user.studentId ?? undefined,
-      answers: liveExamState.generatedExam.questions.map((question) => ({
-        questionId: question.id,
-        selectedOptionIds: answers[question.id] ?? []
-      }))
+      answers: liveExamState.generatedExam.questions.map((question) => {
+        const base: any = {
+          questionId: question.id,
+          selectedOptionIds: answers[question.id] ?? []
+        };
+        if ((question as any).type === "integer") {
+          const raw = integerAnswers[question.id];
+          if (raw !== undefined && raw !== "") base.integerAnswer = Number(raw);
+        }
+        return base;
+      })
     };
 
     try {
@@ -523,6 +567,12 @@ export function LiveExamPage() {
             <div style={{ position: "relative", zIndex: 1 }}>
             <div className="row-between" style={{ alignItems: "center", marginBottom: "8px" }}>
               <p className="question-meta" style={{ margin: 0 }}>
+                {currentSection && (
+                  <span style={{ marginRight: "8px", background: currentSection.questionType === "integer" ? "#ede9fe" : "#dbeafe", color: currentSection.questionType === "integer" ? "#6d28d9" : "#1d4ed8", padding: "2px 8px", borderRadius: "4px", fontSize: "0.75rem", fontWeight: "bold" }}>
+                    {currentSection.name}
+                    {currentSection.attemptQuestions < currentSection.totalQuestions && ` (attempt ${currentSection.attemptQuestions} of ${currentSection.totalQuestions})`}
+                  </span>
+                )}
                 Question {currentIndex + 1} of {generatedExam.questions.length}
                 {isReviewMode && (
                   <span style={{ marginLeft: "10px", fontWeight: "bold", color: reviewData?.isCorrect ? "green" : "red" }}>
@@ -531,10 +581,10 @@ export function LiveExamPage() {
                 )}
               </p>
               {currentQuestion.sourceType && (
-                <span 
-                  className="tag" 
-                  style={{ 
-                    fontSize: "0.7rem", 
+                <span
+                  className="tag"
+                  style={{
+                    fontSize: "0.7rem",
                     background: currentQuestion.sourceType === "pyq" ? "#fff3cd" : "#d1ecf1",
                     color: currentQuestion.sourceType === "pyq" ? "#856404" : "#0c5460",
                     border: "none",
@@ -547,11 +597,44 @@ export function LiveExamPage() {
             </div>
             <h3><RichText content={currentQuestion.prompt} /></h3>
 
+            {(currentQuestion as any).type === "integer" ? (
+              <div style={{ marginTop: "20px" }}>
+                <p style={{ fontSize: "0.85rem", color: "#64748b", marginBottom: "10px" }}>
+                  Enter your answer (non-negative integer):
+                </p>
+                <input
+                  type="number"
+                  min="0"
+                  max="9999"
+                  step="1"
+                  value={isReviewMode ? ((reviewData as any)?.integerAnswer ?? "") : (integerAnswers[currentQuestion.id] ?? "")}
+                  onChange={e => setIntegerInput(currentQuestion.id, e.target.value)}
+                  disabled={isReviewMode}
+                  style={{
+                    width: "160px", padding: "12px 16px", fontSize: "1.4rem", fontWeight: "bold",
+                    border: isReviewMode
+                      ? `2px solid ${reviewData?.isCorrect ? "#059669" : "#dc2626"}`
+                      : "2px solid #cbd5e1",
+                    borderRadius: "8px", textAlign: "center",
+                    background: isReviewMode ? (reviewData?.isCorrect ? "#ecfdf5" : "#fff5f5") : "white"
+                  }}
+                  placeholder="0"
+                />
+                {isReviewMode && (
+                  <p style={{ marginTop: "10px", fontSize: "0.9rem", color: "#374151" }}>
+                    Correct answer: <strong style={{ color: "#059669" }}>{(reviewData as any)?.correctIntegerAnswer}</strong>
+                    {(reviewData as any)?.integerAnswer !== undefined && (
+                      <span style={{ marginLeft: "12px", color: "#dc2626" }}>Your answer: <strong>{(reviewData as any).integerAnswer}</strong></span>
+                    )}
+                  </p>
+                )}
+              </div>
+            ) : (
             <div className="options-grid">
               {currentQuestion.options.map((option: any) => {
                 const isSelected = (isReviewMode ? (reviewData?.selectedOptionIds ?? []) : (answers[currentQuestion.id] ?? [])).includes(option.id);
                 const isCorrect = isReviewMode && reviewData?.correctOptionIds.includes(option.id);
-                
+
                 let btnClass = "option-button";
                 if (isSelected) btnClass += " selected";
                 if (isReviewMode && isCorrect) btnClass += " correct-review";
@@ -576,6 +659,7 @@ export function LiveExamPage() {
                 );
               })}
             </div>
+            )}
 
             {isReviewMode && (
               <div className="explanation-box" style={{ 
