@@ -939,6 +939,45 @@ apiRouter.post("/subject-books/:bookId/generate-questions", requireRole(["super_
   })();
 });
 
+/** Auto-detect PYQ metadata from a book title or filename string */
+function detectPyqMeta(text: string): { pyqYear?: number; pyqExamName?: string; pyqSession?: string } {
+  const result: { pyqYear?: number; pyqExamName?: string; pyqSession?: string } = {};
+
+  const yearMatch = text.match(/\b(20\d{2})\b/);
+  if (yearMatch) result.pyqYear = parseInt(yearMatch[1]);
+
+  const upper = text.toUpperCase();
+  if (upper.includes("JEE ADVANCED") || upper.includes("JEE ADV")) {
+    result.pyqExamName = "JEE Advanced";
+  } else if (upper.includes("JEE MAIN") || upper.includes("JEE MAINS") || upper.includes("JEE-MAIN")) {
+    result.pyqExamName = "JEE Mains";
+  } else if (upper.includes("NEET")) {
+    result.pyqExamName = "NEET";
+  } else if (upper.includes("GUJCET")) {
+    result.pyqExamName = "GUJCET";
+  }
+
+  const sessionPatterns: [RegExp, string][] = [
+    [/january\s+session/i, "January Session"],
+    [/january/i, "January"],
+    [/february\s+session/i, "February Session"],
+    [/february/i, "February"],
+    [/march/i, "March"],
+    [/april/i, "April"],
+    [/june/i, "June"],
+    [/july/i, "July"],
+    [/august/i, "August"],
+    [/september/i, "September"],
+    [/paper\s*[1-3]/i, text.match(/paper\s*([1-3])/i) ? `Paper ${text.match(/paper\s*([1-3])/i)![1]}` : "Paper 1"],
+    [/shift\s*[12]/i, text.match(/shift\s*([12])/i) ? `Shift ${text.match(/shift\s*([12])/i)![1]}` : "Shift 1"],
+  ];
+  for (const [pattern, label] of sessionPatterns) {
+    if (pattern.test(text)) { result.pyqSession = label; break; }
+  }
+
+  return result;
+}
+
 apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["super_admin"]), async (req, res) => {
   const state = await getAppState();
   const bookId = req.params.bookId;
@@ -957,6 +996,12 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
     res.status(404).json({ message: "Book (PDF) not found" });
     return;
   }
+
+  // PYQ metadata: use explicit body values, then auto-detect from title + filename
+  const autoDetected = book.bookType === "pyq" ? detectPyqMeta(`${book.title} ${book.fileName}`) : {};
+  const pyqYear: number | undefined = req.body.pyqYear ? parseInt(req.body.pyqYear) : autoDetected.pyqYear;
+  const pyqExamName: string | undefined = req.body.pyqExamName || autoDetected.pyqExamName;
+  const pyqSession: string | undefined = req.body.pyqSession || autoDetected.pyqSession;
 
   if (topicIds.length === 0) {
     if (chapterId) {
@@ -1053,7 +1098,10 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
         diagrams,
         onProgress: (msg) => {
           void updateExtractionStatus("running", msg);
-        }
+        },
+        pyqYear,
+        pyqExamName,
+        pyqSession,
       });
 
       // Embed crop URL into every question that has a known question number.

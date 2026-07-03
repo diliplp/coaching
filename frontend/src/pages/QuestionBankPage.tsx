@@ -596,6 +596,11 @@ export function QuestionBankPage() {
                       {question.sourceType.toUpperCase()}
                     </span>
                   )}
+                  {(question as any).pyqYear && (
+                    <span className="tag" style={{ marginLeft: "5px", background: "#fef9c3", color: "#713f12", borderColor: "#fde68a", fontWeight: "bold" }}>
+                      {[(question as any).pyqExamName, (question as any).pyqYear, (question as any).pyqSession].filter(Boolean).join(" ")}
+                    </span>
+                  )}
                   {question.isVerified && (
                     <span className="tag" style={{ marginLeft: "5px", background: "#d4edda", color: "#155724", borderColor: "#c3e6cb" }}>
                       VERIFIED

@@ -27,6 +27,9 @@ export function SubjectBooksPage() {
   const [selectedTopicsMap, setSelectedTopicsMap] = useState<Record<string, string[]>>({});
   const [questionCount, setQuestionCount] = useState(5);
 
+  // PYQ metadata per book (year, examName, session)
+  const [pyqMeta, setPyqMeta] = useState<Record<string, { pyqYear?: string; pyqExamName?: string; pyqSession?: string }>>({});
+
   // Answer key state
   const [answerKeyInputs, setAnswerKeyInputs] = useState<Record<string, string>>({});
   const [applyingAnswerKey, setApplyingAnswerKey] = useState<string | null>(null);
@@ -150,9 +153,13 @@ export function SubjectBooksPage() {
     try {
       const bookChapterId = selectedChapters[bookId] || "";
       const bookTopicIds = selectedTopicsMap[bookId] || [];
+      const meta = pyqMeta[bookId] || {};
       await apiClient.extractQuestionsFromBook(bookId, {
         chapterId: bookChapterId || undefined,
-        topicIds: bookTopicIds.length > 0 ? bookTopicIds : undefined
+        topicIds: bookTopicIds.length > 0 ? bookTopicIds : undefined,
+        pyqYear: meta.pyqYear ? parseInt(meta.pyqYear) : undefined,
+        pyqExamName: meta.pyqExamName || undefined,
+        pyqSession: meta.pyqSession || undefined,
       });
       // Backend returns immediately — start polling for live progress
       startPolling(bookId);
@@ -580,6 +587,35 @@ export function SubjectBooksPage() {
                                       {prog?.message || "Starting..."}
                                       {isDone && prog?.count ? ` (${prog.count} questions)` : ""}
                                     </span>
+                                  </div>
+                                )}
+                                {book.bookType === "pyq" && (
+                                  <div style={{ display: "flex", gap: "6px", marginBottom: "8px", flexWrap: "wrap" }}>
+                                    <input
+                                      type="number"
+                                      placeholder="Year (e.g. 2022)"
+                                      value={pyqMeta[book.id]?.pyqYear ?? ""}
+                                      onChange={e => setPyqMeta(prev => ({ ...prev, [book.id]: { ...prev[book.id], pyqYear: e.target.value } }))}
+                                      style={{ width: "130px", padding: "6px 8px", borderRadius: "6px", border: "1px solid var(--color-border)", fontSize: "0.82rem" }}
+                                    />
+                                    <select
+                                      value={pyqMeta[book.id]?.pyqExamName ?? ""}
+                                      onChange={e => setPyqMeta(prev => ({ ...prev, [book.id]: { ...prev[book.id], pyqExamName: e.target.value } }))}
+                                      style={{ flex: 1, minWidth: "120px", padding: "6px 8px", borderRadius: "6px", border: "1px solid var(--color-border)", fontSize: "0.82rem" }}
+                                    >
+                                      <option value="">Exam (auto-detect)</option>
+                                      <option value="JEE Mains">JEE Mains</option>
+                                      <option value="JEE Advanced">JEE Advanced</option>
+                                      <option value="NEET">NEET</option>
+                                      <option value="GUJCET">GUJCET</option>
+                                    </select>
+                                    <input
+                                      type="text"
+                                      placeholder="Session (e.g. Jan)"
+                                      value={pyqMeta[book.id]?.pyqSession ?? ""}
+                                      onChange={e => setPyqMeta(prev => ({ ...prev, [book.id]: { ...prev[book.id], pyqSession: e.target.value } }))}
+                                      style={{ width: "130px", padding: "6px 8px", borderRadius: "6px", border: "1px solid var(--color-border)", fontSize: "0.82rem" }}
+                                    />
                                   </div>
                                 )}
                                 <button

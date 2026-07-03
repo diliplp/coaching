@@ -341,7 +341,7 @@ export const apiClient = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
-  extractQuestionsFromBook: (bookId: string, payload: { chapterId?: string; topicIds?: string[] }) =>
+  extractQuestionsFromBook: (bookId: string, payload: { chapterId?: string; topicIds?: string[]; pyqYear?: number; pyqExamName?: string; pyqSession?: string }) =>
     request<{ message: string; count: number }>(`/subject-books/${bookId}/extract-mcq-questions`, {
       method: "POST",
       body: JSON.stringify(payload)

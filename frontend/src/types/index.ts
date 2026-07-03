@@ -35,6 +35,9 @@ export interface Question {
   chapterName?: string;
   sourceType?: QuestionSource;
   bookId?: string;
+  pyqYear?: number;
+  pyqExamName?: string;
+  pyqSession?: string;
 }
 
 export interface ExamPayload {

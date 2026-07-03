@@ -1926,6 +1926,9 @@ export async function extractQuestionsFromPdfText(params: {
   pdfPath?: string;
   diagrams?: Array<{ page: number; url: string; bbox: number[]; isQuestionImage?: boolean }>;
   onProgress?: (message: string) => void;
+  pyqYear?: number;
+  pyqExamName?: string;
+  pyqSession?: string;
 }): Promise<Question[]> {
   const pageDelimiter = /--- PAGE \d+ ---/gi;
   const parts = params.text.split(pageDelimiter);
@@ -2585,7 +2588,10 @@ Return JSON:
       // Mark unverified if no correct answer was detected (garbled OCR, missing answer key)
       isVerified: correctOptionIds.length > 0,
       pageNumber: pageNum,
-      questionNumber: q._questionNumber
+      questionNumber: q._questionNumber,
+      ...(params.pyqYear !== undefined && { pyqYear: params.pyqYear }),
+      ...(params.pyqExamName !== undefined && { pyqExamName: params.pyqExamName }),
+      ...(params.pyqSession !== undefined && { pyqSession: params.pyqSession }),
     };
   });
 }

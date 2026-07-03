@@ -647,6 +647,20 @@ export function LiveExamPage() {
                   {currentQuestion.sourceType === "pyq" ? "PREVIOUS YEAR" : (currentQuestion.sourceType === "reference" ? "REFERENCE BOOK" : currentQuestion.sourceType.toUpperCase())}
                 </span>
                 )}
+                {currentQuestion.pyqYear && (
+                <span
+                  className="tag"
+                  style={{
+                    fontSize: "0.7rem",
+                    background: "#fef9c3",
+                    color: "#713f12",
+                    border: "none",
+                    fontWeight: "bold"
+                  }}
+                >
+                  {[currentQuestion.pyqExamName, currentQuestion.pyqYear, currentQuestion.pyqSession].filter(Boolean).join(" ")}
+                </span>
+                )}
               </div>
             </div>
             <h3><RichText content={currentQuestion.prompt} /></h3>
