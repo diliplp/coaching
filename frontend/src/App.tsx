@@ -38,6 +38,7 @@ import { SubjectBooksPage } from "./pages/SubjectBooksPage";
 import { AdminPage } from "./pages/AdminPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { ExamsListPage } from "./pages/ExamsListPage";
+import { BatchAnalyticsPage } from "./pages/BatchAnalyticsPage";
 import { CurriculumPage } from "./pages/CurriculumPage";
 import { OfflineExamBuilderPage } from "./pages/OfflineExamBuilderPage";
 import { LiveExamMonitorPage } from "./pages/LiveExamMonitorPage";
@@ -145,9 +146,13 @@ export default function App() {
             path="/exams" 
             element={<ProtectedRoute roles={["super_admin", "teacher"]}><ExamsListPage /></ProtectedRoute>} 
           />
-          <Route 
-            path="/exams/:examId/monitor" 
-            element={<ProtectedRoute roles={["super_admin", "teacher"]}><LiveExamMonitorPage /></ProtectedRoute>} 
+          <Route
+            path="/exams/:examId/monitor"
+            element={<ProtectedRoute roles={["super_admin", "teacher"]}><LiveExamMonitorPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/exams/:examId/batch-analytics"
+            element={<ProtectedRoute roles={["super_admin", "teacher"]}><BatchAnalyticsPage /></ProtectedRoute>}
           />
           <Route 
             path="/curriculum" 

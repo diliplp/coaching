@@ -1557,6 +1557,122 @@ apiRouter.post("/exams/:examId/submit", async (req, res) => {
   res.json(result);
 });
 
+apiRouter.get("/exams/:examId/batch-analytics", requireRole(["super_admin", "teacher"]), async (req, res) => {
+  const { examId } = req.params;
+  const state = await getAppState();
+
+  const exam = state.exams.find(e => e.id === examId);
+  if (!exam) { res.status(404).json({ message: "Exam not found" }); return; }
+
+  const submissions = (state.submissions as any[]).filter(s => s.examId === examId);
+  if (submissions.length === 0) {
+    res.json({
+      examId, examName: exam.name,
+      totalStudents: 0, avgPercentage: 0, maxPercentage: 0, minPercentage: 0, stdDev: 0,
+      questionStats: [], topicStats: [], studentRankings: []
+    });
+    return;
+  }
+
+  // Per-question tally
+  const questionTally = new Map<string, { prompt: string; correct: number; incorrect: number; unattempted: number }>();
+  for (const sub of submissions) {
+    for (const item of (sub.review ?? [])) {
+      const qid: string = item.questionId;
+      if (!questionTally.has(qid)) {
+        questionTally.set(qid, { prompt: (item.prompt || "").substring(0, 120), correct: 0, incorrect: 0, unattempted: 0 });
+      }
+      const t = questionTally.get(qid)!;
+      if (!item.attempted) t.unattempted++;
+      else if (item.isCorrect) t.correct++;
+      else t.incorrect++;
+    }
+  }
+
+  // Resolve topic name for each question
+  const questionToTopic = new Map<string, string>();
+  for (const q of state.questions) {
+    const topic = state.topics.find(t => t.id === q.topicId);
+    if (topic) questionToTopic.set(q.id, topic.name);
+  }
+
+  const questionStats = [...questionTally.entries()]
+    .map(([questionId, t]) => {
+      const total = t.correct + t.incorrect + t.unattempted;
+      const attempted = t.correct + t.incorrect;
+      return {
+        questionId,
+        prompt: t.prompt,
+        topicName: questionToTopic.get(questionId) ?? "Unknown",
+        correctCount: t.correct,
+        incorrectCount: t.incorrect,
+        unattemptedCount: t.unattempted,
+        attemptRate: total > 0 ? Math.round((attempted / total) * 100) : 0,
+        failRate: attempted > 0 ? Math.round((t.incorrect / attempted) * 100) : 0,
+      };
+    })
+    .sort((a, b) => b.failRate - a.failRate);
+
+  // Per-topic tally (from submission insights)
+  const topicTally = new Map<string, { name: string; accuracySum: number; count: number; weakCount: number }>();
+  for (const sub of submissions) {
+    for (const insight of (sub.insights ?? [])) {
+      if (!topicTally.has(insight.topicId)) {
+        topicTally.set(insight.topicId, { name: insight.topicName, accuracySum: 0, count: 0, weakCount: 0 });
+      }
+      const t = topicTally.get(insight.topicId)!;
+      t.accuracySum += insight.accuracy;
+      t.count++;
+      if (insight.accuracy < 50) t.weakCount++;
+    }
+  }
+  const topicStats = [...topicTally.entries()]
+    .map(([topicId, t]) => ({
+      topicId,
+      topicName: t.name,
+      avgAccuracy: t.count > 0 ? Math.round(t.accuracySum / t.count) : 0,
+      totalStudents: t.count,
+      weakStudentCount: t.weakCount,
+    }))
+    .sort((a, b) => a.avgAccuracy - b.avgAccuracy);
+
+  // Student rankings + outlier detection
+  const percentages = submissions.map(s => s.percentage as number);
+  const mean = percentages.reduce((a, b) => a + b, 0) / percentages.length;
+  const variance = percentages.reduce((a, b) => a + (b - mean) ** 2, 0) / percentages.length;
+  const stdDev = Math.sqrt(variance);
+
+  const studentRankings = submissions
+    .map(sub => {
+      const student = state.students.find(s => s.id === sub.studentId);
+      const user = state.users.find(u => u.studentId === sub.studentId);
+      return {
+        studentId: sub.studentId,
+        studentName: student?.name || user?.name || sub.studentId,
+        obtainedMarks: sub.obtainedMarks,
+        totalMarks: sub.totalMarks,
+        percentage: sub.percentage,
+        isOutlierHigh: sub.percentage > mean + 1.5 * stdDev,
+        isOutlierLow: sub.percentage < mean - 1.5 * stdDev,
+      };
+    })
+    .sort((a, b) => b.percentage - a.percentage)
+    .map((s, i) => ({ ...s, rank: i + 1 }));
+
+  res.json({
+    examId,
+    examName: exam.name,
+    totalStudents: submissions.length,
+    avgPercentage: Math.round(mean * 10) / 10,
+    maxPercentage: Math.max(...percentages),
+    minPercentage: Math.min(...percentages),
+    stdDev: Math.round(stdDev * 10) / 10,
+    questionStats,
+    topicStats,
+    studentRankings,
+  });
+});
+
 apiRouter.post("/exams/:examId/heartbeat", async (req, res) => {
   const { examId } = req.params;
   const { answeredCount, totalQuestions, currentQuestionIndex, status } = req.body as {

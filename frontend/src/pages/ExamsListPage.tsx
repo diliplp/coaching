@@ -127,6 +127,7 @@ export function ExamsListPage() {
                 </div>
                 <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                   <button className="primary-button" style={{ padding: "8px 16px", fontSize: "0.85rem" }} onClick={() => navigate(`/exams/${exam.id}/monitor`)}>Monitor Live</button>
+                  <button className="secondary-button" style={{ padding: "8px 16px", fontSize: "0.85rem" }} onClick={() => navigate(`/exams/${exam.id}/batch-analytics`)}>Batch Analytics</button>
                   <button className="secondary-button" onClick={() => handleEditClick(exam)}>Edit</button>
                   <button className="secondary-button" style={{ color: "red", borderColor: "red" }} onClick={() => handleDelete(exam.id)}>Delete</button>
                 </div>
