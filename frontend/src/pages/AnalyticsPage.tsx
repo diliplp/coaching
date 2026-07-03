@@ -18,6 +18,8 @@ export function AnalyticsPage() {
   const [downloadError, setDownloadError] = useState<string>("");
   const [syllabusCoverage, setSyllabusCoverage] = useState<any>(null);
   const [expandedClass, setExpandedClass] = useState<string>("");
+  const [pyqFrequency, setPyqFrequency] = useState<any>(null);
+  const [pyqSubjectId, setPyqSubjectId] = useState<string>("");
 
   useEffect(() => {
     apiClient.getAnalytics().then((res: any) => {
@@ -28,6 +30,7 @@ export function AnalyticsPage() {
     }).catch(console.error);
     if (!isStudent) {
       apiClient.getAdminSyllabusCoverage().then(setSyllabusCoverage).catch(() => {});
+      apiClient.getPyqFrequency().then(setPyqFrequency).catch(() => {});
     }
   }, []);
 
@@ -423,6 +426,99 @@ export function AnalyticsPage() {
 
           {Object.keys(syllabusCoverage.byClass).length === 0 && (
             <p className="muted-copy" style={{ margin: 0, fontSize: "0.85rem" }}>No syllabus tracker data yet. Students need to set up their tracker first.</p>
+          )}
+        </section>
+      )}
+
+      {/* ── PYQ Topic Frequency Heatmap (admin/teacher) ─────────────────── */}
+      {!isStudent && pyqFrequency && (
+        <section className="panel" style={{ marginTop: "20px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+            <div>
+              <h3 style={{ margin: 0 }}>PYQ Topic Frequency</h3>
+              <p className="muted-copy" style={{ margin: "4px 0 0", fontSize: "0.82rem" }}>
+                How often each topic appeared in previous year question papers. Darker = appeared more.
+              </p>
+            </div>
+            {data?.subjects?.length > 0 && (
+              <select
+                value={pyqSubjectId}
+                onChange={async e => {
+                  setPyqSubjectId(e.target.value);
+                  try {
+                    const res = await apiClient.getPyqFrequency(e.target.value || undefined);
+                    setPyqFrequency(res);
+                  } catch {}
+                }}
+                style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid var(--color-border)", fontSize: "0.85rem" }}
+              >
+                <option value="">All Subjects</option>
+                {data.subjects.map((s: any) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {pyqFrequency.topics.length === 0 ? (
+            <p className="muted-copy" style={{ fontSize: "0.85rem" }}>
+              No PYQ-tagged questions yet. Upload a PYQ book and extract questions to populate this heatmap.
+            </p>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ borderCollapse: "collapse", fontSize: "0.82rem", width: "100%" }}>
+                <thead>
+                  <tr style={{ borderBottom: "2px solid var(--color-border)" }}>
+                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--color-text-muted)", whiteSpace: "nowrap" }}>Topic</th>
+                    <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600, color: "var(--color-text-muted)", whiteSpace: "nowrap" }}>Chapter</th>
+                    {pyqFrequency.allYears.map((yr: number) => (
+                      <th key={yr} style={{ textAlign: "center", padding: "8px 10px", fontWeight: 600, color: "var(--color-text-muted)", whiteSpace: "nowrap" }}>{yr}</th>
+                    ))}
+                    <th style={{ textAlign: "center", padding: "8px 10px", fontWeight: 700, color: "var(--color-text-muted)", whiteSpace: "nowrap" }}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pyqFrequency.topics.map((t: any, i: number) => {
+                    const maxTotal = pyqFrequency.topics[0]?.total || 1;
+                    return (
+                      <tr key={t.topicId} style={{ borderBottom: "1px solid var(--color-border)", background: i % 2 === 0 ? "transparent" : "var(--color-bg-secondary)" }}>
+                        <td style={{ padding: "8px 12px", fontWeight: 600 }}>{t.topicName}</td>
+                        <td style={{ padding: "8px 12px", color: "var(--color-text-muted)", fontSize: "0.78rem" }}>{t.chapterName}</td>
+                        {pyqFrequency.allYears.map((yr: number) => {
+                          const count = t.byYear[yr] || 0;
+                          const intensity = count > 0 ? Math.max(0.15, count / maxTotal) : 0;
+                          return (
+                            <td key={yr} style={{ textAlign: "center", padding: "6px 10px" }}>
+                              {count > 0 ? (
+                                <span style={{
+                                  display: "inline-block",
+                                  minWidth: "24px",
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                  background: `rgba(37, 99, 235, ${intensity})`,
+                                  color: intensity > 0.5 ? "#fff" : "#1e40af",
+                                  fontWeight: 700,
+                                  fontSize: "0.8rem"
+                                }}>{count}</span>
+                              ) : (
+                                <span style={{ color: "#d1d5db" }}>·</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                        <td style={{ textAlign: "center", padding: "8px 10px" }}>
+                          <span style={{
+                            fontWeight: 800,
+                            fontSize: "0.9rem",
+                            color: t.total >= 5 ? "#dc2626" : t.total >= 3 ? "#d97706" : "#16a34a"
+                          }}>{t.total}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </section>
       )}

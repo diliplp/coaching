@@ -170,6 +170,15 @@ export const apiClient = {
     request<ExamPayload>("/exams/self-generate", { method: "POST", body: JSON.stringify(payload) }),
   deleteExam: (id: string) => request<void>(`/exams/${id}`, { method: "DELETE" }),
   getBatchAnalytics: (examId: string) => request<any>(`/exams/${examId}/batch-analytics`),
+  generateRevisionSet: (submissionId: string, questionCount?: number) =>
+    request<any>(`/submissions/${submissionId}/revision-set`, {
+      method: "POST",
+      body: JSON.stringify({ questionCount: questionCount ?? 15 })
+    }),
+  getPyqFrequency: (subjectId?: string) =>
+    request<{ allYears: number[]; topics: any[]; subjectId: string | null }>(
+      `/pyq-frequency${subjectId ? `?subjectId=${subjectId}` : ""}`
+    ),
   updateExam: (id: string, payload: { name?: string; durationMinutes?: number; scheduledStartTime?: string; scheduledEndTime?: string; batchId?: string }) =>
     request<any>(`/exams/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
   getQuestionBank: () => request<QuestionBankResponse>("/question-bank"),

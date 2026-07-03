@@ -59,6 +59,7 @@ export function LiveExamPage() {
   const [resultVersion, setResultVersion] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [revisionLoading, setRevisionLoading] = useState(false);
   const [markedForReview, setMarkedForReview] = useState<Set<number>>(new Set());
   const toggleMarkForReview = () =>
     setMarkedForReview(prev => {
@@ -849,6 +850,35 @@ export function LiveExamPage() {
                 <div style={{ fontSize: "2rem", fontWeight: "bold", margin: "10px 0" }}>{latestResult?.percentage}%</div>
                 <p>{latestResult?.obtainedMarks} / {latestResult?.totalMarks} marks</p>
                 <p>{latestResult?.correctAnswers} Correct • {latestResult?.incorrectAnswers} Incorrect</p>
+
+                {(latestResult?.incorrectAnswers ?? 0) > 0 && latestResult?.id && (
+                  <button
+                    className="primary-button"
+                    style={{ width: "100%", marginTop: "12px", fontSize: "0.85rem", padding: "10px" }}
+                    disabled={revisionLoading}
+                    onClick={async () => {
+                      setRevisionLoading(true);
+                      try {
+                        const payload = await apiClient.generateRevisionSet(latestResult!.id!);
+                        liveExamState.generatedExam = payload;
+                        liveExamState.latestResult = null;
+                        setActiveExam(payload);
+                        setCurrentIndex(0);
+                        setAnswers({});
+                        setIntegerAnswers({});
+                        setMarkedForReview(new Set());
+                        setIsReviewMode(false);
+                        setResultVersion(v => v + 1);
+                      } catch (e: any) {
+                        alert(e?.message || "Could not generate revision set.");
+                      } finally {
+                        setRevisionLoading(false);
+                      }
+                    }}
+                  >
+                    {revisionLoading ? "Generating..." : "Practice Weak Topics"}
+                  </button>
+                )}
 
                 {latestResult?.timingStats && (() => {
                   const ts = latestResult.timingStats!;

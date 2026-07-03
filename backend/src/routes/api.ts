@@ -615,6 +615,121 @@ apiRouter.get("/students/me/submissions/:submissionId", requireRole(["student"])
   res.json({ ...submission, examName: exam?.name || "Unknown Exam" });
 });
 
+// POST /submissions/:submissionId/revision-set
+// Generates a focused practice exam from the weak topics in a past submission.
+apiRouter.post("/submissions/:submissionId/revision-set", requireRole(["student", "super_admin", "teacher"]), async (req, res) => {
+  const auth = (req as AuthenticatedRequest).auth;
+  const state = await getAppState();
+  const user = state.users.find(u => u.id === auth?.sub);
+
+  const submission = state.submissions.find((s: any) => s.id === req.params.submissionId) as any;
+  if (!submission) { res.status(404).json({ message: "Submission not found" }); return; }
+
+  // Students can only revise their own submissions
+  if (user?.role === "student" && submission.studentId !== user.studentId) {
+    res.status(403).json({ message: "Access denied" }); return;
+  }
+
+  const targetCount = Math.min(30, Math.max(5, Number(req.body.questionCount) || 15));
+
+  // Find weak topics from insights (those with at least one wrong answer), sorted by weakness
+  const insights: any[] = submission.insights ?? [];
+  const weakTopics = insights
+    .filter((t: any) => t.incorrectAnswers > 0 || t.unattemptedAnswers > 0)
+    .sort((a: any, b: any) => b.weaknessScore - a.weaknessScore);
+
+  // Fallback: if perfect score, use all topics from the submission
+  const topicsToUse = weakTopics.length > 0
+    ? weakTopics
+    : insights;
+
+  if (topicsToUse.length === 0) {
+    res.status(400).json({ message: "No topics found in this submission to build a revision set from." });
+    return;
+  }
+
+  const topicIds = topicsToUse.map((t: any) => t.topicId);
+  const allCandidates = state.questions.filter(q =>
+    topicIds.includes(q.topicId) && q.correctOptionIds && q.correctOptionIds.length > 0
+  );
+  if (allCandidates.length === 0) {
+    res.status(400).json({ message: "No questions available for the weak topics. Ask your teacher to add more questions." });
+    return;
+  }
+
+  // Distribute questions proportional to weakness score
+  const totalWeakness = topicsToUse.reduce((s: number, t: any) => s + (t.weaknessScore || 1), 0);
+  const selected: typeof allCandidates = [];
+  const pickedIds = new Set<string>();
+
+  for (const topic of topicsToUse) {
+    const share = Math.max(1, Math.round(((topic.weaknessScore || 1) / totalWeakness) * targetCount));
+    const pool = allCandidates.filter(q => q.topicId === topic.topicId && !pickedIds.has(q.id));
+    const picks = pool.sort(() => 0.5 - Math.random()).slice(0, share);
+    picks.forEach(q => { pickedIds.add(q.id); selected.push(q); });
+  }
+
+  // Top up or trim to targetCount
+  if (selected.length < targetCount) {
+    const remainder = allCandidates.filter(q => !pickedIds.has(q.id)).sort(() => 0.5 - Math.random());
+    selected.push(...remainder.slice(0, targetCount - selected.length));
+  }
+  const finalQuestions = selected.slice(0, targetCount).sort(() => 0.5 - Math.random());
+
+  const student = state.students.find(s => s.id === submission.studentId);
+  const exam = {
+    id: `revision-${Date.now()}`,
+    blueprintId: "revision",
+    name: `Revision: ${weakTopics.length > 0 ? weakTopics[0].topicName : "Mixed Topics"}${weakTopics.length > 1 ? " + more" : ""}`,
+    classId: student?.classId || "",
+    streamId: student?.streamId || "",
+    batchId: student?.batchId || "",
+    subjectId: finalQuestions[0]?.subjectId || "",
+    durationMinutes: Math.max(10, finalQuestions.length * 2),
+    generatedAt: new Date().toISOString(),
+    generationMode: "adaptive" as const,
+    adaptiveSummary: `Revision set from ${weakTopics.length} weak topic(s): ${topicsToUse.slice(0, 3).map((t: any) => t.topicName).join(", ")}`,
+    questions: finalQuestions.map((q, i) => ({
+      questionId: q.id,
+      order: i + 1,
+      optionOrderIds: q.options.map(o => o.id).sort(() => 0.5 - Math.random())
+    }))
+  };
+
+  await upsertRecord("exams", exam);
+  res.status(201).json({ exam, questions: finalQuestions });
+});
+
+// GET /pyq-frequency — topic × year matrix for PYQ questions
+apiRouter.get("/pyq-frequency", requireRole(["super_admin", "teacher"]), async (req, res) => {
+  const state = await getAppState();
+  const subjectId = typeof req.query.subjectId === "string" ? req.query.subjectId : undefined;
+
+  const pyqQuestions = (state.questions as any[]).filter(q =>
+    q.pyqYear && (subjectId ? q.subjectId === subjectId : true)
+  );
+
+  const topicMap = new Map<string, { topicName: string; chapterName: string; byYear: Record<number, number>; total: number }>();
+
+  for (const q of pyqQuestions) {
+    const topic = state.topics.find(t => t.id === q.topicId);
+    const chapter = topic ? state.chapters.find(c => c.id === topic.chapterId) : undefined;
+    if (!topicMap.has(q.topicId)) {
+      topicMap.set(q.topicId, { topicName: topic?.name ?? "Unknown", chapterName: chapter?.name ?? "", byYear: {}, total: 0 });
+    }
+    const entry = topicMap.get(q.topicId)!;
+    entry.byYear[q.pyqYear] = (entry.byYear[q.pyqYear] || 0) + 1;
+    entry.total++;
+  }
+
+  const allYears = [...new Set(pyqQuestions.map((q: any) => q.pyqYear as number))].sort((a, b) => a - b);
+  const topics = [...topicMap.entries()]
+    .map(([topicId, data]) => ({ topicId, ...data }))
+    .sort((a, b) => b.total - a.total);
+
+  res.json({ allYears, topics, subjectId: subjectId ?? null });
+});
+
 apiRouter.get("/students/me/adaptive-suggestion", requireRole(["student"]), async (req, res) => {
   const auth = (req as AuthenticatedRequest).auth;
   const studentId = auth?.studentId ?? undefined;
