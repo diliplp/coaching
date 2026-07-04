@@ -977,15 +977,15 @@ export function LiveExamPage() {
                   const rev = latestResult?.review?.[index];
                   const unanswered = !rev || !rev.selectedOptionIds || rev.selectedOptionIds.length === 0;
                   const isCorrect = rev?.isCorrect === true;
+                  const secs = (rev as any)?.timeSpentSeconds;
+                  const timeLabel = secs !== undefined
+                    ? (secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`)
+                    : "";
 
                   let statusClass = "";
-                  if (unanswered) {
-                    statusClass = "review-unanswered";
-                  } else if (isCorrect) {
-                    statusClass = "review-correct";
-                  } else {
-                    statusClass = "review-incorrect";
-                  }
+                  if (unanswered) statusClass = "review-unanswered";
+                  else if (isCorrect) statusClass = "review-correct";
+                  else statusClass = "review-incorrect";
 
                   const isActive = currentIndex === index;
 
@@ -995,12 +995,62 @@ export function LiveExamPage() {
                       key={question.id}
                       className={`palette-button ${statusClass} ${isActive ? "active" : ""}`}
                       onClick={() => setCurrentIndex(index)}
-                      title={unanswered ? "Unanswered" : (isCorrect ? "Correct" : "Incorrect")}
+                      title={`Q${index + 1} · ${unanswered ? "Skipped" : isCorrect ? "Correct" : "Incorrect"}${timeLabel ? ` · ${timeLabel}` : ""}`}
                     >
                       {index + 1}
                     </button>
                   );
                 })}
+              </div>
+
+              <h4 style={{ marginTop: "20px", marginBottom: "10px", color: "var(--color-primary)" }}>Per-Question Time</h4>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
+                  <thead>
+                    <tr style={{ background: "#f1f5f9", textAlign: "left" }}>
+                      <th style={{ padding: "6px 8px", fontWeight: 600, color: "#475569" }}>Q#</th>
+                      <th style={{ padding: "6px 8px", fontWeight: 600, color: "#475569" }}>Result</th>
+                      <th style={{ padding: "6px 8px", fontWeight: 600, color: "#475569" }}>Time Spent</th>
+                      <th style={{ padding: "6px 8px", fontWeight: 600, color: "#475569" }}>Pace</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {generatedExam.questions.map((question: any, index: number) => {
+                      const rev = latestResult?.review?.[index];
+                      const unanswered = !rev || !rev.selectedOptionIds || rev.selectedOptionIds.length === 0;
+                      const isCorrect = rev?.isCorrect === true;
+                      const secs = (rev as any)?.timeSpentSeconds;
+                      const zone = (rev as any)?.speedZone;
+                      const timeLabel = secs !== undefined
+                        ? (secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`)
+                        : "—";
+                      const zoneColors: Record<string, string> = {
+                        fast: "#15803d", normal: "#1d4ed8", slow: "#854d0e"
+                      };
+                      const isActive = currentIndex === index;
+                      return (
+                        <tr
+                          key={question.id}
+                          onClick={() => setCurrentIndex(index)}
+                          style={{
+                            cursor: "pointer",
+                            background: isActive ? "#eff6ff" : (index % 2 === 0 ? "white" : "#f8fafc"),
+                            borderBottom: "1px solid #e2e8f0"
+                          }}
+                        >
+                          <td style={{ padding: "6px 8px", fontWeight: isActive ? 700 : 400 }}>{index + 1}</td>
+                          <td style={{ padding: "6px 8px", color: unanswered ? "#94a3b8" : isCorrect ? "#16a34a" : "#dc2626", fontWeight: 600 }}>
+                            {unanswered ? "—" : isCorrect ? "✓" : "✗"}
+                          </td>
+                          <td style={{ padding: "6px 8px", fontFamily: "monospace" }}>{timeLabel}</td>
+                          <td style={{ padding: "6px 8px", color: zone ? zoneColors[zone] : "#94a3b8", fontWeight: 600, fontSize: "0.72rem" }}>
+                            {zone ?? "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </>
           ) : (
