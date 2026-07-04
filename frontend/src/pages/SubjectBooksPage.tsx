@@ -116,7 +116,7 @@ export function SubjectBooksPage() {
       const bookChapterId = selectedChapters[bookId] || "";
       const bookTopicIds = selectedTopicsMap[bookId] || [];
       const { jobId } = await apiClient.startGenerateQuestionsJob(bookId, {
-        chapterId: bookChapterId || undefined,
+        chapterId: (bookChapterId && bookChapterId !== "__all__") ? bookChapterId : undefined,
         topicIds: bookTopicIds.length > 0 ? bookTopicIds : undefined,
         questionCount
       });
@@ -155,7 +155,7 @@ export function SubjectBooksPage() {
       const bookTopicIds = selectedTopicsMap[bookId] || [];
       const meta = pyqMeta[bookId] || {};
       await apiClient.extractQuestionsFromBook(bookId, {
-        chapterId: bookChapterId || undefined,
+        chapterId: (bookChapterId && bookChapterId !== "__all__") ? bookChapterId : undefined,
         topicIds: bookTopicIds.length > 0 ? bookTopicIds : undefined,
         pyqYear: meta.pyqYear ? parseInt(meta.pyqYear) : undefined,
         pyqExamName: meta.pyqExamName || undefined,
@@ -340,7 +340,10 @@ export function SubjectBooksPage() {
                 const bookChapterId = selectedChapters[book.id] || "";
                 const bookSelectedTopicIds = selectedTopicsMap[book.id] || [];
                 const bookChapters = allChapters.filter(c => c.subjectId === book.subjectId && c.bookId === book.id);
-                const bookTopics = allTopics.filter(t => t.chapterId === bookChapterId && t.bookId === book.id);
+                const allChaptersSelected = bookChapterId === "__all__";
+                const bookTopics = allChaptersSelected
+                  ? allTopics.filter(t => t.bookId === book.id)
+                  : allTopics.filter(t => t.chapterId === bookChapterId && t.bookId === book.id);
 
                 return (
                   <li key={book.id} className="panel" style={{ display: "block", marginBottom: "2rem", padding: "1.5rem", borderRadius: "12px", background: "white", border: "1px solid var(--color-border)" }}>
@@ -453,15 +456,23 @@ export function SubjectBooksPage() {
                       <div className="stack" style={{ gap: "1rem" }}>
                         <label className="field">
                           <span>Select Chapter</span>
-                          <select 
-                            value={bookChapterId} 
+                          <select
+                            value={bookChapterId}
                             onChange={(e) => {
-                              setSelectedChapters(prev => ({ ...prev, [book.id]: e.target.value }));
-                              setSelectedTopicsMap(prev => ({ ...prev, [book.id]: [] }));
+                              const val = e.target.value;
+                              setSelectedChapters(prev => ({ ...prev, [book.id]: val }));
+                              // Auto-select all topics when switching to All Chapters
+                              if (val === "__all__") {
+                                const allIds = allTopics.filter(t => t.bookId === book.id).map(t => t.id);
+                                setSelectedTopicsMap(prev => ({ ...prev, [book.id]: allIds }));
+                              } else {
+                                setSelectedTopicsMap(prev => ({ ...prev, [book.id]: [] }));
+                              }
                             }}
                             style={{ background: "white" }}
                           >
                             <option value="">Choose...</option>
+                            <option value="__all__">— All Chapters —</option>
                             {bookChapters.map(c => (
                               <option key={c.id} value={c.id}>{c.name}</option>
                             ))}
@@ -469,19 +480,19 @@ export function SubjectBooksPage() {
                         </label>
 
                         <div className="field">
-                          <span>Select Topics</span>
-                          <div style={{ 
-                            background: "white", 
-                            border: "1px solid var(--color-border)", 
-                            borderRadius: "8px", 
+                          <span>Select Topics {allChaptersSelected && bookTopics.length > 0 && <span style={{ color: "var(--color-text-muted)", fontWeight: "normal", fontSize: "0.78rem" }}>({bookTopics.length} total)</span>}</span>
+                          <div style={{
+                            background: "white",
+                            border: "1px solid var(--color-border)",
+                            borderRadius: "8px",
                             padding: "10px",
-                            maxHeight: "150px",
+                            maxHeight: "200px",
                             overflowY: "auto",
                             marginTop: "4px"
                           }}>
                             <label style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px", paddingBottom: "10px", borderBottom: "1px solid var(--color-border)", fontWeight: "bold", fontSize: "0.9rem" }}>
-                              <input 
-                                type="checkbox" 
+                              <input
+                                type="checkbox"
                                 checked={bookTopics.length > 0 && bookSelectedTopicIds.length === bookTopics.length}
                                 onChange={(e) => {
                                   if (e.target.checked) {
@@ -494,25 +505,76 @@ export function SubjectBooksPage() {
                               />
                               <span>Select All Topics</span>
                             </label>
-                            {bookTopics.map(t => (
-                              <label key={t.id} style={{ display: "flex", alignItems: "flex-start", gap: "6px", marginBottom: "8px", fontSize: "0.85rem", lineHeight: "1.4" }}>
-                                <input 
-                                  type="checkbox" 
-                                  checked={bookSelectedTopicIds.includes(t.id)}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setSelectedTopicsMap(prev => ({ ...prev, [book.id]: [...bookSelectedTopicIds, t.id] }));
-                                    } else {
-                                      setSelectedTopicsMap(prev => ({ ...prev, [book.id]: bookSelectedTopicIds.filter(id => id !== t.id) }));
-                                    }
-                                  }}
-                                  style={{ margin: "3px 0 0 0", flexShrink: 0, width: "auto" }}
-                                />
-                                <span style={{ flex: 1, textAlign: "left" }}>{t.name}</span>
-                              </label>
-                            ))}
+
+                            {allChaptersSelected ? (
+                              // Grouped by chapter when "All Chapters" selected
+                              bookChapters.map(chapter => {
+                                const chapterTopics = allTopics.filter(t => t.chapterId === chapter.id && t.bookId === book.id);
+                                if (chapterTopics.length === 0) return null;
+                                const allChecked = chapterTopics.every(t => bookSelectedTopicIds.includes(t.id));
+                                return (
+                                  <div key={chapter.id} style={{ marginBottom: "10px" }}>
+                                    <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.8rem", fontWeight: 700, color: "var(--color-text-muted)", marginBottom: "4px" }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={allChecked}
+                                        onChange={(e) => {
+                                          const chapterIds = chapterTopics.map(t => t.id);
+                                          setSelectedTopicsMap(prev => {
+                                            const current = prev[book.id] || [];
+                                            const without = current.filter(id => !chapterIds.includes(id));
+                                            return { ...prev, [book.id]: e.target.checked ? [...without, ...chapterIds] : without };
+                                          });
+                                        }}
+                                        style={{ margin: 0, width: "auto" }}
+                                      />
+                                      {chapter.name}
+                                    </label>
+                                    {chapterTopics.map(t => (
+                                      <label key={t.id} style={{ display: "flex", alignItems: "flex-start", gap: "6px", marginBottom: "4px", fontSize: "0.82rem", lineHeight: "1.4", paddingLeft: "16px" }}>
+                                        <input
+                                          type="checkbox"
+                                          checked={bookSelectedTopicIds.includes(t.id)}
+                                          onChange={(e) => {
+                                            if (e.target.checked) {
+                                              setSelectedTopicsMap(prev => ({ ...prev, [book.id]: [...(prev[book.id] || []), t.id] }));
+                                            } else {
+                                              setSelectedTopicsMap(prev => ({ ...prev, [book.id]: (prev[book.id] || []).filter(id => id !== t.id) }));
+                                            }
+                                          }}
+                                          style={{ margin: "3px 0 0 0", flexShrink: 0, width: "auto" }}
+                                        />
+                                        <span style={{ flex: 1, textAlign: "left" }}>{t.name}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              // Single chapter view (original)
+                              bookTopics.map(t => (
+                                <label key={t.id} style={{ display: "flex", alignItems: "flex-start", gap: "6px", marginBottom: "8px", fontSize: "0.85rem", lineHeight: "1.4" }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={bookSelectedTopicIds.includes(t.id)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSelectedTopicsMap(prev => ({ ...prev, [book.id]: [...bookSelectedTopicIds, t.id] }));
+                                      } else {
+                                        setSelectedTopicsMap(prev => ({ ...prev, [book.id]: bookSelectedTopicIds.filter(id => id !== t.id) }));
+                                      }
+                                    }}
+                                    style={{ margin: "3px 0 0 0", flexShrink: 0, width: "auto" }}
+                                  />
+                                  <span style={{ flex: 1, textAlign: "left" }}>{t.name}</span>
+                                </label>
+                              ))
+                            )}
+
                             {bookTopics.length === 0 && (
-                              <p className="muted-copy" style={{ fontSize: "0.8rem", margin: 0 }}>No topics found in this chapter.</p>
+                              <p className="muted-copy" style={{ fontSize: "0.8rem", margin: 0 }}>
+                                {bookChapterId ? "No topics found in this chapter." : "Select a chapter to see topics."}
+                              </p>
                             )}
                           </div>
                         </div>
