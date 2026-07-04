@@ -215,6 +215,117 @@ export function LiveExamPage() {
     return `${minutes}:${seconds}`;
   }, [timeLeft]);
 
+  // All hooks must precede early returns to keep the hook call count stable across renders.
+  const latestResult = liveExamState.latestResult;
+
+  const sectionBoundaries = useMemo(() => {
+    const sections = (generatedExam?.exam as any)?.sections as Array<{ name: string; totalQuestions: number; attemptQuestions: number; questionType: string }> | undefined;
+    if (!sections || sections.length === 0) return null;
+    const boundaries: Array<{ name: string; start: number; end: number; attemptQuestions: number; totalQuestions: number; questionType: string }> = [];
+    let pos = 0;
+    sections.forEach((s: { name: string; totalQuestions: number; attemptQuestions: number; questionType: string }) => {
+      boundaries.push({ name: s.name, start: pos, end: pos + s.totalQuestions - 1, attemptQuestions: s.attemptQuestions, totalQuestions: s.totalQuestions, questionType: s.questionType });
+      pos += s.totalQuestions;
+    });
+    return boundaries;
+  }, [generatedExam]);
+
+  const currentSection = useMemo(() => {
+    if (!sectionBoundaries) return null;
+    return sectionBoundaries.find(s => currentIndex >= s.start && currentIndex <= s.end) ?? null;
+  }, [sectionBoundaries, currentIndex]);
+
+  const topicBreakdown = useMemo(() => {
+    if (!generatedExam || !latestResult?.review) return [];
+    const map = new Map<string, { name: string; total: number; correct: number; unanswered: number }>();
+    generatedExam.questions.forEach((q: any, i: number) => {
+      const tid = q.topicId || "unknown";
+      const tname = latestResult.insights?.find((ins: any) => ins.topicId === tid)?.topicName || q.topicName || "Other";
+      if (!map.has(tid)) map.set(tid, { name: tname, total: 0, correct: 0, unanswered: 0 });
+      const entry = map.get(tid)!;
+      entry.total++;
+      const rev = latestResult.review?.[i];
+      if (!rev?.selectedOptionIds?.length) entry.unanswered++;
+      else if (rev.isCorrect) entry.correct++;
+    });
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [generatedExam, latestResult]);
+
+  // ── Anti-cheat ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!generatedExam || isReviewMode) return;
+
+    document.body.classList.add("exam-running");
+
+    const requestFS = () => {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    };
+    requestFS();
+
+    const addViolation = (reason: string, violationType: string) => {
+      violationsRef.current += 1;
+      const count = violationsRef.current;
+      setViolations(count);
+      apiClient.reportViolation(generatedExam.exam.id, violationType).catch(() => {});
+      if (count >= 3) {
+        setCheatWarning(`⚠️ Third violation detected: ${reason}\n\nYour exam is being auto-submitted.`);
+        void submitRef.current();
+      } else {
+        setCheatWarning(`⚠️ ${reason}\n\nWarning ${count} of 3. Your exam will be auto-submitted on the third violation.`);
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.hidden && examLiveRef.current) addViolation("Tab switch detected.", "tab_switch");
+    };
+
+    let blurTimer: ReturnType<typeof setTimeout>;
+    const onBlur = () => {
+      blurTimer = setTimeout(() => {
+        if (!document.hidden && examLiveRef.current) addViolation("Window focus lost — possible screen switch.", "window_blur");
+      }, 300);
+    };
+    const onFocus = () => clearTimeout(blurTimer);
+
+    const onFullscreenChange = () => {
+      if (examLiveRef.current) setNeedsFullscreen(!document.fullscreenElement);
+    };
+
+    const blockEvent = (e: Event) => { e.preventDefault(); };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!examLiveRef.current) return;
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (ctrl && ['c', 'a', 'v', 'u', 's', 'p', 'f'].includes(e.key.toLowerCase())) e.preventDefault();
+      if (['F12', 'F5', 'F11', 'F1'].includes(e.key)) e.preventDefault();
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('contextmenu', blockEvent);
+    document.addEventListener('selectstart', blockEvent);
+    document.addEventListener('copy', blockEvent);
+    document.addEventListener('cut', blockEvent);
+    document.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      document.removeEventListener('contextmenu', blockEvent);
+      document.removeEventListener('selectstart', blockEvent);
+      document.removeEventListener('copy', blockEvent);
+      document.removeEventListener('cut', blockEvent);
+      document.removeEventListener('keydown', onKeyDown);
+      clearTimeout(blurTimer);
+      document.body.classList.remove("exam-running");
+      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    };
+  }, [generatedExam, isReviewMode]);
+
   if (!generatedExam) {
     return (
       <div className="page">
@@ -330,24 +441,6 @@ export function LiveExamPage() {
     );
   }
 
-  // Compute which section each question index belongs to (if exam has sections)
-  const sectionBoundaries = useMemo(() => {
-    const sections = (generatedExam?.exam as any)?.sections as Array<{ name: string; totalQuestions: number; attemptQuestions: number; questionType: string }> | undefined;
-    if (!sections || sections.length === 0) return null;
-    const boundaries: Array<{ name: string; start: number; end: number; attemptQuestions: number; totalQuestions: number; questionType: string }> = [];
-    let pos = 0;
-    sections.forEach((s: { name: string; totalQuestions: number; attemptQuestions: number; questionType: string }) => {
-      boundaries.push({ name: s.name, start: pos, end: pos + s.totalQuestions - 1, attemptQuestions: s.attemptQuestions, totalQuestions: s.totalQuestions, questionType: s.questionType });
-      pos += s.totalQuestions;
-    });
-    return boundaries;
-  }, [generatedExam]);
-
-  const currentSection = useMemo(() => {
-    if (!sectionBoundaries) return null;
-    return sectionBoundaries.find(s => currentIndex >= s.start && currentIndex <= s.end) ?? null;
-  }, [sectionBoundaries, currentIndex]);
-
   const toggleOption = (questionId: string, optionId: string, multiCorrect: boolean) => {
     if (isReviewMode) return;
 
@@ -429,116 +522,7 @@ export function LiveExamPage() {
   // Track whether exam is currently live (not review, not lobby)
   examLiveRef.current = !!generatedExam && !isReviewMode;
 
-  // ── Anti-cheat ──────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!generatedExam || isReviewMode) return;
-
-    // Hide sidebar for the duration of the exam (works on mobile where fullscreen isn't supported)
-    document.body.classList.add("exam-running");
-
-    // Enter fullscreen immediately when exam starts
-    const requestFS = () => {
-      document.documentElement.requestFullscreen?.().catch(() => {
-        // Fullscreen not supported or denied — don't block exam, just note it
-      });
-    };
-    requestFS();
-
-    const addViolation = (reason: string, violationType: string) => {
-      violationsRef.current += 1;
-      const count = violationsRef.current;
-      setViolations(count);
-      // Report to backend so admin can see it in the monitor
-      apiClient.reportViolation(generatedExam.exam.id, violationType).catch(() => {});
-      if (count >= 3) {
-        setCheatWarning(`⚠️ Third violation detected: ${reason}\n\nYour exam is being auto-submitted.`);
-        void submitRef.current();
-      } else {
-        setCheatWarning(`⚠️ ${reason}\n\nWarning ${count} of 3. Your exam will be auto-submitted on the third violation.`);
-      }
-    };
-
-    const onVisibilityChange = () => {
-      if (document.hidden && examLiveRef.current) {
-        addViolation("Tab switch detected.", "tab_switch");
-      }
-    };
-
-    // Delay blur handler slightly — browser naturally blurs window on fullscreen enter/exit
-    let blurTimer: ReturnType<typeof setTimeout>;
-    const onBlur = () => {
-      blurTimer = setTimeout(() => {
-        if (!document.hidden && examLiveRef.current) {
-          addViolation("Window focus lost — possible screen switch.", "window_blur");
-        }
-      }, 300);
-    };
-    const onFocus = () => clearTimeout(blurTimer);
-
-    const onFullscreenChange = () => {
-      if (examLiveRef.current) {
-        setNeedsFullscreen(!document.fullscreenElement);
-      }
-    };
-
-    const blockEvent = (e: Event) => { e.preventDefault(); };
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!examLiveRef.current) return;
-      const ctrl = e.ctrlKey || e.metaKey;
-      if (ctrl && ['c', 'a', 'v', 'u', 's', 'p', 'f'].includes(e.key.toLowerCase())) {
-        e.preventDefault();
-      }
-      if (['F12', 'F5', 'F11', 'F1'].includes(e.key)) e.preventDefault();
-    };
-
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    window.addEventListener('blur', onBlur);
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('fullscreenchange', onFullscreenChange);
-    document.addEventListener('contextmenu', blockEvent);
-    document.addEventListener('selectstart', blockEvent);
-    document.addEventListener('copy', blockEvent);
-    document.addEventListener('cut', blockEvent);
-    document.addEventListener('keydown', onKeyDown);
-
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-      window.removeEventListener('blur', onBlur);
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('fullscreenchange', onFullscreenChange);
-      document.removeEventListener('contextmenu', blockEvent);
-      document.removeEventListener('selectstart', blockEvent);
-      document.removeEventListener('copy', blockEvent);
-      document.removeEventListener('cut', blockEvent);
-      document.removeEventListener('keydown', onKeyDown);
-      clearTimeout(blurTimer);
-      document.body.classList.remove("exam-running");
-      if (document.fullscreenElement) {
-        document.exitFullscreen?.().catch(() => {});
-      }
-    };
-  }, [generatedExam, isReviewMode]);
-
-  const latestResult = liveExamState.latestResult;
   const reviewData = latestResult?.review?.[currentIndex];
-
-  // Compute topic-wise breakdown from questions + review data
-  const topicBreakdown = useMemo(() => {
-    if (!generatedExam || !latestResult?.review) return [];
-    const map = new Map<string, { name: string; total: number; correct: number; unanswered: number }>();
-    generatedExam.questions.forEach((q: any, i: number) => {
-      const tid = q.topicId || "unknown";
-      const tname = latestResult.insights?.find((ins: any) => ins.topicId === tid)?.topicName || q.topicName || "Other";
-      if (!map.has(tid)) map.set(tid, { name: tname, total: 0, correct: 0, unanswered: 0 });
-      const entry = map.get(tid)!;
-      entry.total++;
-      const rev = latestResult.review?.[i];
-      if (!rev?.selectedOptionIds?.length) entry.unanswered++;
-      else if (rev.isCorrect) entry.correct++;
-    });
-    return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [generatedExam, latestResult]);
 
   return (
     <div className="page" onContextMenu={e => e.preventDefault()}>
