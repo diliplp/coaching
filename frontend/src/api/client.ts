@@ -276,6 +276,8 @@ export const apiClient = {
     request<{ id: string; examId: string; answers: Record<string, string[]>; integerAnswers?: Record<string, string>; startedAt: string; status: string; timeRemainingSeconds: number; currentQuestionIndex: number }>(
       `/exams/${examId}/session`, { method: "POST" }
     ),
+  getMySubmissionForExam: (examId: string) =>
+    request<ExamResult>(`/exams/${examId}/my-submission`),
   saveExamSessionAnswer: (examId: string, payload: { questionId: string; selectedOptionIds: string[]; integerAnswer?: number }) =>
     request<{ status: string }>(`/exams/${examId}/session/answer`, {
       method: "PATCH",

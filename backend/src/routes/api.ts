@@ -1806,6 +1806,14 @@ apiRouter.post("/exams/:examId/heartbeat", async (req, res) => {
     return;
   }
 
+  // If the session was force-submitted by a teacher, signal termination to the student.
+  const sessionId = `session-${examId}-${effectiveStudentId}`;
+  const examSession = await getRecord<ExamSession>("examSessions", sessionId);
+  if (examSession && examSession.status === "submitted") {
+    res.json({ status: "terminated" });
+    return;
+  }
+
   const student = state.students.find((s) => s.id === effectiveStudentId);
   const studentName = student?.name || authUser?.name || "Unknown Student";
 
@@ -1925,6 +1933,12 @@ apiRouter.post("/exams/:examId/session", requireAuth, async (req, res) => {
     return;
   }
 
+  // Block re-entry: if session was already submitted (e.g. force-submitted by teacher)
+  if (existing && existing.status === "submitted") {
+    res.status(409).json({ message: "already_submitted" });
+    return;
+  }
+
   const session: ExamSession = {
     id: sessionId,
     examId: examId as string,
@@ -1940,6 +1954,32 @@ apiRouter.post("/exams/:examId/session", requireAuth, async (req, res) => {
     : Infinity;
   const initTimeRemaining = Math.max(0, Math.min(exam.durationMinutes * 60, initScheduleRem));
   res.json({ ...session, timeRemainingSeconds: initTimeRemaining });
+});
+
+// Returns the student's existing submission for an exam (used after force-submit to show result).
+apiRouter.get("/exams/:examId/my-submission", requireAuth, async (req, res) => {
+  const { examId } = req.params;
+  const authUserId = (req as AuthenticatedRequest).auth?.sub;
+  const state = await getAppState();
+  const authUser = state.users.find((u) => u.id === authUserId);
+  const effectiveStudentId = authUser?.studentId ?? authUserId;
+
+  if (!effectiveStudentId) {
+    res.status(400).json({ message: "Student authentication required" });
+    return;
+  }
+
+  const submission = state.submissions
+    .filter((s: any) => s.examId === examId && s.studentId === effectiveStudentId)
+    .sort((a: any, b: any) => b.id.localeCompare(a.id))[0];
+
+  if (!submission) {
+    res.status(404).json({ message: "No submission found for this exam" });
+    return;
+  }
+
+  const exam = state.exams.find((e) => e.id === examId);
+  res.json({ ...submission, examName: exam?.name || "Unknown Exam" });
 });
 
 apiRouter.patch("/exams/:examId/session/answer", requireAuth, async (req, res) => {

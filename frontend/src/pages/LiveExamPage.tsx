@@ -111,14 +111,29 @@ export function LiveExamPage() {
         setCurrentIndex(session.currentQuestionIndex ?? 0);
         setTimeLeft(session.timeRemainingSeconds);
       } catch {
-        // No existing session — create a fresh one and start the timer from full duration
+        // No existing in-progress session — try to create a fresh one
         try {
           const session = await apiClient.createExamSession(generatedExam.exam.id);
           setTimeLeft(session.timeRemainingSeconds);
-        } catch {
-          setTimeLeft(generatedExam.exam.durationMinutes * 60);
+          setAnswers({});
+        } catch (err: any) {
+          if (err?.message === "already_submitted") {
+            // Exam was force-submitted by teacher; fetch and display the existing result.
+            try {
+              const result = await apiClient.getMySubmissionForExam(generatedExam.exam.id);
+              liveExamState.latestResult = result;
+              setResultVersion((v) => v + 1);
+              setIsReviewMode(true);
+              setCurrentIndex(0);
+            } catch {
+              setTimeLeft(generatedExam.exam.durationMinutes * 60);
+              setAnswers({});
+            }
+          } else {
+            setTimeLeft(generatedExam.exam.durationMinutes * 60);
+            setAnswers({});
+          }
         }
-        setAnswers({});
       }
     };
 
@@ -157,6 +172,16 @@ export function LiveExamPage() {
         totalQuestions,
         currentQuestionIndex: currentIndex,
         status: "taking"
+      }).then((response) => {
+        if (response.status === "terminated") {
+          // Teacher force-submitted this exam; fetch result and transition to review.
+          apiClient.getMySubmissionForExam(generatedExam.exam.id).then((result) => {
+            liveExamState.latestResult = result;
+            setResultVersion((v) => v + 1);
+            setIsReviewMode(true);
+            setCurrentIndex(0);
+          }).catch(() => setIsReviewMode(true));
+        }
       }).catch((err) => console.error("Heartbeat error:", err));
     };
 
