@@ -244,7 +244,7 @@ export function LiveExamPage() {
       if (!map.has(tid)) map.set(tid, { name: tname, total: 0, correct: 0, unanswered: 0 });
       const entry = map.get(tid)!;
       entry.total++;
-      const rev = latestResult.review?.[i];
+      const rev = latestResult.review?.find((r: any) => r.questionId === q.id);
       if (!rev?.selectedOptionIds?.length) entry.unanswered++;
       else if (rev.isCorrect) entry.correct++;
     });
@@ -522,7 +522,9 @@ export function LiveExamPage() {
   // Track whether exam is currently live (not review, not lobby)
   examLiveRef.current = !!generatedExam && !isReviewMode;
 
-  const reviewData = latestResult?.review?.[currentIndex];
+  // Match review by questionId — review[] is in DB order but questions may be shuffled per-student.
+  const reviewData = latestResult?.review?.find((r: any) => r.questionId === currentQuestion?.id)
+    ?? latestResult?.review?.[currentIndex];
 
   return (
     <div className="page" onContextMenu={e => e.preventDefault()}>
@@ -974,7 +976,7 @@ export function LiveExamPage() {
               <h3>Question Palette</h3>
               <div className="palette-grid">
                 {generatedExam.questions.map((question: any, index: number) => {
-                  const rev = latestResult?.review?.[index];
+                  const rev = latestResult?.review?.find((r: any) => r.questionId === question.id);
                   const unanswered = !rev || !rev.selectedOptionIds || rev.selectedOptionIds.length === 0;
                   const isCorrect = rev?.isCorrect === true;
                   const secs = (rev as any)?.timeSpentSeconds;
@@ -1016,7 +1018,7 @@ export function LiveExamPage() {
                   </thead>
                   <tbody>
                     {generatedExam.questions.map((question: any, index: number) => {
-                      const rev = latestResult?.review?.[index];
+                      const rev = latestResult?.review?.find((r: any) => r.questionId === question.id);
                       const unanswered = !rev || !rev.selectedOptionIds || rev.selectedOptionIds.length === 0;
                       const isCorrect = rev?.isCorrect === true;
                       const secs = (rev as any)?.timeSpentSeconds;
@@ -1108,7 +1110,7 @@ export function LiveExamPage() {
             </h3>
             <div className="stack" style={{ gap: "30px" }}>
               {generatedExam.questions.map((question: any, index: number) => {
-                const rev = latestResult?.review?.[index];
+                const rev = latestResult?.review?.find((r: any) => r.questionId === question.id);
                 const isCorrect = rev?.isCorrect;
                 const unanswered = !rev?.selectedOptionIds || rev.selectedOptionIds.length === 0;
 
