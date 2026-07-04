@@ -336,6 +336,10 @@ export const apiClient = {
     request<{ message: string; count: number }>(`/exams/${examId}/force-submit-all`, {
       method: "POST"
     }),
+  allowReattempt: (examId: string, studentId: string) =>
+    request<{ message: string }>(`/exams/${examId}/students/${studentId}/allow-reattempt`, {
+      method: "POST"
+    }),
   generateExamFromPrompt: (params: {
     prompt?: string;
     subjectId?: string;

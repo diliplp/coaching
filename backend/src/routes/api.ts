@@ -2219,6 +2219,30 @@ apiRouter.post("/exams/:examId/force-submit-all", requireRole(["super_admin", "t
   res.json({ message: `Force-submitted ${forceSubmitted} active session(s).`, count: forceSubmitted });
 });
 
+// Allow a specific student to re-attempt an exam they already submitted.
+// Deletes their session record so createExamSession creates a fresh one on next entry.
+apiRouter.post("/exams/:examId/students/:studentId/allow-reattempt", requireRole(["super_admin", "teacher"]), async (req, res) => {
+  const { examId, studentId } = req.params;
+  const { deleteRecord } = await import("../data/database.js");
+
+  const state = await getAppState();
+  const exam = state.exams.find((e) => e.id === examId);
+  if (!exam) {
+    res.status(404).json({ message: "Exam not found" });
+    return;
+  }
+
+  const sessionId = `session-${examId}-${studentId}`;
+  const existing = await getRecord<ExamSession>("examSessions", sessionId);
+  if (!existing) {
+    res.status(404).json({ message: "No session found for this student" });
+    return;
+  }
+
+  await deleteRecord("examSessions", sessionId);
+  res.json({ message: "Re-attempt allowed. The student can now enter the exam again." });
+});
+
 
 apiRouter.post("/subject-books/:bookId/detect-curriculum", requireRole(["super_admin"]), async (req, res) => {
   const state = await getAppState();
