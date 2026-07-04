@@ -792,16 +792,40 @@ export function LiveExamPage() {
                   </div>
                 </div>
 
+                {(() => {
+                  const secs = (reviewData as any)?.timeSpentSeconds;
+                  const zone = (reviewData as any)?.speedZone;
+                  if (secs === undefined) return null;
+                  const mins = Math.floor(secs / 60);
+                  const s = secs % 60;
+                  const label = mins > 0 ? `${mins}m ${s}s` : `${s}s`;
+                  const zoneMap: Record<string, { bg: string; color: string; border: string; text: string }> = {
+                    fast:   { bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0", text: "Fast — answered quickly" },
+                    normal: { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe", text: "Normal pace" },
+                    slow:   { bg: "#fefce8", color: "#854d0e", border: "#fde68a", text: "Slow — consider skipping next time" },
+                  };
+                  const zc = zone ? zoneMap[zone] : { bg: "#f8fafc", color: "#475569", border: "#e2e8f0", text: "" };
+                  return (
+                    <div style={{ marginBottom: "20px", padding: "12px 16px", background: zc.bg, border: `1px solid ${zc.border}`, borderRadius: "10px", display: "flex", alignItems: "center", gap: "12px" }}>
+                      <span style={{ fontSize: "1.2rem" }}>⏱</span>
+                      <div>
+                        <span style={{ fontWeight: 700, color: zc.color, fontSize: "1rem" }}>{label}</span>
+                        {zc.text && <span style={{ color: zc.color, fontSize: "0.8rem", marginLeft: "8px", opacity: 0.85 }}>· {zc.text}</span>}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {reviewData?.explanation ? (
                   <div>
                     <h4 style={{ color: "#475569", marginBottom: "12px", fontSize: "1.1rem" }}>Explanation</h4>
-                    <div style={{ 
-                      lineHeight: "1.7", 
-                      color: "#334155", 
-                      background: "white", 
-                      padding: "16px", 
-                      borderRadius: "12px", 
-                      border: "1px solid #e2e8f0" 
+                    <div style={{
+                      lineHeight: "1.7",
+                      color: "#334155",
+                      background: "white",
+                      padding: "16px",
+                      borderRadius: "12px",
+                      border: "1px solid #e2e8f0"
                     }}>
                       <RichText content={reviewData.explanation} />
                     </div>
