@@ -11,6 +11,10 @@ const port = Number(process.env.PORT ?? 3030);
 
 app.use(cors());
 app.use(express.json());
+app.use((req, res, next) => {
+  res.setHeader("X-Robots-Tag", "noindex, nofollow");
+  next();
+});
 app.use((req, _res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
   next();
