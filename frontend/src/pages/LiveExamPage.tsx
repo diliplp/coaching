@@ -219,12 +219,12 @@ export function LiveExamPage() {
   const latestResult = liveExamState.latestResult;
 
   const sectionBoundaries = useMemo(() => {
-    const sections = (generatedExam?.exam as any)?.sections as Array<{ name: string; totalQuestions: number; attemptQuestions: number; questionType: string }> | undefined;
+    const sections = (generatedExam?.exam as any)?.sections as Array<{ name: string; totalQuestions: number; attemptQuestions: number; questionType: string; timeLimitMinutes?: number }> | undefined;
     if (!sections || sections.length === 0) return null;
-    const boundaries: Array<{ name: string; start: number; end: number; attemptQuestions: number; totalQuestions: number; questionType: string }> = [];
+    const boundaries: Array<{ name: string; start: number; end: number; attemptQuestions: number; totalQuestions: number; questionType: string; timeLimitSeconds: number | null }> = [];
     let pos = 0;
-    sections.forEach((s: { name: string; totalQuestions: number; attemptQuestions: number; questionType: string }) => {
-      boundaries.push({ name: s.name, start: pos, end: pos + s.totalQuestions - 1, attemptQuestions: s.attemptQuestions, totalQuestions: s.totalQuestions, questionType: s.questionType });
+    sections.forEach((s) => {
+      boundaries.push({ name: s.name, start: pos, end: pos + s.totalQuestions - 1, attemptQuestions: s.attemptQuestions, totalQuestions: s.totalQuestions, questionType: s.questionType, timeLimitSeconds: s.timeLimitMinutes ? s.timeLimitMinutes * 60 : null });
       pos += s.totalQuestions;
     });
     return boundaries;
@@ -234,6 +234,44 @@ export function LiveExamPage() {
     if (!sectionBoundaries) return null;
     return sectionBoundaries.find(s => currentIndex >= s.start && currentIndex <= s.end) ?? null;
   }, [sectionBoundaries, currentIndex]);
+
+  const currentSectionIndex = useMemo(() => {
+    if (!sectionBoundaries) return null;
+    return sectionBoundaries.findIndex(s => currentIndex >= s.start && currentIndex <= s.end);
+  }, [sectionBoundaries, currentIndex]);
+
+  // Section-level timers: keyed by section index, tracks seconds remaining for timed sections
+  const [sectionTimers, setSectionTimers] = useState<Record<number, number>>({});
+
+  // Initialize section timer when entering a new section that has a time limit
+  useEffect(() => {
+    if (currentSectionIndex === null || !currentSection?.timeLimitSeconds || isReviewMode) return;
+    setSectionTimers(prev => {
+      if (prev[currentSectionIndex] !== undefined) return prev;
+      return { ...prev, [currentSectionIndex]: currentSection.timeLimitSeconds! };
+    });
+  }, [currentSectionIndex, currentSection, isReviewMode]);
+
+  // Section-level countdown — decrements every second while in a timed section
+  useEffect(() => {
+    if (currentSectionIndex === null || !currentSection?.timeLimitSeconds || isReviewMode) return;
+    const remaining = sectionTimers[currentSectionIndex];
+    if (remaining === undefined || remaining <= 0) return;
+    const t = window.setTimeout(() => {
+      setSectionTimers(prev => ({ ...prev, [currentSectionIndex]: (prev[currentSectionIndex] ?? 1) - 1 }));
+    }, 1000);
+    return () => window.clearTimeout(t);
+  }, [sectionTimers, currentSectionIndex, currentSection, isReviewMode]);
+
+  // Auto-advance to next section when section timer expires
+  useEffect(() => {
+    if (currentSectionIndex === null || !currentSection?.timeLimitSeconds || isReviewMode) return;
+    const remaining = sectionTimers[currentSectionIndex];
+    if (remaining !== 0) return;
+    if (!sectionBoundaries) return;
+    const nextSection = sectionBoundaries[currentSectionIndex + 1];
+    if (nextSection) setCurrentIndex(nextSection.start);
+  }, [sectionTimers, currentSectionIndex, currentSection, sectionBoundaries, isReviewMode]);
 
   const topicBreakdown = useMemo(() => {
     if (!generatedExam || !latestResult?.review) return [];
@@ -617,6 +655,17 @@ export function LiveExamPage() {
                     {currentSection.attemptQuestions < currentSection.totalQuestions && ` (attempt ${currentSection.attemptQuestions} of ${currentSection.totalQuestions})`}
                   </span>
                 )}
+                {!isReviewMode && currentSectionIndex !== null && currentSection?.timeLimitSeconds && (() => {
+                  const secLeft = sectionTimers[currentSectionIndex] ?? currentSection.timeLimitSeconds;
+                  const mm = Math.floor(secLeft / 60).toString().padStart(2, "0");
+                  const ss = (secLeft % 60).toString().padStart(2, "0");
+                  const isUrgent = secLeft <= 60;
+                  return (
+                    <span style={{ marginRight: "8px", background: isUrgent ? "#fef2f2" : "#f0fdf4", color: isUrgent ? "#dc2626" : "#15803d", padding: "2px 8px", borderRadius: "4px", fontSize: "0.75rem", fontWeight: "bold", border: `1px solid ${isUrgent ? "#fca5a5" : "#bbf7d0"}` }}>
+                      ⏱ Section: {mm}:{ss}
+                    </span>
+                  );
+                })()}
                 Question {currentIndex + 1} of {generatedExam.questions.length}
                 {isReviewMode && (
                   <span style={{ marginLeft: "10px", fontWeight: "bold", color: reviewData?.isCorrect ? "green" : "red" }}>

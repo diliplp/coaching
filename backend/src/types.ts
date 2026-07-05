@@ -36,6 +36,7 @@ export interface ExamSection {
   marksCorrect: number;
   marksIncorrect: number;     // 0 for no negative marking
   markingScheme?: "jee_advanced_partial"; // multi-correct: +1 per correct option if no wrong; full marks if all correct; neg if any wrong
+  timeLimitMinutes?: number;  // section-level time cap; 0 / undefined = no limit
   topicIds?: string[];        // which topics feed this section
 }
 

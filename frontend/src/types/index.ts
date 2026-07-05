@@ -89,6 +89,7 @@ export interface ExamSection {
   marksCorrect: number;
   marksIncorrect: number;
   markingScheme?: "jee_advanced_partial";
+  timeLimitMinutes?: number;
 }
 
 export interface CombinedExamRequest {

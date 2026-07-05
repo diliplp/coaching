@@ -857,6 +857,7 @@ export function ExamBuilderPage() {
                       {s.name} · {s.totalQuestions}Q · +{s.marksCorrect}/{s.marksIncorrect}
                       {s.attemptQuestions < s.totalQuestions ? ` (attempt ${s.attemptQuestions})` : ""}
                       {s.markingScheme === "jee_advanced_partial" ? " · partial" : ""}
+                      {s.timeLimitMinutes ? ` · ${s.timeLimitMinutes}min` : ""}
                     </span>
                   ))}
                 </div>
