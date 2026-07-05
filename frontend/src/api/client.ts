@@ -276,6 +276,8 @@ export const apiClient = {
     request<{ id: string; examId: string; answers: Record<string, string[]>; integerAnswers?: Record<string, string>; startedAt: string; status: string; timeRemainingSeconds: number; currentQuestionIndex: number }>(
       `/exams/${examId}/session`, { method: "POST" }
     ),
+  getMySubmissionForExam: (examId: string) =>
+    request<ExamResult>(`/exams/${examId}/my-submission`),
   saveExamSessionAnswer: (examId: string, payload: { questionId: string; selectedOptionIds: string[]; integerAnswer?: number }) =>
     request<{ status: string }>(`/exams/${examId}/session/answer`, {
       method: "PATCH",
@@ -332,6 +334,10 @@ export const apiClient = {
     }>(`/exams/${examId}/leaderboard`),
   forceSubmitAllExam: (examId: string) =>
     request<{ message: string; count: number }>(`/exams/${examId}/force-submit-all`, {
+      method: "POST"
+    }),
+  allowReattempt: (examId: string, studentId: string) =>
+    request<{ message: string }>(`/exams/${examId}/students/${studentId}/allow-reattempt`, {
       method: "POST"
     }),
   generateExamFromPrompt: (params: {

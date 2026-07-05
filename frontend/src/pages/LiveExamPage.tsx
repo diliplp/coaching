@@ -111,14 +111,29 @@ export function LiveExamPage() {
         setCurrentIndex(session.currentQuestionIndex ?? 0);
         setTimeLeft(session.timeRemainingSeconds);
       } catch {
-        // No existing session — create a fresh one and start the timer from full duration
+        // No existing in-progress session — try to create a fresh one
         try {
           const session = await apiClient.createExamSession(generatedExam.exam.id);
           setTimeLeft(session.timeRemainingSeconds);
-        } catch {
-          setTimeLeft(generatedExam.exam.durationMinutes * 60);
+          setAnswers({});
+        } catch (err: any) {
+          if (err?.message === "already_submitted") {
+            // Exam was force-submitted by teacher; fetch and display the existing result.
+            try {
+              const result = await apiClient.getMySubmissionForExam(generatedExam.exam.id);
+              liveExamState.latestResult = result;
+              setResultVersion((v) => v + 1);
+              setIsReviewMode(true);
+              setCurrentIndex(0);
+            } catch {
+              setTimeLeft(generatedExam.exam.durationMinutes * 60);
+              setAnswers({});
+            }
+          } else {
+            setTimeLeft(generatedExam.exam.durationMinutes * 60);
+            setAnswers({});
+          }
         }
-        setAnswers({});
       }
     };
 
@@ -157,6 +172,16 @@ export function LiveExamPage() {
         totalQuestions,
         currentQuestionIndex: currentIndex,
         status: "taking"
+      }).then((response) => {
+        if (response.status === "terminated") {
+          // Teacher force-submitted this exam; fetch result and transition to review.
+          apiClient.getMySubmissionForExam(generatedExam.exam.id).then((result) => {
+            liveExamState.latestResult = result;
+            setResultVersion((v) => v + 1);
+            setIsReviewMode(true);
+            setCurrentIndex(0);
+          }).catch(() => setIsReviewMode(true));
+        }
       }).catch((err) => console.error("Heartbeat error:", err));
     };
 
@@ -189,6 +214,155 @@ export function LiveExamPage() {
     const seconds = (timeLeft % 60).toString().padStart(2, "0");
     return `${minutes}:${seconds}`;
   }, [timeLeft]);
+
+  // All hooks must precede early returns to keep the hook call count stable across renders.
+  const latestResult = liveExamState.latestResult;
+
+  const sectionBoundaries = useMemo(() => {
+    const sections = (generatedExam?.exam as any)?.sections as Array<{ name: string; totalQuestions: number; attemptQuestions: number; questionType: string; timeLimitMinutes?: number }> | undefined;
+    if (!sections || sections.length === 0) return null;
+    const boundaries: Array<{ name: string; start: number; end: number; attemptQuestions: number; totalQuestions: number; questionType: string; timeLimitSeconds: number | null }> = [];
+    let pos = 0;
+    sections.forEach((s) => {
+      boundaries.push({ name: s.name, start: pos, end: pos + s.totalQuestions - 1, attemptQuestions: s.attemptQuestions, totalQuestions: s.totalQuestions, questionType: s.questionType, timeLimitSeconds: s.timeLimitMinutes ? s.timeLimitMinutes * 60 : null });
+      pos += s.totalQuestions;
+    });
+    return boundaries;
+  }, [generatedExam]);
+
+  const currentSection = useMemo(() => {
+    if (!sectionBoundaries) return null;
+    return sectionBoundaries.find(s => currentIndex >= s.start && currentIndex <= s.end) ?? null;
+  }, [sectionBoundaries, currentIndex]);
+
+  const currentSectionIndex = useMemo(() => {
+    if (!sectionBoundaries) return null;
+    return sectionBoundaries.findIndex(s => currentIndex >= s.start && currentIndex <= s.end);
+  }, [sectionBoundaries, currentIndex]);
+
+  // Section-level timers: keyed by section index, tracks seconds remaining for timed sections
+  const [sectionTimers, setSectionTimers] = useState<Record<number, number>>({});
+
+  // Initialize section timer when entering a new section that has a time limit
+  useEffect(() => {
+    if (currentSectionIndex === null || !currentSection?.timeLimitSeconds || isReviewMode) return;
+    setSectionTimers(prev => {
+      if (prev[currentSectionIndex] !== undefined) return prev;
+      return { ...prev, [currentSectionIndex]: currentSection.timeLimitSeconds! };
+    });
+  }, [currentSectionIndex, currentSection, isReviewMode]);
+
+  // Section-level countdown — decrements every second while in a timed section
+  useEffect(() => {
+    if (currentSectionIndex === null || !currentSection?.timeLimitSeconds || isReviewMode) return;
+    const remaining = sectionTimers[currentSectionIndex];
+    if (remaining === undefined || remaining <= 0) return;
+    const t = window.setTimeout(() => {
+      setSectionTimers(prev => ({ ...prev, [currentSectionIndex]: (prev[currentSectionIndex] ?? 1) - 1 }));
+    }, 1000);
+    return () => window.clearTimeout(t);
+  }, [sectionTimers, currentSectionIndex, currentSection, isReviewMode]);
+
+  // Auto-advance to next section when section timer expires
+  useEffect(() => {
+    if (currentSectionIndex === null || !currentSection?.timeLimitSeconds || isReviewMode) return;
+    const remaining = sectionTimers[currentSectionIndex];
+    if (remaining !== 0) return;
+    if (!sectionBoundaries) return;
+    const nextSection = sectionBoundaries[currentSectionIndex + 1];
+    if (nextSection) setCurrentIndex(nextSection.start);
+  }, [sectionTimers, currentSectionIndex, currentSection, sectionBoundaries, isReviewMode]);
+
+  const topicBreakdown = useMemo(() => {
+    if (!generatedExam || !latestResult?.review) return [];
+    const map = new Map<string, { name: string; total: number; correct: number; unanswered: number }>();
+    generatedExam.questions.forEach((q: any, i: number) => {
+      const tid = q.topicId || "unknown";
+      const tname = latestResult.insights?.find((ins: any) => ins.topicId === tid)?.topicName || q.topicName || "Other";
+      if (!map.has(tid)) map.set(tid, { name: tname, total: 0, correct: 0, unanswered: 0 });
+      const entry = map.get(tid)!;
+      entry.total++;
+      const rev = latestResult.review?.find((r: any) => r.questionId === q.id);
+      if (!rev?.selectedOptionIds?.length) entry.unanswered++;
+      else if (rev.isCorrect) entry.correct++;
+    });
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [generatedExam, latestResult]);
+
+  // ── Anti-cheat ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!generatedExam || isReviewMode) return;
+
+    document.body.classList.add("exam-running");
+
+    const requestFS = () => {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    };
+    requestFS();
+
+    const addViolation = (reason: string, violationType: string) => {
+      violationsRef.current += 1;
+      const count = violationsRef.current;
+      setViolations(count);
+      apiClient.reportViolation(generatedExam.exam.id, violationType).catch(() => {});
+      if (count >= 3) {
+        setCheatWarning(`⚠️ Third violation detected: ${reason}\n\nYour exam is being auto-submitted.`);
+        void submitRef.current();
+      } else {
+        setCheatWarning(`⚠️ ${reason}\n\nWarning ${count} of 3. Your exam will be auto-submitted on the third violation.`);
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.hidden && examLiveRef.current) addViolation("Tab switch detected.", "tab_switch");
+    };
+
+    let blurTimer: ReturnType<typeof setTimeout>;
+    const onBlur = () => {
+      blurTimer = setTimeout(() => {
+        if (!document.hidden && examLiveRef.current) addViolation("Window focus lost — possible screen switch.", "window_blur");
+      }, 300);
+    };
+    const onFocus = () => clearTimeout(blurTimer);
+
+    const onFullscreenChange = () => {
+      if (examLiveRef.current) setNeedsFullscreen(!document.fullscreenElement);
+    };
+
+    const blockEvent = (e: Event) => { e.preventDefault(); };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!examLiveRef.current) return;
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (ctrl && ['c', 'a', 'v', 'u', 's', 'p', 'f'].includes(e.key.toLowerCase())) e.preventDefault();
+      if (['F12', 'F5', 'F11', 'F1'].includes(e.key)) e.preventDefault();
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('contextmenu', blockEvent);
+    document.addEventListener('selectstart', blockEvent);
+    document.addEventListener('copy', blockEvent);
+    document.addEventListener('cut', blockEvent);
+    document.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      document.removeEventListener('contextmenu', blockEvent);
+      document.removeEventListener('selectstart', blockEvent);
+      document.removeEventListener('copy', blockEvent);
+      document.removeEventListener('cut', blockEvent);
+      document.removeEventListener('keydown', onKeyDown);
+      clearTimeout(blurTimer);
+      document.body.classList.remove("exam-running");
+      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    };
+  }, [generatedExam, isReviewMode]);
 
   if (!generatedExam) {
     return (
@@ -305,24 +479,6 @@ export function LiveExamPage() {
     );
   }
 
-  // Compute which section each question index belongs to (if exam has sections)
-  const sectionBoundaries = useMemo(() => {
-    const sections = (generatedExam?.exam as any)?.sections as Array<{ name: string; totalQuestions: number; attemptQuestions: number; questionType: string }> | undefined;
-    if (!sections || sections.length === 0) return null;
-    const boundaries: Array<{ name: string; start: number; end: number; attemptQuestions: number; totalQuestions: number; questionType: string }> = [];
-    let pos = 0;
-    sections.forEach((s: { name: string; totalQuestions: number; attemptQuestions: number; questionType: string }) => {
-      boundaries.push({ name: s.name, start: pos, end: pos + s.totalQuestions - 1, attemptQuestions: s.attemptQuestions, totalQuestions: s.totalQuestions, questionType: s.questionType });
-      pos += s.totalQuestions;
-    });
-    return boundaries;
-  }, [generatedExam]);
-
-  const currentSection = useMemo(() => {
-    if (!sectionBoundaries) return null;
-    return sectionBoundaries.find(s => currentIndex >= s.start && currentIndex <= s.end) ?? null;
-  }, [sectionBoundaries, currentIndex]);
-
   const toggleOption = (questionId: string, optionId: string, multiCorrect: boolean) => {
     if (isReviewMode) return;
 
@@ -404,116 +560,9 @@ export function LiveExamPage() {
   // Track whether exam is currently live (not review, not lobby)
   examLiveRef.current = !!generatedExam && !isReviewMode;
 
-  // ── Anti-cheat ──────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!generatedExam || isReviewMode) return;
-
-    // Hide sidebar for the duration of the exam (works on mobile where fullscreen isn't supported)
-    document.body.classList.add("exam-running");
-
-    // Enter fullscreen immediately when exam starts
-    const requestFS = () => {
-      document.documentElement.requestFullscreen?.().catch(() => {
-        // Fullscreen not supported or denied — don't block exam, just note it
-      });
-    };
-    requestFS();
-
-    const addViolation = (reason: string, violationType: string) => {
-      violationsRef.current += 1;
-      const count = violationsRef.current;
-      setViolations(count);
-      // Report to backend so admin can see it in the monitor
-      apiClient.reportViolation(generatedExam.exam.id, violationType).catch(() => {});
-      if (count >= 3) {
-        setCheatWarning(`⚠️ Third violation detected: ${reason}\n\nYour exam is being auto-submitted.`);
-        void submitRef.current();
-      } else {
-        setCheatWarning(`⚠️ ${reason}\n\nWarning ${count} of 3. Your exam will be auto-submitted on the third violation.`);
-      }
-    };
-
-    const onVisibilityChange = () => {
-      if (document.hidden && examLiveRef.current) {
-        addViolation("Tab switch detected.", "tab_switch");
-      }
-    };
-
-    // Delay blur handler slightly — browser naturally blurs window on fullscreen enter/exit
-    let blurTimer: ReturnType<typeof setTimeout>;
-    const onBlur = () => {
-      blurTimer = setTimeout(() => {
-        if (!document.hidden && examLiveRef.current) {
-          addViolation("Window focus lost — possible screen switch.", "window_blur");
-        }
-      }, 300);
-    };
-    const onFocus = () => clearTimeout(blurTimer);
-
-    const onFullscreenChange = () => {
-      if (examLiveRef.current) {
-        setNeedsFullscreen(!document.fullscreenElement);
-      }
-    };
-
-    const blockEvent = (e: Event) => { e.preventDefault(); };
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!examLiveRef.current) return;
-      const ctrl = e.ctrlKey || e.metaKey;
-      if (ctrl && ['c', 'a', 'v', 'u', 's', 'p', 'f'].includes(e.key.toLowerCase())) {
-        e.preventDefault();
-      }
-      if (['F12', 'F5', 'F11', 'F1'].includes(e.key)) e.preventDefault();
-    };
-
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    window.addEventListener('blur', onBlur);
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('fullscreenchange', onFullscreenChange);
-    document.addEventListener('contextmenu', blockEvent);
-    document.addEventListener('selectstart', blockEvent);
-    document.addEventListener('copy', blockEvent);
-    document.addEventListener('cut', blockEvent);
-    document.addEventListener('keydown', onKeyDown);
-
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-      window.removeEventListener('blur', onBlur);
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('fullscreenchange', onFullscreenChange);
-      document.removeEventListener('contextmenu', blockEvent);
-      document.removeEventListener('selectstart', blockEvent);
-      document.removeEventListener('copy', blockEvent);
-      document.removeEventListener('cut', blockEvent);
-      document.removeEventListener('keydown', onKeyDown);
-      clearTimeout(blurTimer);
-      document.body.classList.remove("exam-running");
-      if (document.fullscreenElement) {
-        document.exitFullscreen?.().catch(() => {});
-      }
-    };
-  }, [generatedExam, isReviewMode]);
-
-  const latestResult = liveExamState.latestResult;
-  const reviewData = latestResult?.review?.[currentIndex];
-
-  // Compute topic-wise breakdown from questions + review data
-  const topicBreakdown = useMemo(() => {
-    if (!generatedExam || !latestResult?.review) return [];
-    const map = new Map<string, { name: string; total: number; correct: number; unanswered: number }>();
-    generatedExam.questions.forEach((q: any, i: number) => {
-      const tid = q.topicId || "unknown";
-      const tname = latestResult.insights?.find((ins: any) => ins.topicId === tid)?.topicName || q.topicName || "Other";
-      if (!map.has(tid)) map.set(tid, { name: tname, total: 0, correct: 0, unanswered: 0 });
-      const entry = map.get(tid)!;
-      entry.total++;
-      const rev = latestResult.review?.[i];
-      if (!rev?.selectedOptionIds?.length) entry.unanswered++;
-      else if (rev.isCorrect) entry.correct++;
-    });
-    return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [generatedExam, latestResult]);
+  // Match review by questionId — review[] is in DB order but questions may be shuffled per-student.
+  const reviewData = latestResult?.review?.find((r: any) => r.questionId === currentQuestion?.id)
+    ?? latestResult?.review?.[currentIndex];
 
   return (
     <div className="page" onContextMenu={e => e.preventDefault()}>
@@ -606,6 +655,17 @@ export function LiveExamPage() {
                     {currentSection.attemptQuestions < currentSection.totalQuestions && ` (attempt ${currentSection.attemptQuestions} of ${currentSection.totalQuestions})`}
                   </span>
                 )}
+                {!isReviewMode && currentSectionIndex !== null && currentSection?.timeLimitSeconds && (() => {
+                  const secLeft = sectionTimers[currentSectionIndex] ?? currentSection.timeLimitSeconds;
+                  const mm = Math.floor(secLeft / 60).toString().padStart(2, "0");
+                  const ss = (secLeft % 60).toString().padStart(2, "0");
+                  const isUrgent = secLeft <= 60;
+                  return (
+                    <span style={{ marginRight: "8px", background: isUrgent ? "#fef2f2" : "#f0fdf4", color: isUrgent ? "#dc2626" : "#15803d", padding: "2px 8px", borderRadius: "4px", fontSize: "0.75rem", fontWeight: "bold", border: `1px solid ${isUrgent ? "#fca5a5" : "#bbf7d0"}` }}>
+                      ⏱ Section: {mm}:{ss}
+                    </span>
+                  );
+                })()}
                 Question {currentIndex + 1} of {generatedExam.questions.length}
                 {isReviewMode && (
                   <span style={{ marginLeft: "10px", fontWeight: "bold", color: reviewData?.isCorrect ? "green" : "red" }}>
@@ -673,6 +733,21 @@ export function LiveExamPage() {
                 )}
               </div>
             </div>
+            {(currentQuestion as any).passageText && (
+              <div style={{
+                margin: "12px 0 16px",
+                padding: "14px 18px",
+                background: "var(--color-bg-secondary)",
+                border: "1px solid var(--color-border)",
+                borderLeft: "4px solid #6366f1",
+                borderRadius: "8px",
+                fontSize: "0.92rem",
+                lineHeight: "1.7"
+              }}>
+                <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#6366f1", letterSpacing: "0.08em", marginBottom: "8px" }}>PASSAGE</div>
+                <RichText content={(currentQuestion as any).passageText} />
+              </div>
+            )}
             <h3><RichText content={currentQuestion.prompt} /></h3>
 
             {(currentQuestion as any).type === "integer" ? (
@@ -781,16 +856,40 @@ export function LiveExamPage() {
                   </div>
                 </div>
 
+                {(() => {
+                  const secs = (reviewData as any)?.timeSpentSeconds;
+                  const zone = (reviewData as any)?.speedZone;
+                  if (secs === undefined) return null;
+                  const mins = Math.floor(secs / 60);
+                  const s = secs % 60;
+                  const label = mins > 0 ? `${mins}m ${s}s` : `${s}s`;
+                  const zoneMap: Record<string, { bg: string; color: string; border: string; text: string }> = {
+                    fast:   { bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0", text: "Fast — answered quickly" },
+                    normal: { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe", text: "Normal pace" },
+                    slow:   { bg: "#fefce8", color: "#854d0e", border: "#fde68a", text: "Slow — consider skipping next time" },
+                  };
+                  const zc = zone ? zoneMap[zone] : { bg: "#f8fafc", color: "#475569", border: "#e2e8f0", text: "" };
+                  return (
+                    <div style={{ marginBottom: "20px", padding: "12px 16px", background: zc.bg, border: `1px solid ${zc.border}`, borderRadius: "10px", display: "flex", alignItems: "center", gap: "12px" }}>
+                      <span style={{ fontSize: "1.2rem" }}>⏱</span>
+                      <div>
+                        <span style={{ fontWeight: 700, color: zc.color, fontSize: "1rem" }}>{label}</span>
+                        {zc.text && <span style={{ color: zc.color, fontSize: "0.8rem", marginLeft: "8px", opacity: 0.85 }}>· {zc.text}</span>}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {reviewData?.explanation ? (
                   <div>
                     <h4 style={{ color: "#475569", marginBottom: "12px", fontSize: "1.1rem" }}>Explanation</h4>
-                    <div style={{ 
-                      lineHeight: "1.7", 
-                      color: "#334155", 
-                      background: "white", 
-                      padding: "16px", 
-                      borderRadius: "12px", 
-                      border: "1px solid #e2e8f0" 
+                    <div style={{
+                      lineHeight: "1.7",
+                      color: "#334155",
+                      background: "white",
+                      padding: "16px",
+                      borderRadius: "12px",
+                      border: "1px solid #e2e8f0"
                     }}>
                       <RichText content={reviewData.explanation} />
                     </div>
@@ -965,18 +1064,18 @@ export function LiveExamPage() {
               <h3>Question Palette</h3>
               <div className="palette-grid">
                 {generatedExam.questions.map((question: any, index: number) => {
-                  const rev = latestResult?.review?.[index];
+                  const rev = latestResult?.review?.find((r: any) => r.questionId === question.id);
                   const unanswered = !rev || !rev.selectedOptionIds || rev.selectedOptionIds.length === 0;
                   const isCorrect = rev?.isCorrect === true;
+                  const secs = (rev as any)?.timeSpentSeconds;
+                  const timeLabel = secs !== undefined
+                    ? (secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`)
+                    : "";
 
                   let statusClass = "";
-                  if (unanswered) {
-                    statusClass = "review-unanswered";
-                  } else if (isCorrect) {
-                    statusClass = "review-correct";
-                  } else {
-                    statusClass = "review-incorrect";
-                  }
+                  if (unanswered) statusClass = "review-unanswered";
+                  else if (isCorrect) statusClass = "review-correct";
+                  else statusClass = "review-incorrect";
 
                   const isActive = currentIndex === index;
 
@@ -986,12 +1085,62 @@ export function LiveExamPage() {
                       key={question.id}
                       className={`palette-button ${statusClass} ${isActive ? "active" : ""}`}
                       onClick={() => setCurrentIndex(index)}
-                      title={unanswered ? "Unanswered" : (isCorrect ? "Correct" : "Incorrect")}
+                      title={`Q${index + 1} · ${unanswered ? "Skipped" : isCorrect ? "Correct" : "Incorrect"}${timeLabel ? ` · ${timeLabel}` : ""}`}
                     >
                       {index + 1}
                     </button>
                   );
                 })}
+              </div>
+
+              <h4 style={{ marginTop: "20px", marginBottom: "10px", color: "var(--color-primary)" }}>Per-Question Time</h4>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
+                  <thead>
+                    <tr style={{ background: "#f1f5f9", textAlign: "left" }}>
+                      <th style={{ padding: "6px 8px", fontWeight: 600, color: "#475569" }}>Q#</th>
+                      <th style={{ padding: "6px 8px", fontWeight: 600, color: "#475569" }}>Result</th>
+                      <th style={{ padding: "6px 8px", fontWeight: 600, color: "#475569" }}>Time Spent</th>
+                      <th style={{ padding: "6px 8px", fontWeight: 600, color: "#475569" }}>Pace</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {generatedExam.questions.map((question: any, index: number) => {
+                      const rev = latestResult?.review?.find((r: any) => r.questionId === question.id);
+                      const unanswered = !rev || !rev.selectedOptionIds || rev.selectedOptionIds.length === 0;
+                      const isCorrect = rev?.isCorrect === true;
+                      const secs = (rev as any)?.timeSpentSeconds;
+                      const zone = (rev as any)?.speedZone;
+                      const timeLabel = secs !== undefined
+                        ? (secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`)
+                        : "—";
+                      const zoneColors: Record<string, string> = {
+                        fast: "#15803d", normal: "#1d4ed8", slow: "#854d0e"
+                      };
+                      const isActive = currentIndex === index;
+                      return (
+                        <tr
+                          key={question.id}
+                          onClick={() => setCurrentIndex(index)}
+                          style={{
+                            cursor: "pointer",
+                            background: isActive ? "#eff6ff" : (index % 2 === 0 ? "white" : "#f8fafc"),
+                            borderBottom: "1px solid #e2e8f0"
+                          }}
+                        >
+                          <td style={{ padding: "6px 8px", fontWeight: isActive ? 700 : 400 }}>{index + 1}</td>
+                          <td style={{ padding: "6px 8px", color: unanswered ? "#94a3b8" : isCorrect ? "#16a34a" : "#dc2626", fontWeight: 600 }}>
+                            {unanswered ? "—" : isCorrect ? "✓" : "✗"}
+                          </td>
+                          <td style={{ padding: "6px 8px", fontFamily: "monospace" }}>{timeLabel}</td>
+                          <td style={{ padding: "6px 8px", color: zone ? zoneColors[zone] : "#94a3b8", fontWeight: 600, fontSize: "0.72rem" }}>
+                            {zone ?? "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </>
           ) : (
@@ -1049,7 +1198,7 @@ export function LiveExamPage() {
             </h3>
             <div className="stack" style={{ gap: "30px" }}>
               {generatedExam.questions.map((question: any, index: number) => {
-                const rev = latestResult?.review?.[index];
+                const rev = latestResult?.review?.find((r: any) => r.questionId === question.id);
                 const isCorrect = rev?.isCorrect;
                 const unanswered = !rev?.selectedOptionIds || rev.selectedOptionIds.length === 0;
 

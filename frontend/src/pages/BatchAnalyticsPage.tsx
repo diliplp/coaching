@@ -8,6 +8,8 @@ export function BatchAnalyticsPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"questions" | "topics" | "students">("questions");
+  const [reattemptLoading, setReattemptLoading] = useState<Record<string, boolean>>({});
+  const [reattemptDone, setReattemptDone] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!examId) return;
@@ -174,6 +176,7 @@ export function BatchAnalyticsPage() {
             <div>
               <p style={{ fontSize: "0.85rem", color: "var(--color-text-muted)", marginBottom: "12px" }}>
                 Outlier highlights: <span style={{ color: "#15803d" }}>★ High</span> = more than 1.5σ above average; <span style={{ color: "#b91c1c" }}>▼ Low</span> = more than 1.5σ below.
+                Use <strong>Allow Re-attempt</strong> to let a student retake the exam from scratch (their previous result is kept).
               </p>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
@@ -184,29 +187,68 @@ export function BatchAnalyticsPage() {
                       <th style={{ ...thStyle, textAlign: "center" }}>Score</th>
                       <th style={{ ...thStyle, textAlign: "center" }}>Percentage</th>
                       <th style={{ ...thStyle, textAlign: "center" }}>Status</th>
+                      <th style={{ ...thStyle, textAlign: "center" }}>Re-attempt</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {studentRankings.map((s: any) => (
-                      <tr key={s.studentId} style={{
-                        borderBottom: "1px solid var(--color-border)",
-                        background: s.isOutlierHigh ? "#f0fdf4" : s.isOutlierLow ? "#fef2f2" : "transparent"
-                      }}>
-                        <td style={{ ...tdStyle, fontWeight: 700, color: s.rank <= 3 ? "#d97706" : undefined }}>{s.rank}</td>
-                        <td style={tdStyle}><strong>{s.studentName}</strong></td>
-                        <td style={{ ...tdStyle, textAlign: "center" }}>{s.obtainedMarks} / {s.totalMarks}</td>
-                        <td style={{ ...tdStyle, textAlign: "center" }}>
-                          <span style={{ fontWeight: 700, color: s.percentage >= 70 ? "#16a34a" : s.percentage >= 40 ? "#d97706" : "#dc2626" }}>
-                            {s.percentage}%
-                          </span>
-                        </td>
-                        <td style={{ ...tdStyle, textAlign: "center" }}>
-                          {s.isOutlierHigh && <span style={{ color: "#15803d", fontWeight: 700 }}>★ High</span>}
-                          {s.isOutlierLow && <span style={{ color: "#b91c1c", fontWeight: 700 }}>▼ Low</span>}
-                          {!s.isOutlierHigh && !s.isOutlierLow && <span style={{ color: "#9ca3af" }}>Normal</span>}
-                        </td>
-                      </tr>
-                    ))}
+                    {studentRankings.map((s: any) => {
+                      const done = reattemptDone[s.studentId];
+                      const busy = reattemptLoading[s.studentId];
+                      return (
+                        <tr key={s.studentId} style={{
+                          borderBottom: "1px solid var(--color-border)",
+                          background: s.isOutlierHigh ? "#f0fdf4" : s.isOutlierLow ? "#fef2f2" : "transparent"
+                        }}>
+                          <td style={{ ...tdStyle, fontWeight: 700, color: s.rank <= 3 ? "#d97706" : undefined }}>{s.rank}</td>
+                          <td style={tdStyle}><strong>{s.studentName}</strong></td>
+                          <td style={{ ...tdStyle, textAlign: "center" }}>{s.obtainedMarks} / {s.totalMarks}</td>
+                          <td style={{ ...tdStyle, textAlign: "center" }}>
+                            <span style={{ fontWeight: 700, color: s.percentage >= 70 ? "#16a34a" : s.percentage >= 40 ? "#d97706" : "#dc2626" }}>
+                              {s.percentage}%
+                            </span>
+                          </td>
+                          <td style={{ ...tdStyle, textAlign: "center" }}>
+                            {s.isOutlierHigh && <span style={{ color: "#15803d", fontWeight: 700 }}>★ High</span>}
+                            {s.isOutlierLow && <span style={{ color: "#b91c1c", fontWeight: 700 }}>▼ Low</span>}
+                            {!s.isOutlierHigh && !s.isOutlierLow && <span style={{ color: "#9ca3af" }}>Normal</span>}
+                          </td>
+                          <td style={{ ...tdStyle, textAlign: "center" }}>
+                            {done ? (
+                              <span style={{ color: "#16a34a", fontWeight: 600, fontSize: "0.78rem" }}>✓ Allowed</span>
+                            ) : (
+                              <button
+                                disabled={busy}
+                                style={{
+                                  padding: "4px 10px",
+                                  fontSize: "0.75rem",
+                                  borderRadius: "6px",
+                                  border: "1px solid #d97706",
+                                  background: busy ? "#fef3c7" : "white",
+                                  color: "#92400e",
+                                  cursor: busy ? "default" : "pointer",
+                                  fontWeight: 600,
+                                  whiteSpace: "nowrap",
+                                }}
+                                onClick={async () => {
+                                  if (!examId || !window.confirm(`Allow ${s.studentName} to re-attempt this exam? Their current result will be kept on record.`)) return;
+                                  setReattemptLoading(prev => ({ ...prev, [s.studentId]: true }));
+                                  try {
+                                    await apiClient.allowReattempt(examId, s.studentId);
+                                    setReattemptDone(prev => ({ ...prev, [s.studentId]: true }));
+                                  } catch (err: any) {
+                                    alert(err?.message || "Failed to allow re-attempt.");
+                                  } finally {
+                                    setReattemptLoading(prev => ({ ...prev, [s.studentId]: false }));
+                                  }
+                                }}
+                              >
+                                {busy ? "..." : "Allow Re-attempt"}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

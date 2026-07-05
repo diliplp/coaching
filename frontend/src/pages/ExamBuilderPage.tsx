@@ -1,9 +1,79 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiClient } from "../api/client";
 import { liveExamState } from "../data/mockExamContext";
-import type { AdaptivePlan, BlueprintSummary, OverviewResponse, QuestionBankResponse } from "../types";
+import type { AdaptivePlan, BlueprintSummary, ExamSection, OverviewResponse, QuestionBankResponse } from "../types";
 import { getStoredSession } from "../auth";
 import { StatusModal } from "../components/StatusModal";
+
+// ─── Competitive exam preset definitions ──────────────────────────────────────
+
+type PresetRole = "physics" | "chemistry" | "mathematics" | "botany" | "zoology";
+
+interface PresetDef {
+  label: string;
+  durationMinutes: number;
+  roles: PresetRole[];
+  roleLabels: Record<PresetRole, string>;
+  buildSections: (roleLabels: string[]) => ExamSection[];
+  buildTypeAllocations: (subjectIds: string[]) => Array<{ subjectId: string; mcqCount: number; integerCount: number }>;
+  buildAllocations: (subjectIds: string[]) => Array<{ subjectId: string; questionCount: number }>;
+  description: string;
+}
+
+const PRESETS: Record<string, PresetDef> = {
+  jee_mains: {
+    label: "JEE Mains",
+    durationMinutes: 180,
+    roles: ["physics", "chemistry", "mathematics"],
+    roleLabels: { physics: "Physics", chemistry: "Chemistry", mathematics: "Mathematics", botany: "Botany", zoology: "Zoology" },
+    description: "3 subjects × (20 MCQ +4/−1 + 5 Integer +4/0) = 75Q, 3 hours",
+    buildSections: (roleLabels) => roleLabels.flatMap((label) => [
+      { name: `${label} — Section A`, questionType: "mcq", totalQuestions: 20, attemptQuestions: 20, marksCorrect: 4, marksIncorrect: -1 },
+      { name: `${label} — Section B`, questionType: "integer", totalQuestions: 5, attemptQuestions: 5, marksCorrect: 4, marksIncorrect: 0 },
+    ]),
+    buildTypeAllocations: (subjectIds) => subjectIds.map((subjectId) => ({ subjectId, mcqCount: 20, integerCount: 5 })),
+    buildAllocations: (subjectIds) => subjectIds.map((subjectId) => ({ subjectId, questionCount: 25 })),
+  },
+  jee_advanced: {
+    label: "JEE Advanced",
+    durationMinutes: 180,
+    roles: ["physics", "chemistry", "mathematics"],
+    roleLabels: { physics: "Physics", chemistry: "Chemistry", mathematics: "Mathematics", botany: "Botany", zoology: "Zoology" },
+    description: "3 subjects × (6 single +3/−1 + 6 multi +4/−2 partial + 5 integer +4/0) = 51Q, 3 hours",
+    buildSections: (roleLabels) => roleLabels.flatMap((label) => [
+      { name: `${label} — Single Correct`, questionType: "mcq", totalQuestions: 6, attemptQuestions: 6, marksCorrect: 3, marksIncorrect: -1 },
+      { name: `${label} — Multi Correct`, questionType: "mcq", totalQuestions: 6, attemptQuestions: 6, marksCorrect: 4, marksIncorrect: -2, markingScheme: "jee_advanced_partial" as const },
+      { name: `${label} — Integer`, questionType: "integer", totalQuestions: 5, attemptQuestions: 5, marksCorrect: 4, marksIncorrect: 0 },
+    ]),
+    buildTypeAllocations: (subjectIds) => subjectIds.map((subjectId) => ({ subjectId, mcqCount: 12, integerCount: 5 })),
+    buildAllocations: (subjectIds) => subjectIds.map((subjectId) => ({ subjectId, questionCount: 17 })),
+  },
+  neet: {
+    label: "NEET",
+    durationMinutes: 200,
+    roles: ["physics", "chemistry", "botany", "zoology"],
+    roleLabels: { physics: "Physics", chemistry: "Chemistry", mathematics: "Mathematics", botany: "Botany (Biology)", zoology: "Zoology (Biology)" },
+    description: "4 subjects × (35 compulsory + 15 optional attempt 10, MCQ +4/−1) = 200Q, 200 min",
+    buildSections: (roleLabels) => roleLabels.flatMap((label) => [
+      { name: `${label} — Section A`, questionType: "mcq", totalQuestions: 35, attemptQuestions: 35, marksCorrect: 4, marksIncorrect: -1 },
+      { name: `${label} — Section B`, questionType: "mcq", totalQuestions: 15, attemptQuestions: 10, marksCorrect: 4, marksIncorrect: -1 },
+    ]),
+    buildTypeAllocations: (subjectIds) => subjectIds.map((subjectId) => ({ subjectId, mcqCount: 50, integerCount: 0 })),
+    buildAllocations: (subjectIds) => subjectIds.map((subjectId) => ({ subjectId, questionCount: 50 })),
+  },
+  gujcet: {
+    label: "GUJCET",
+    durationMinutes: 180,
+    roles: ["physics", "chemistry", "mathematics"],
+    roleLabels: { physics: "Physics", chemistry: "Chemistry", mathematics: "Mathematics", botany: "Botany", zoology: "Zoology" },
+    description: "3 subjects × 40 MCQ +1/0 = 120Q, 3 hours",
+    buildSections: (roleLabels) => roleLabels.map((label) => (
+      { name: label, questionType: "mcq", totalQuestions: 40, attemptQuestions: 40, marksCorrect: 1, marksIncorrect: 0 }
+    )),
+    buildTypeAllocations: (subjectIds) => subjectIds.map((subjectId) => ({ subjectId, mcqCount: 40, integerCount: 0 })),
+    buildAllocations: (subjectIds) => subjectIds.map((subjectId) => ({ subjectId, questionCount: 40 })),
+  },
+};
 
 export function ExamBuilderPage() {
   const [blueprints, setBlueprints] = useState<BlueprintSummary[]>([]);
@@ -29,6 +99,13 @@ export function ExamBuilderPage() {
   const [combinedExamName, setCombinedExamName] = useState("PCM/PCB Combined Test");
   const [combinedDuration, setCombinedDuration] = useState(180);
   const [subjectAllocations, setSubjectAllocations] = useState<Record<string, string>>({});
+  // Competitive exam preset state
+  const [presetKey, setPresetKey] = useState<string>("jee_mains");
+  const [presetRoleMap, setPresetRoleMap] = useState<Record<PresetRole, string>>({ physics: "", chemistry: "", mathematics: "", botany: "", zoology: "" });
+  const [presetExamName, setPresetExamName] = useState("JEE Mains Practice Test");
+  const [presetStartTime, setPresetStartTime] = useState("");
+  const [presetEndTime, setPresetEndTime] = useState("");
+
   // AI Prompt Builder structured state
   const [promptClassId, setPromptClassId] = useState("");
   const [promptSubjectId, setPromptSubjectId] = useState("");
@@ -203,6 +280,35 @@ export function ExamBuilderPage() {
     } catch (error: any) {
       console.error(error);
       setStatus(error.message || "Unable to generate weighted exam. Make sure the selected weightages total 100%.");
+    }
+  };
+
+  const createPresetExam = async () => {
+    const preset = PRESETS[presetKey];
+    if (!preset) return;
+    const mappedSubjectIds = preset.roles.map((role) => presetRoleMap[role]).filter(Boolean);
+    if (mappedSubjectIds.length !== preset.roles.length) {
+      setStatus("Please map all subject roles before generating.");
+      return;
+    }
+    const roleDisplayLabels = preset.roles.map((role) => availableSubjects.find((s) => s.id === presetRoleMap[role])?.name ?? preset.roleLabels[role]);
+    setStatus(`Generating ${preset.label} exam...`);
+    try {
+      const payload = await apiClient.generateCombinedExam({
+        name: presetExamName,
+        batchId: selectedBatchId,
+        durationMinutes: preset.durationMinutes,
+        subjectAllocations: preset.buildAllocations(mappedSubjectIds),
+        subjectTypeAllocations: preset.buildTypeAllocations(mappedSubjectIds),
+        sections: preset.buildSections(roleDisplayLabels),
+        scheduledStartTime: presetStartTime || undefined,
+        scheduledEndTime: presetEndTime || undefined,
+      });
+      liveExamState.generatedExam = payload;
+      liveExamState.latestResult = null;
+      setStatus(`${preset.label} exam "${payload.exam.name}" created with ${payload.questions?.length ?? 0} questions.`);
+    } catch (e: any) {
+      setStatus(e.message || `Failed to generate ${preset.label} exam.`);
     }
   };
 
@@ -687,6 +793,131 @@ export function ExamBuilderPage() {
         <div className="action-row">
           <button className="primary-button" disabled={weightageTotal !== 100} onClick={() => void createCustomExam()}>
             Generate Weighted Exam
+          </button>
+        </div>
+      </article>
+
+      {/* ── Competitive Exam Presets ────────────────────────────────────────── */}
+      <article className="panel">
+        <div className="row-between adaptive-header">
+          <div>
+            <p className="eyebrow">Competitive Exam Presets</p>
+            <h3>One-click JEE / NEET / GUJCET paper with correct marking scheme</h3>
+            <p className="muted-copy" style={{ fontSize: "0.85rem" }}>
+              Sections, marks, and negative marking are auto-configured. Just map subjects.
+            </p>
+          </div>
+        </div>
+
+        {/* Preset selector + info banner */}
+        <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "flex-start", marginBottom: "20px" }}>
+          <div style={{ flex: "0 0 auto" }}>
+            <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--color-text-muted)", marginBottom: "6px" }}>EXAM PATTERN</div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              {Object.entries(PRESETS).map(([key, p]) => (
+                <button
+                  key={key}
+                  onClick={() => {
+                    setPresetKey(key);
+                    setPresetExamName(`${p.label} Practice Test`);
+                    setPresetRoleMap({ physics: "", chemistry: "", mathematics: "", botany: "", zoology: "" });
+                  }}
+                  style={{
+                    padding: "8px 18px", borderRadius: "20px", border: "1.5px solid",
+                    borderColor: presetKey === key ? "var(--color-primary, #2563eb)" : "var(--color-border)",
+                    background: presetKey === key ? "var(--color-primary, #2563eb)" : "transparent",
+                    color: presetKey === key ? "#fff" : "var(--color-text)",
+                    fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", transition: "all 0.15s"
+                  }}
+                >{p.label}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Info card for selected preset */}
+          {(() => {
+            const preset = PRESETS[presetKey];
+            if (!preset) return null;
+            const sections = preset.buildSections(preset.roles.map((r) => preset.roleLabels[r]));
+            return (
+              <div style={{
+                flex: 1, minWidth: "260px", background: "var(--color-bg-secondary)",
+                border: "1px solid var(--color-border)", borderRadius: "12px", padding: "14px 18px"
+              }}>
+                <div style={{ fontWeight: 700, marginBottom: "6px" }}>{preset.label} Pattern</div>
+                <div style={{ fontSize: "0.82rem", color: "var(--color-text-muted)", marginBottom: "10px" }}>{preset.description}</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                  {sections.map((s, i) => (
+                    <span key={i} style={{
+                      fontSize: "0.72rem", padding: "3px 8px", borderRadius: "6px",
+                      background: s.questionType === "integer" ? "#fef3c7" : s.markingScheme === "jee_advanced_partial" ? "#f3e8ff" : "#eff6ff",
+                      color: s.questionType === "integer" ? "#92400e" : s.markingScheme === "jee_advanced_partial" ? "#7c3aed" : "#1d4ed8",
+                      border: `1px solid ${s.questionType === "integer" ? "#fde68a" : s.markingScheme === "jee_advanced_partial" ? "#ddd6fe" : "#bfdbfe"}`
+                    }}>
+                      {s.name} · {s.totalQuestions}Q · +{s.marksCorrect}/{s.marksIncorrect}
+                      {s.attemptQuestions < s.totalQuestions ? ` (attempt ${s.attemptQuestions})` : ""}
+                      {s.markingScheme === "jee_advanced_partial" ? " · partial" : ""}
+                      {s.timeLimitMinutes ? ` · ${s.timeLimitMinutes}min` : ""}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* Subject role mapping */}
+        <div style={{ marginBottom: "20px" }}>
+          <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--color-text-muted)", marginBottom: "10px" }}>MAP YOUR SUBJECTS</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "12px" }}>
+            {PRESETS[presetKey]?.roles.map((role) => {
+              const preset = PRESETS[presetKey];
+              return (
+                <label key={role} className="field" style={{ margin: 0 }}>
+                  <span style={{ fontSize: "0.82rem" }}>{preset.roleLabels[role]}</span>
+                  <select
+                    value={presetRoleMap[role]}
+                    onChange={(e) => setPresetRoleMap((prev) => ({ ...prev, [role]: e.target.value }))}
+                  >
+                    <option value="">— Select subject —</option>
+                    {availableSubjects.map((s) => (
+                      <option key={s.id} value={s.id}
+                        disabled={Object.entries(presetRoleMap).some(([r, id]) => r !== role && id === s.id)}
+                      >{s.name}</option>
+                    ))}
+                  </select>
+                </label>
+              );
+            })}
+          </div>
+          {availableSubjects.length === 0 && (
+            <p className="muted-copy" style={{ fontSize: "0.85rem", marginTop: "8px" }}>Select a batch in the builder above to see available subjects.</p>
+          )}
+        </div>
+
+        {/* Exam name + schedule */}
+        <div className="adaptive-form-grid" style={{ marginBottom: "20px" }}>
+          <label className="field">
+            <span>Exam Name</span>
+            <input value={presetExamName} onChange={(e) => setPresetExamName(e.target.value)} />
+          </label>
+          <label className="field">
+            <span>Start Time (optional)</span>
+            <input type="datetime-local" value={presetStartTime} onChange={(e) => setPresetStartTime(e.target.value)} />
+          </label>
+          <label className="field">
+            <span>End Time (optional)</span>
+            <input type="datetime-local" value={presetEndTime} onChange={(e) => setPresetEndTime(e.target.value)} />
+          </label>
+        </div>
+
+        <div className="action-row">
+          <button
+            className="primary-button"
+            disabled={!selectedBatchId || PRESETS[presetKey]?.roles.some((r) => !presetRoleMap[r])}
+            onClick={() => void createPresetExam()}
+          >
+            Generate {PRESETS[presetKey]?.label} Exam
           </button>
         </div>
       </article>

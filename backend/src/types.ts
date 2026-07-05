@@ -35,6 +35,8 @@ export interface ExamSection {
   attemptQuestions: number;   // for optional sections (NEET); equals totalQuestions when all compulsory
   marksCorrect: number;
   marksIncorrect: number;     // 0 for no negative marking
+  markingScheme?: "jee_advanced_partial"; // multi-correct: +1 per correct option if no wrong; full marks if all correct; neg if any wrong
+  timeLimitMinutes?: number;  // section-level time cap; 0 / undefined = no limit
   topicIds?: string[];        // which topics feed this section
 }
 
@@ -152,6 +154,7 @@ export interface Question {
   pyqYear?: number;           // e.g. 2022
   pyqExamName?: string;       // e.g. "JEE Mains", "NEET", "GUJCET", "JEE Advanced"
   pyqSession?: string;        // e.g. "January Session", "Paper 1"
+  passageText?: string;       // paragraph/comprehension stimulus shown above the question
 }
 
 export interface ExamBlueprintTopicRule {

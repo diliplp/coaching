@@ -377,7 +377,7 @@ apiRouter.get("/question-bank", requireAuth, async (req, res) => {
 });
 
 apiRouter.post("/questions", requireRole(["super_admin", "teacher"]), async (req, res) => {
-  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation, sourceType, bookId, pageNumber, isVerified } = req.body;
+  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation, passageText, sourceType, bookId, pageNumber, isVerified } = req.body;
   if (!subjectId || !topicId || !prompt || !options || !correctOptionIds) {
     return res.status(400).json({ message: "Missing required fields" });
   }
@@ -394,20 +394,21 @@ apiRouter.post("/questions", requireRole(["super_admin", "teacher"]), async (req
     correctOptionIds,
     options,
     explanation: explanation || "",
+    passageText: passageText || undefined,
     sourceType: sourceType || "custom",
     bookId: bookId || undefined,
     pageNumber: pageNumber || undefined,
     isVerified: isVerified !== undefined ? isVerified : false
   };
-  
+
   await upsertRecord("questions", newQuestion);
   res.status(201).json(newQuestion);
 });
 
 apiRouter.put("/questions/:id", requireRole(["super_admin", "teacher"]), async (req, res) => {
   const id = req.params.id as string;
-  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation, sourceType, bookId, pageNumber, isVerified } = req.body;
-  
+  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation, passageText, sourceType, bookId, pageNumber, isVerified } = req.body;
+
   const { getRecord } = await import("../data/database.js");
   const existing = await getRecord<any>("questions", id);
 
@@ -424,6 +425,7 @@ apiRouter.put("/questions/:id", requireRole(["super_admin", "teacher"]), async (
     correctOptionIds,
     options,
     explanation,
+    passageText: passageText || undefined,
     sourceType: sourceType || "custom",
     bookId: bookId !== undefined ? bookId : existing?.bookId,
     pageNumber: pageNumber !== undefined ? pageNumber : existing?.pageNumber,
@@ -1806,6 +1808,14 @@ apiRouter.post("/exams/:examId/heartbeat", async (req, res) => {
     return;
   }
 
+  // If the session was force-submitted by a teacher, signal termination to the student.
+  const sessionId = `session-${examId}-${effectiveStudentId}`;
+  const examSession = await getRecord<ExamSession>("examSessions", sessionId);
+  if (examSession && examSession.status === "submitted") {
+    res.json({ status: "terminated" });
+    return;
+  }
+
   const student = state.students.find((s) => s.id === effectiveStudentId);
   const studentName = student?.name || authUser?.name || "Unknown Student";
 
@@ -1925,6 +1935,12 @@ apiRouter.post("/exams/:examId/session", requireAuth, async (req, res) => {
     return;
   }
 
+  // Block re-entry: if session was already submitted (e.g. force-submitted by teacher)
+  if (existing && existing.status === "submitted") {
+    res.status(409).json({ message: "already_submitted" });
+    return;
+  }
+
   const session: ExamSession = {
     id: sessionId,
     examId: examId as string,
@@ -1940,6 +1956,32 @@ apiRouter.post("/exams/:examId/session", requireAuth, async (req, res) => {
     : Infinity;
   const initTimeRemaining = Math.max(0, Math.min(exam.durationMinutes * 60, initScheduleRem));
   res.json({ ...session, timeRemainingSeconds: initTimeRemaining });
+});
+
+// Returns the student's existing submission for an exam (used after force-submit to show result).
+apiRouter.get("/exams/:examId/my-submission", requireAuth, async (req, res) => {
+  const { examId } = req.params;
+  const authUserId = (req as AuthenticatedRequest).auth?.sub;
+  const state = await getAppState();
+  const authUser = state.users.find((u) => u.id === authUserId);
+  const effectiveStudentId = authUser?.studentId ?? authUserId;
+
+  if (!effectiveStudentId) {
+    res.status(400).json({ message: "Student authentication required" });
+    return;
+  }
+
+  const submission = state.submissions
+    .filter((s: any) => s.examId === examId && s.studentId === effectiveStudentId)
+    .sort((a: any, b: any) => b.id.localeCompare(a.id))[0];
+
+  if (!submission) {
+    res.status(404).json({ message: "No submission found for this exam" });
+    return;
+  }
+
+  const exam = state.exams.find((e) => e.id === examId);
+  res.json({ ...submission, examName: exam?.name || "Unknown Exam" });
 });
 
 apiRouter.patch("/exams/:examId/session/answer", requireAuth, async (req, res) => {
@@ -2177,6 +2219,30 @@ apiRouter.post("/exams/:examId/force-submit-all", requireRole(["super_admin", "t
   }
 
   res.json({ message: `Force-submitted ${forceSubmitted} active session(s).`, count: forceSubmitted });
+});
+
+// Allow a specific student to re-attempt an exam they already submitted.
+// Deletes their session record so createExamSession creates a fresh one on next entry.
+apiRouter.post("/exams/:examId/students/:studentId/allow-reattempt", requireRole(["super_admin", "teacher"]), async (req, res) => {
+  const { examId, studentId } = req.params;
+  const { deleteRecord } = await import("../data/database.js");
+
+  const state = await getAppState();
+  const exam = state.exams.find((e) => e.id === examId);
+  if (!exam) {
+    res.status(404).json({ message: "Exam not found" });
+    return;
+  }
+
+  const sessionId = `session-${examId}-${studentId}`;
+  const existing = await getRecord<ExamSession>("examSessions", sessionId);
+  if (!existing) {
+    res.status(404).json({ message: "No session found for this student" });
+    return;
+  }
+
+  await deleteRecord("examSessions", sessionId);
+  res.json({ message: "Re-attempt allowed. The student can now enter the exam again." });
 });
 
 

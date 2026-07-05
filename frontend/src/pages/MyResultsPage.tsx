@@ -25,6 +25,8 @@ type ReviewItem = {
   correctOptionIds: string[];
   explanation: string;
   isCorrect: boolean;
+  timeSpentSeconds?: number;
+  speedZone?: "fast" | "normal" | "slow";
 };
 
 type SubmissionDetail = SubmissionSummary & {
@@ -374,6 +376,21 @@ export function MyResultsPage() {
 
             {q && (
               <div className="panel" style={{ border: `2px solid ${q.isCorrect ? "#86efac" : q.selectedOptionIds.length === 0 ? "#d1d5db" : "#fca5a5"}`, padding: "1.5rem" }}>
+                {(q as any).passageText && (
+                  <div style={{
+                    marginBottom: "16px",
+                    padding: "12px 16px",
+                    background: "var(--color-bg-secondary)",
+                    border: "1px solid var(--color-border)",
+                    borderLeft: "4px solid #6366f1",
+                    borderRadius: "8px",
+                    fontSize: "0.9rem",
+                    lineHeight: "1.7"
+                  }}>
+                    <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "#6366f1", letterSpacing: "0.08em", marginBottom: "6px" }}>PASSAGE</div>
+                    <RichText content={(q as any).passageText} />
+                  </div>
+                )}
                 <p style={{ marginBottom: "1rem", lineHeight: 1.7 }}>
                   <RichText content={q.prompt} />
                 </p>
@@ -403,6 +420,27 @@ export function MyResultsPage() {
                     You did not attempt this question.
                   </div>
                 )}
+
+                {q.timeSpentSeconds !== undefined && (() => {
+                  const secs = q.timeSpentSeconds!;
+                  const zone = q.speedZone;
+                  const mins = Math.floor(secs / 60);
+                  const s = secs % 60;
+                  const label = mins > 0 ? `${mins}m ${s}s` : `${s}s`;
+                  const zoneMap: Record<string, { bg: string; color: string; border: string; text: string }> = {
+                    fast:   { bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0", text: "Fast — answered quickly" },
+                    normal: { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe", text: "Normal pace" },
+                    slow:   { bg: "#fefce8", color: "#854d0e", border: "#fde68a", text: "Slow — consider skipping next time" },
+                  };
+                  const zc = zone ? zoneMap[zone] : { bg: "#f8fafc", color: "#475569", border: "#e2e8f0", text: "" };
+                  return (
+                    <div style={{ marginBottom: "1rem", padding: "10px 14px", background: zc.bg, border: `1px solid ${zc.border}`, borderRadius: 8, display: "flex", alignItems: "center", gap: "10px" }}>
+                      <span style={{ fontSize: "1.1rem" }}>⏱</span>
+                      <span style={{ fontWeight: 700, color: zc.color, fontSize: "0.95rem" }}>{label}</span>
+                      {zc.text && <span style={{ color: zc.color, fontSize: "0.78rem", opacity: 0.85 }}>· {zc.text}</span>}
+                    </div>
+                  );
+                })()}
 
                 {q.explanation && (
                   <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "12px 16px" }}>

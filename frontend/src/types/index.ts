@@ -38,6 +38,7 @@ export interface Question {
   pyqYear?: number;
   pyqExamName?: string;
   pyqSession?: string;
+  passageText?: string;
 }
 
 export interface ExamPayload {
@@ -81,6 +82,17 @@ export interface TeacherCustomExamRequest {
   allowedSourceTypes?: QuestionSource[];
 }
 
+export interface ExamSection {
+  name: string;
+  questionType: "mcq" | "integer";
+  totalQuestions: number;
+  attemptQuestions: number;
+  marksCorrect: number;
+  marksIncorrect: number;
+  markingScheme?: "jee_advanced_partial";
+  timeLimitMinutes?: number;
+}
+
 export interface CombinedExamRequest {
   name: string;
   batchId: string;
@@ -89,6 +101,8 @@ export interface CombinedExamRequest {
   scheduledStartTime?: string;
   scheduledEndTime?: string;
   allowedSourceTypes?: QuestionSource[];
+  sections?: ExamSection[];
+  subjectTypeAllocations?: Array<{ subjectId: string; mcqCount: number; integerCount: number }>;
 }
 
 export interface SubjectBook {
