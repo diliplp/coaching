@@ -25,6 +25,7 @@ export function QuestionBankPage() {
       { id: "opt-4", label: "D", value: "" },
     ],
     explanation: "",
+    passageText: "",
     sourceType: "custom" as any,
     bookId: "",
     pageNumber: undefined as number | undefined,
@@ -79,6 +80,7 @@ export function QuestionBankPage() {
         correctOptionIds: question.correctOptionIds,
         options: question.options.map((o: any) => ({ ...o })), // Deep-ish copy of options array to avoid direct mutation
         explanation: question.explanation || "",
+        passageText: question.passageText || "",
         sourceType: question.sourceType || "custom",
         bookId: question.bookId || "",
         pageNumber: question.pageNumber,
@@ -102,6 +104,7 @@ export function QuestionBankPage() {
           { id: "opt-4", label: "D", value: "" },
         ],
         explanation: "",
+        passageText: "",
         sourceType: "custom",
         bookId: "",
         pageNumber: undefined,
@@ -338,6 +341,16 @@ export function QuestionBankPage() {
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div className="field">
+              <span>Passage / Comprehension Text <span style={{ fontWeight: 400, color: "var(--color-text-muted)", fontSize: "0.8rem" }}>(optional — shown above question in exam)</span></span>
+              <MathTextarea
+                rows={4}
+                value={formData.passageText || ""}
+                onChange={v => setFormData({...formData, passageText: v})}
+                placeholder="Leave empty for standalone question. For paragraph-based questions, paste the reading passage here. Multiple questions can share the same passage."
+              />
             </div>
 
             <div className="field">

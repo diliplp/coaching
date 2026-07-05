@@ -154,6 +154,7 @@ export interface Question {
   pyqYear?: number;           // e.g. 2022
   pyqExamName?: string;       // e.g. "JEE Mains", "NEET", "GUJCET", "JEE Advanced"
   pyqSession?: string;        // e.g. "January Session", "Paper 1"
+  passageText?: string;       // paragraph/comprehension stimulus shown above the question
 }
 
 export interface ExamBlueprintTopicRule {

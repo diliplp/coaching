@@ -377,7 +377,7 @@ apiRouter.get("/question-bank", requireAuth, async (req, res) => {
 });
 
 apiRouter.post("/questions", requireRole(["super_admin", "teacher"]), async (req, res) => {
-  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation, sourceType, bookId, pageNumber, isVerified } = req.body;
+  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation, passageText, sourceType, bookId, pageNumber, isVerified } = req.body;
   if (!subjectId || !topicId || !prompt || !options || !correctOptionIds) {
     return res.status(400).json({ message: "Missing required fields" });
   }
@@ -394,20 +394,21 @@ apiRouter.post("/questions", requireRole(["super_admin", "teacher"]), async (req
     correctOptionIds,
     options,
     explanation: explanation || "",
+    passageText: passageText || undefined,
     sourceType: sourceType || "custom",
     bookId: bookId || undefined,
     pageNumber: pageNumber || undefined,
     isVerified: isVerified !== undefined ? isVerified : false
   };
-  
+
   await upsertRecord("questions", newQuestion);
   res.status(201).json(newQuestion);
 });
 
 apiRouter.put("/questions/:id", requireRole(["super_admin", "teacher"]), async (req, res) => {
   const id = req.params.id as string;
-  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation, sourceType, bookId, pageNumber, isVerified } = req.body;
-  
+  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation, passageText, sourceType, bookId, pageNumber, isVerified } = req.body;
+
   const { getRecord } = await import("../data/database.js");
   const existing = await getRecord<any>("questions", id);
 
@@ -424,6 +425,7 @@ apiRouter.put("/questions/:id", requireRole(["super_admin", "teacher"]), async (
     correctOptionIds,
     options,
     explanation,
+    passageText: passageText || undefined,
     sourceType: sourceType || "custom",
     bookId: bookId !== undefined ? bookId : existing?.bookId,
     pageNumber: pageNumber !== undefined ? pageNumber : existing?.pageNumber,

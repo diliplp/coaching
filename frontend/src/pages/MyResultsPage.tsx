@@ -376,6 +376,21 @@ export function MyResultsPage() {
 
             {q && (
               <div className="panel" style={{ border: `2px solid ${q.isCorrect ? "#86efac" : q.selectedOptionIds.length === 0 ? "#d1d5db" : "#fca5a5"}`, padding: "1.5rem" }}>
+                {(q as any).passageText && (
+                  <div style={{
+                    marginBottom: "16px",
+                    padding: "12px 16px",
+                    background: "var(--color-bg-secondary)",
+                    border: "1px solid var(--color-border)",
+                    borderLeft: "4px solid #6366f1",
+                    borderRadius: "8px",
+                    fontSize: "0.9rem",
+                    lineHeight: "1.7"
+                  }}>
+                    <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "#6366f1", letterSpacing: "0.08em", marginBottom: "6px" }}>PASSAGE</div>
+                    <RichText content={(q as any).passageText} />
+                  </div>
+                )}
                 <p style={{ marginBottom: "1rem", lineHeight: 1.7 }}>
                   <RichText content={q.prompt} />
                 </p>

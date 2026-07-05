@@ -733,6 +733,21 @@ export function LiveExamPage() {
                 )}
               </div>
             </div>
+            {(currentQuestion as any).passageText && (
+              <div style={{
+                margin: "12px 0 16px",
+                padding: "14px 18px",
+                background: "var(--color-bg-secondary)",
+                border: "1px solid var(--color-border)",
+                borderLeft: "4px solid #6366f1",
+                borderRadius: "8px",
+                fontSize: "0.92rem",
+                lineHeight: "1.7"
+              }}>
+                <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#6366f1", letterSpacing: "0.08em", marginBottom: "8px" }}>PASSAGE</div>
+                <RichText content={(currentQuestion as any).passageText} />
+              </div>
+            )}
             <h3><RichText content={currentQuestion.prompt} /></h3>
 
             {(currentQuestion as any).type === "integer" ? (

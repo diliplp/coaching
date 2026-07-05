@@ -38,6 +38,7 @@ export interface Question {
   pyqYear?: number;
   pyqExamName?: string;
   pyqSession?: string;
+  passageText?: string;
 }
 
 export interface ExamPayload {
