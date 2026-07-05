@@ -1,16 +1,17 @@
 # Stage 1: Build the backend and frontend
-FROM node:18-bookworm AS builder
+FROM node:22-bookworm AS builder
 WORKDIR /app
 COPY package*.json ./
 COPY backend/package*.json ./backend/
 COPY frontend/package*.json ./frontend/
+ENV NODE_ENV=development
 RUN npm ci
 
 COPY . .
 RUN npm run build
 
 # Stage 2: Runtime image
-FROM node:18-bookworm
+FROM node:22-bookworm
 WORKDIR /app
 
 # Install system dependencies: python3, pip, tesseract-ocr, chromium, and all runtime deps
