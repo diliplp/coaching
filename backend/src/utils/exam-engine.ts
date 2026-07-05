@@ -6,6 +6,7 @@ import type {
   Chapter,
   Exam,
   ExamBlueprint,
+  ExamSection,
   ExamSubmissionResult,
   GeneratedExamQuestion,
   Question,
@@ -30,6 +31,8 @@ export interface CombinedExamRequest {
   scheduledStartTime?: string;
   scheduledEndTime?: string;
   allowedSourceTypes?: QuestionSource[];
+  sections?: ExamSection[];
+  subjectTypeAllocations?: { subjectId: string; mcqCount: number; integerCount: number }[];
 }
 
 function sortedIds(values: string[]) {
@@ -417,15 +420,35 @@ export async function generateCombinedExam(request: CombinedExamRequest): Promis
   const selectedQuestions: Question[] = [];
   const allocationSummary: string[] = [];
 
-  for (const alloc of allocations) {
-    let pool = state.questions.filter((q) => q.subjectId === alloc.subjectId);
-    if (request.allowedSourceTypes?.length) {
-      pool = pool.filter((q) => request.allowedSourceTypes!.includes((q.sourceType || "custom") as QuestionSource));
+  if (request.subjectTypeAllocations?.length) {
+    // Type-aware picking: MCQ first, then integer — preserves section order for preset exams
+    for (const typeAlloc of request.subjectTypeAllocations) {
+      let pool = state.questions.filter((q) => q.subjectId === typeAlloc.subjectId);
+      if (request.allowedSourceTypes?.length) {
+        pool = pool.filter((q) => request.allowedSourceTypes!.includes((q.sourceType || "custom") as QuestionSource));
+      }
+      const mcqPool = randomize(pool.filter((q) => q.type !== "integer"));
+      const intPool = randomize(pool.filter((q) => q.type === "integer"));
+      const mcqs = mcqPool.slice(0, typeAlloc.mcqCount);
+      const ints = intPool.slice(0, typeAlloc.integerCount);
+      // Fill any integer shortfall with extra MCQ questions
+      const intShortfall = typeAlloc.integerCount - ints.length;
+      const extraMcqs = intShortfall > 0 ? mcqPool.filter((q) => !mcqs.includes(q)).slice(0, intShortfall) : [];
+      selectedQuestions.push(...mcqs, ...ints, ...extraMcqs);
+      const subjectName = state.subjects.find((s) => s.id === typeAlloc.subjectId)?.name ?? typeAlloc.subjectId;
+      allocationSummary.push(`${subjectName}: ${mcqs.length}MCQ+${ints.length + extraMcqs.length}int`);
     }
-    const picked = randomize(pool).slice(0, alloc.questionCount);
-    selectedQuestions.push(...picked);
-    const subjectName = state.subjects.find((s) => s.id === alloc.subjectId)?.name ?? alloc.subjectId;
-    allocationSummary.push(`${subjectName}: ${picked.length}Q`);
+  } else {
+    for (const alloc of allocations) {
+      let pool = state.questions.filter((q) => q.subjectId === alloc.subjectId);
+      if (request.allowedSourceTypes?.length) {
+        pool = pool.filter((q) => request.allowedSourceTypes!.includes((q.sourceType || "custom") as QuestionSource));
+      }
+      const picked = randomize(pool).slice(0, alloc.questionCount);
+      selectedQuestions.push(...picked);
+      const subjectName = state.subjects.find((s) => s.id === alloc.subjectId)?.name ?? alloc.subjectId;
+      allocationSummary.push(`${subjectName}: ${picked.length}Q`);
+    }
   }
 
   if (selectedQuestions.length === 0) {
@@ -451,7 +474,8 @@ export async function generateCombinedExam(request: CombinedExamRequest): Promis
       generationMode: "custom",
       adaptiveSummary: `Combined: ${allocationSummary.join(" | ")}`,
       scheduledStartTime: request.scheduledStartTime,
-      scheduledEndTime: request.scheduledEndTime
+      scheduledEndTime: request.scheduledEndTime,
+      ...(request.sections ? { sections: request.sections } : {})
     },
     questions: selectedQuestions
   });
