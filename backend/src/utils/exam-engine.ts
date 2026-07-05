@@ -892,10 +892,38 @@ export async function evaluateExamSubmission(
 
     currentTopic.totalQuestions += 1;
 
+    // JEE Advanced partial marking: multi_correct with markingScheme = "jee_advanced_partial"
+    const sectionMarkingScheme = sIdx !== undefined && exam.sections ? exam.sections[sIdx].markingScheme : undefined;
+    const isJeeAdvancedPartial = sectionMarkingScheme === "jee_advanced_partial" && question.type === "multi_correct";
+
     if (!attempted) {
       unattemptedAnswers += 1;
       currentTopic.unattemptedAnswers += 1;
       questionMarkMap.set(question.id, { marksGained: 0, marksLost: 0 });
+    } else if (isJeeAdvancedPartial) {
+      const selected = answer?.selectedOptionIds ?? [];
+      const correctIds = question.correctOptionIds;
+      const hasWrong = selected.some((id) => !correctIds.includes(id));
+      if (hasWrong) {
+        // Any wrong option selected → full negative marks
+        obtainedMarks -= qNegative;
+        incorrectAnswers += 1;
+        currentTopic.incorrectAnswers += 1;
+        questionMarkMap.set(question.id, { marksGained: 0, marksLost: qNegative });
+      } else if (sameSelections(selected, correctIds)) {
+        // All correct options selected, none wrong → full marks
+        obtainedMarks += qMarks;
+        correctAnswers += 1;
+        currentTopic.correctAnswers += 1;
+        questionMarkMap.set(question.id, { marksGained: qMarks, marksLost: 0 });
+      } else {
+        // Partial: +1 per correct option selected (none wrong)
+        const partialGain = selected.filter((id) => correctIds.includes(id)).length;
+        obtainedMarks += partialGain;
+        correctAnswers += 1;
+        currentTopic.correctAnswers += 1;
+        questionMarkMap.set(question.id, { marksGained: partialGain, marksLost: 0 });
+      }
     } else if (correct) {
       obtainedMarks += qMarks;
       correctAnswers += 1;

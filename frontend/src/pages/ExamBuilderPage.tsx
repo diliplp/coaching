@@ -34,6 +34,20 @@ const PRESETS: Record<string, PresetDef> = {
     buildTypeAllocations: (subjectIds) => subjectIds.map((subjectId) => ({ subjectId, mcqCount: 20, integerCount: 5 })),
     buildAllocations: (subjectIds) => subjectIds.map((subjectId) => ({ subjectId, questionCount: 25 })),
   },
+  jee_advanced: {
+    label: "JEE Advanced",
+    durationMinutes: 180,
+    roles: ["physics", "chemistry", "mathematics"],
+    roleLabels: { physics: "Physics", chemistry: "Chemistry", mathematics: "Mathematics", botany: "Botany", zoology: "Zoology" },
+    description: "3 subjects × (6 single +3/−1 + 6 multi +4/−2 partial + 5 integer +4/0) = 51Q, 3 hours",
+    buildSections: (roleLabels) => roleLabels.flatMap((label) => [
+      { name: `${label} — Single Correct`, questionType: "mcq", totalQuestions: 6, attemptQuestions: 6, marksCorrect: 3, marksIncorrect: -1 },
+      { name: `${label} — Multi Correct`, questionType: "mcq", totalQuestions: 6, attemptQuestions: 6, marksCorrect: 4, marksIncorrect: -2, markingScheme: "jee_advanced_partial" as const },
+      { name: `${label} — Integer`, questionType: "integer", totalQuestions: 5, attemptQuestions: 5, marksCorrect: 4, marksIncorrect: 0 },
+    ]),
+    buildTypeAllocations: (subjectIds) => subjectIds.map((subjectId) => ({ subjectId, mcqCount: 12, integerCount: 5 })),
+    buildAllocations: (subjectIds) => subjectIds.map((subjectId) => ({ subjectId, questionCount: 17 })),
+  },
   neet: {
     label: "NEET",
     durationMinutes: 200,
@@ -836,12 +850,13 @@ export function ExamBuilderPage() {
                   {sections.map((s, i) => (
                     <span key={i} style={{
                       fontSize: "0.72rem", padding: "3px 8px", borderRadius: "6px",
-                      background: s.questionType === "integer" ? "#fef3c7" : "#eff6ff",
-                      color: s.questionType === "integer" ? "#92400e" : "#1d4ed8",
-                      border: `1px solid ${s.questionType === "integer" ? "#fde68a" : "#bfdbfe"}`
+                      background: s.questionType === "integer" ? "#fef3c7" : s.markingScheme === "jee_advanced_partial" ? "#f3e8ff" : "#eff6ff",
+                      color: s.questionType === "integer" ? "#92400e" : s.markingScheme === "jee_advanced_partial" ? "#7c3aed" : "#1d4ed8",
+                      border: `1px solid ${s.questionType === "integer" ? "#fde68a" : s.markingScheme === "jee_advanced_partial" ? "#ddd6fe" : "#bfdbfe"}`
                     }}>
                       {s.name} · {s.totalQuestions}Q · +{s.marksCorrect}/{s.marksIncorrect}
                       {s.attemptQuestions < s.totalQuestions ? ` (attempt ${s.attemptQuestions})` : ""}
+                      {s.markingScheme === "jee_advanced_partial" ? " · partial" : ""}
                     </span>
                   ))}
                 </div>

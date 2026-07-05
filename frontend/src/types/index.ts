@@ -88,6 +88,7 @@ export interface ExamSection {
   attemptQuestions: number;
   marksCorrect: number;
   marksIncorrect: number;
+  markingScheme?: "jee_advanced_partial";
 }
 
 export interface CombinedExamRequest {
