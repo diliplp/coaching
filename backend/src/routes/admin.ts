@@ -415,7 +415,7 @@ adminRouter.post("/curriculum/save-bulk", async (req: Request, res: Response) =>
     for (const sub of subjects) {
       // Find or create subject
       const allSubjects = await listRecords<any>("subjects");
-      let subject = allSubjects.find(s => s.name.toLowerCase() === sub.name.toLowerCase() && s.classId === classId);
+      let subject = allSubjects.find(s => s.name.toLowerCase() === sub.name.toLowerCase() && s.classId === classId && (!streamId || s.streamId === streamId));
       
       if (!subject) {
         subject = { id: `sub-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`, name: sub.name, classId, streamId };
