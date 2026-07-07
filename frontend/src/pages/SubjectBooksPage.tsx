@@ -1,14 +1,32 @@
-import { useEffect, useState, useRef, type FormEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { apiClient, buildPublicAssetUrl, openJobStream } from "../api/client";
 import type { SubjectBooksResponse } from "../types";
 import { StatusModal } from "../components/StatusModal";
+
+type BatchItem = {
+  file: File;
+  title: string;
+  subjectId: string;
+  bookType: "textbook" | "reference" | "pyq";
+  ocr: boolean;
+  status: "pending" | "uploading" | "done" | "error";
+  error?: string;
+};
+
+function titleFromFilename(name: string) {
+  return name
+    .replace(/\.pdf$/i, "")
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 export function SubjectBooksPage() {
   const [data, setData] = useState<SubjectBooksResponse | null>(null);
   const [allChapters, setAllChapters] = useState<any[]>([]);
   const [allTopics, setAllTopics] = useState<any[]>([]);
-  
-  // Upload State
+
+  // Upload — single
+  const [uploadTab, setUploadTab] = useState<"single" | "batch">("single");
   const [selectedClassId, setSelectedClassId] = useState("");
   const [selectedStreamId, setSelectedStreamId] = useState("");
   const [subjectId, setSubjectId] = useState("");
@@ -16,102 +34,117 @@ export function SubjectBooksPage() {
   const [bookType, setBookType] = useState<"pyq" | "reference" | "textbook">("textbook");
   const [file, setFile] = useState<File | null>(null);
   const [ocr, setOcr] = useState(false);
+
+  // Upload — batch
+  const [batchQueue, setBatchQueue] = useState<BatchItem[]>([]);
+  const [batchSubjectId, setBatchSubjectId] = useState("");
+  const [batchBookType, setBatchBookType] = useState<"textbook" | "reference" | "pyq">("textbook");
+  const [batchUploading, setBatchUploading] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const batchFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Book list
+  const [bookFilter, setBookFilter] = useState("");
+  const [expandedBookId, setExpandedBookId] = useState<string | null>(null);
+
+  // Status + AI state
   const [status, setStatus] = useState("Teachers can upload PDF books subject-wise here.");
-  
-  // AI Generation State
   const [generatingForBook, setGeneratingForBook] = useState<string | null>(null);
-  const [generationProgress, setGenerationProgress] = useState<string>("");
+  const [generationProgress, setGenerationProgress] = useState("");
   const generationCleanupRef = useRef<(() => void) | null>(null);
   const [extractingForBook, setExtractingForBook] = useState<string | null>(null);
   const [selectedChapters, setSelectedChapters] = useState<Record<string, string>>({});
   const [selectedTopicsMap, setSelectedTopicsMap] = useState<Record<string, string[]>>({});
   const [questionCount, setQuestionCount] = useState(5);
-
-  // PYQ metadata per book (year, examName, session)
   const [pyqMeta, setPyqMeta] = useState<Record<string, { pyqYear?: string; pyqExamName?: string; pyqSession?: string }>>({});
-
-  // Answer key state
   const [answerKeyInputs, setAnswerKeyInputs] = useState<Record<string, string>>({});
   const [applyingAnswerKey, setApplyingAnswerKey] = useState<string | null>(null);
-
-  // Extraction progress polling
   const [extractionProgress, setExtractionProgress] = useState<Record<string, { status: string; message: string; count: number }>>({});
   const pollingRef = useRef<Record<string, ReturnType<typeof setInterval>>>({});
+  const [detectingForBook, setDetectingForBook] = useState<string | null>(null);
+  const [detectedCurriculum, setDetectedCurriculum] = useState<{ bookId: string; chapters: { name: string; topics: string[] }[] } | null>(null);
 
   const startPolling = (bookId: string) => {
     if (pollingRef.current[bookId]) return;
     pollingRef.current[bookId] = setInterval(async () => {
       try {
         const res = await apiClient.getExtractionStatus(bookId);
-        setExtractionProgress(prev => ({
-          ...prev,
-          [bookId]: { status: res.extractionStatus, message: res.extractionProgress, count: res.extractionQuestionCount }
-        }));
+        setExtractionProgress(prev => ({ ...prev, [bookId]: { status: res.extractionStatus, message: res.extractionProgress, count: res.extractionQuestionCount } }));
         if (res.extractionStatus === "done" || res.extractionStatus === "error") {
           clearInterval(pollingRef.current[bookId]);
           delete pollingRef.current[bookId];
           setExtractingForBook(null);
-          if (res.extractionStatus === "done") {
-            setStatus(`Done! ${res.extractionQuestionCount} questions extracted.`);
-            await loadData();
-          } else {
-            setStatus(`Extraction failed: ${res.extractionProgress}`);
-          }
+          if (res.extractionStatus === "done") { setStatus(`Done! ${res.extractionQuestionCount} questions extracted.`); await loadData(); }
+          else setStatus(`Extraction failed: ${res.extractionProgress}`);
         }
-      } catch {
-        // silently ignore transient errors
-      }
+      } catch { /* ignore transient */ }
     }, 3000);
   };
 
-  // Curriculum Detection State
-  const [detectingForBook, setDetectingForBook] = useState<string | null>(null);
-  const [detectedCurriculum, setDetectedCurriculum] = useState<{ bookId: string; chapters: { name: string; topics: string[] }[] } | null>(null);
-
   const loadData = async () => {
-    const [response, qbResponse] = await Promise.all([
-      apiClient.getSubjectBooks(),
-      apiClient.getQuestionBank()
-    ]);
+    const [response, qbResponse] = await Promise.all([apiClient.getSubjectBooks(), apiClient.getQuestionBank()]);
     setData(response);
     setAllChapters(qbResponse.chapters);
     setAllTopics(qbResponse.topics);
   };
 
-  useEffect(() => {
-    loadData().catch(console.error);
-  }, []);
+  useEffect(() => { loadData().catch(console.error); }, []);
 
+  // ── Single upload ────────────────────────────────────────────────────────────
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!subjectId || !title || !file) {
-      setStatus("Please choose a subject, add a book title, and select a PDF file.");
-      return;
-    }
-
+    if (!subjectId || !title || !file) { setStatus("Please choose a subject, add a title, and select a PDF."); return; }
     setStatus("Uploading PDF book...");
     try {
       await apiClient.uploadSubjectBook({ subjectId, title, file, bookType, ocr });
-      setTitle("");
-      setFile(null);
-      setOcr(false);
-      setStatus("PDF uploaded and processed successfully.");
+      setTitle(""); setFile(null); setOcr(false);
+      setStatus("PDF uploaded successfully.");
       await loadData();
-    } catch (error: any) {
-      console.error(error);
-      setStatus(`Upload failed: ${error.message || "Unknown error"}`);
-    }
+    } catch (error: any) { setStatus(`Upload failed: ${error.message || "Unknown error"}`); }
   };
 
+  // ── Batch upload ─────────────────────────────────────────────────────────────
+  const addFilesToBatch = (files: FileList | File[]) => {
+    const items: BatchItem[] = Array.from(files)
+      .filter(f => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"))
+      .map(f => ({
+        file: f,
+        title: titleFromFilename(f.name),
+        subjectId: batchSubjectId,
+        bookType: batchBookType,
+        ocr: false,
+        status: "pending",
+      }));
+    setBatchQueue(prev => [...prev, ...items]);
+  };
+
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault(); setIsDragOver(false);
+    if (e.dataTransfer.files.length) addFilesToBatch(e.dataTransfer.files);
+  };
+
+  const handleBatchUploadAll = async () => {
+    if (!batchQueue.some(i => i.status === "pending")) return;
+    setBatchUploading(true);
+    for (let i = 0; i < batchQueue.length; i++) {
+      if (batchQueue[i].status !== "pending") continue;
+      setBatchQueue(prev => prev.map((item, idx) => idx === i ? { ...item, status: "uploading" } : item));
+      try {
+        await apiClient.uploadSubjectBook({ subjectId: batchQueue[i].subjectId || batchSubjectId, title: batchQueue[i].title, file: batchQueue[i].file, bookType: batchQueue[i].bookType, ocr: batchQueue[i].ocr });
+        setBatchQueue(prev => prev.map((item, idx) => idx === i ? { ...item, status: "done" } : item));
+      } catch (err: any) {
+        setBatchQueue(prev => prev.map((item, idx) => idx === i ? { ...item, status: "error", error: err.message || "Failed" } : item));
+      }
+    }
+    setBatchUploading(false);
+    setStatus("Batch upload complete.");
+    await loadData();
+  };
+
+  // ── AI tools ─────────────────────────────────────────────────────────────────
   const handleGenerateQuestions = async (bookId: string) => {
-    // Close any previous stream
-    generationCleanupRef.current?.();
-    generationCleanupRef.current = null;
-
-    setGeneratingForBook(bookId);
-    setGenerationProgress("Starting AI generation job...");
-    setStatus("");
-
+    generationCleanupRef.current?.(); generationCleanupRef.current = null;
+    setGeneratingForBook(bookId); setGenerationProgress("Starting AI generation job..."); setStatus("");
     try {
       const bookChapterId = selectedChapters[bookId] || "";
       const bookTopicIds = selectedTopicsMap[bookId] || [];
@@ -120,36 +153,19 @@ export function SubjectBooksPage() {
         topicIds: bookTopicIds.length > 0 ? bookTopicIds : undefined,
         questionCount
       });
-
       const cleanup = openJobStream(jobId, {
         onProgress: (msg) => setGenerationProgress(msg),
-        onComplete: async (data) => {
-          generationCleanupRef.current = null;
-          setGeneratingForBook(null);
-          setGenerationProgress("");
-          setStatus(`Done! ${data.count ?? 0} question(s) generated successfully.`);
-          await loadData();
-        },
-        onError: (msg) => {
-          generationCleanupRef.current = null;
-          setGeneratingForBook(null);
-          setGenerationProgress("");
-          setStatus(`Generation failed: ${msg}`);
-        }
+        onComplete: async (data) => { generationCleanupRef.current = null; setGeneratingForBook(null); setGenerationProgress(""); setStatus(`Done! ${data.count ?? 0} question(s) generated.`); await loadData(); },
+        onError: (msg) => { generationCleanupRef.current = null; setGeneratingForBook(null); setGenerationProgress(""); setStatus(`Generation failed: ${msg}`); }
       });
       generationCleanupRef.current = cleanup;
-    } catch (error: any) {
-      console.error(error);
-      setGeneratingForBook(null);
-      setGenerationProgress("");
-      setStatus(`Failed to start generation: ${error.message || "Unknown error"}`);
-    }
+    } catch (error: any) { setGeneratingForBook(null); setGenerationProgress(""); setStatus(`Failed to start generation: ${error.message || "Unknown error"}`); }
   };
 
   const handleExtractQuestions = async (bookId: string) => {
     setExtractingForBook(bookId);
     setExtractionProgress(prev => ({ ...prev, [bookId]: { status: "running", message: "Starting...", count: 0 } }));
-    setStatus("Extraction started. Progress will appear on the book card below.");
+    setStatus("Extraction started.");
     try {
       const bookChapterId = selectedChapters[bookId] || "";
       const bookTopicIds = selectedTopicsMap[bookId] || [];
@@ -161,105 +177,89 @@ export function SubjectBooksPage() {
         pyqExamName: meta.pyqExamName || undefined,
         pyqSession: meta.pyqSession || undefined,
       });
-      // Backend returns immediately — start polling for live progress
       startPolling(bookId);
-    } catch (error: any) {
-      console.error(error);
-      setStatus(`Failed to start extraction: ${error.message || "Unknown error"}`);
-      setExtractingForBook(null);
-    }
+    } catch (error: any) { setStatus(`Failed to start extraction: ${error.message || "Unknown error"}`); setExtractingForBook(null); }
   };
 
   const handleDetectCurriculum = async (bookId: string) => {
     setDetectingForBook(bookId);
-    setStatus("AI is analyzing the PDF to identify chapters and topics... Please wait.");
+    setStatus("AI is analyzing the PDF...");
     try {
       const result = await apiClient.detectCurriculumFromBook(bookId);
       setDetectedCurriculum({ bookId, chapters: result.chapters });
-      setStatus(`AI detected ${result.chapters.length} chapters in this book.`);
-      setDetectingForBook(null);
-    } catch (error: any) {
-      console.error(error);
-      setStatus(`Curriculum detection failed: ${error.message || "Unknown error"}`);
-      setDetectingForBook(null);
-    }
+      setStatus(`AI detected ${result.chapters.length} chapters.`);
+    } catch (error: any) { setStatus(`Curriculum detection failed: ${error.message || "Unknown error"}`); }
+    finally { setDetectingForBook(null); }
   };
 
   const handleImportCurriculum = async (book: any) => {
     if (!detectedCurriculum || !data) return;
-    setStatus("Importing detected chapters and topics into your subject structure...");
+    setStatus("Importing chapters and topics...");
     try {
-      // Find the subject node to get classId and streamId
       const subjectNode = data.subjects.find(s => s.id === book.subjectId);
       if (!subjectNode) throw new Error("Subject context not found");
-
-      await apiClient.admin.saveBulkCurriculum({
-        classId: subjectNode.classId,
-        streamId: subjectNode.streamId,
-        bookId: book.id,
-        subjects: [
-          {
-            name: subjectNode.name,
-            chapters: detectedCurriculum.chapters
-          }
-        ]
-      });
-      setStatus("Curriculum successfully imported and saved.");
+      await apiClient.admin.saveBulkCurriculum({ classId: subjectNode.classId, streamId: subjectNode.streamId, bookId: book.id, subjects: [{ name: subjectNode.name, chapters: detectedCurriculum.chapters }] });
+      setStatus("Curriculum imported successfully.");
       setDetectedCurriculum(null);
       await loadData();
-    } catch (error: any) {
-      console.error(error);
-      setStatus(`Import failed: ${error.message || "Unknown error"}`);
-    }
+    } catch (error: any) { setStatus(`Import failed: ${error.message || "Unknown error"}`); }
   };
 
   const handleApplyAnswerKey = async (bookId: string) => {
     const key = (answerKeyInputs[bookId] || "").trim();
-    if (!key) { setStatus("Please enter the answer key before applying."); return; }
+    if (!key) { setStatus("Please enter the answer key."); return; }
     setApplyingAnswerKey(bookId);
     try {
       const result = await apiClient.applyAnswerKey(bookId, key);
       setStatus(`${result.message}. Applied: ${result.applied.join(", ")}`);
-    } catch (error: any) {
-      setStatus(`Failed to apply answer key: ${error.message || "Unknown error"}`);
-    } finally {
-      setApplyingAnswerKey(null);
-    }
+    } catch (error: any) { setStatus(`Failed: ${error.message || "Unknown error"}`); }
+    finally { setApplyingAnswerKey(null); }
   };
 
-  if (!data) {
-    return <p>Loading subject books...</p>;
-  }
+  if (!data) return <p>Loading subject books...</p>;
 
-  // Derived filterings for Upload
-  const filteredStreams = data.subjects
-    .filter(s => s.classId === selectedClassId)
-    .reduce((acc: any[], curr) => {
-      if (!acc.find(s => s.id === curr.streamId)) {
-        acc.push({ id: curr.streamId, name: curr.streamName });
-      }
-      return acc;
-    }, []);
-
+  const filteredStreams = data.subjects.filter(s => s.classId === selectedClassId)
+    .reduce((acc: any[], curr) => { if (!acc.find(s => s.id === curr.streamId)) acc.push({ id: curr.streamId, name: curr.streamName }); return acc; }, []);
   const filteredSubjects = data.subjects.filter(s => s.classId === selectedClassId && s.streamId === selectedStreamId);
+  const allSubjectsFlat = Array.from(new Map(data.subjects.map(s => [s.id, s])).values());
+
+  const filteredBooks = data.books.filter(book => {
+    if (!bookFilter) return true;
+    const q = bookFilter.toLowerCase();
+    return book.title.toLowerCase().includes(q) || book.subjectName?.toLowerCase().includes(q);
+  });
+
+  const typeColor = (bt: string) => bt === "pyq" ? { bg: "#fff3cd", color: "#856404" } : bt === "textbook" ? { bg: "#d1ecf1", color: "#0c5460" } : { bg: "#d4edda", color: "#155724" };
+  const typeLabel = (bt: string) => bt === "pyq" ? "PYQ" : bt === "textbook" ? "Text" : "Ref";
 
   return (
     <div className="page">
-      <StatusModal 
-        status={status} 
-        defaultStatus="Teachers can upload PDF books subject-wise here." 
-        onClose={() => setStatus("Teachers can upload PDF books subject-wise here.")} 
-      />
+      <StatusModal status={status} defaultStatus="Teachers can upload PDF books subject-wise here." onClose={() => setStatus("Teachers can upload PDF books subject-wise here.")} />
       <section className="section-heading">
         <p className="eyebrow">Teacher Subject Library</p>
         <h2>Add PDF books for Maths, Science, or any subject</h2>
         <p>{status}</p>
       </section>
 
-      <section className="grid-two">
-        <article className="panel">
-          <h3>Upload Subject PDF</h3>
-          <form className="book-form stack" onSubmit={(event) => void handleSubmit(event)}>
+      {/* ── Upload Panel ────────────────────────────────────────────────────── */}
+      <article className="panel" style={{ marginBottom: "24px" }}>
+        {/* Tab bar */}
+        <div style={{ display: "flex", gap: "8px", marginBottom: "20px", borderBottom: "1px solid var(--color-border)", paddingBottom: "12px" }}>
+          {(["single", "batch"] as const).map(tab => (
+            <button key={tab} onClick={() => setUploadTab(tab)} style={{ padding: "6px 18px", borderRadius: "20px", border: "1.5px solid", fontWeight: 600, fontSize: "0.85rem", cursor: "pointer", transition: "all 0.15s", borderColor: uploadTab === tab ? "var(--color-primary, #2563eb)" : "var(--color-border)", background: uploadTab === tab ? "var(--color-primary, #2563eb)" : "transparent", color: uploadTab === tab ? "#fff" : "var(--color-text)" }}>
+              {tab === "single" ? "Single Book" : "Batch Upload"}
+            </button>
+          ))}
+          {uploadTab === "batch" && batchQueue.length > 0 && (
+            <span style={{ marginLeft: "auto", fontSize: "0.82rem", color: "var(--color-text-muted)", alignSelf: "center" }}>
+              {batchQueue.filter(i => i.status === "done").length}/{batchQueue.length} uploaded
+            </span>
+          )}
+        </div>
+
+        {uploadTab === "single" ? (
+          /* ── Single upload form ─────────────────────────────────────── */
+          <form className="book-form stack" onSubmit={(e) => void handleSubmit(e)}>
             <div className="grid-two">
               <label className="field">
                 <span>Class</span>
@@ -270,7 +270,6 @@ export function SubjectBooksPage() {
                   ))}
                 </select>
               </label>
-
               <label className="field">
                 <span>Stream</span>
                 <select value={selectedStreamId} onChange={(e) => { setSelectedStreamId(e.target.value); setSubjectId(""); }}>
@@ -279,469 +278,318 @@ export function SubjectBooksPage() {
                 </select>
               </label>
             </div>
-
-            <label className="field">
-              <span>Subject</span>
-              <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
-                <option value="">Select Subject</option>
-                {filteredSubjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </label>
-
+            <div className="grid-two">
+              <label className="field">
+                <span>Subject</span>
+                <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
+                  <option value="">Select Subject</option>
+                  {filteredSubjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </label>
+              <label className="field">
+                <span>Book Type</span>
+                <select value={bookType} onChange={(e) => setBookType(e.target.value as any)}>
+                  <option value="textbook">Text Book</option>
+                  <option value="reference">Reference Book</option>
+                  <option value="pyq">PYQ</option>
+                </select>
+              </label>
+            </div>
             <label className="field">
               <span>Book Title</span>
-              <input
-                type="text"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder="NCERT Mathematics Book"
-              />
+              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. NCERT Mathematics Class 11" />
             </label>
-
-            <label className="field">
-              <span>Book Type</span>
-              <select value={bookType} onChange={(e) => setBookType(e.target.value as any)}>
-                <option value="textbook">Text Book</option>
-                <option value="reference">Reference Book</option>
-                <option value="pyq">PYQ (Previous Year Question)</option>
-              </select>
-            </label>
-
-            <label className="field">
-              <span>PDF File</span>
-              <input
-                type="file"
-                accept="application/pdf"
-                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-              />
-            </label>
-
-            <label className="field" style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: "10px", marginTop: "5px", cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={ocr}
-                onChange={(event) => setOcr(event.target.checked)}
-                style={{ width: "18px", height: "18px", cursor: "pointer" }}
-              />
-              <span style={{ fontWeight: "normal", fontSize: "0.95rem" }}>OCR Scanned PDF (Make Searchable/Text-Enabled)</span>
-            </label>
-
-            <button className="primary-button" type="submit" disabled={!subjectId}>Upload PDF</button>
+            <div style={{ display: "flex", gap: "16px", alignItems: "flex-end" }}>
+              <label className="field" style={{ flex: 1 }}>
+                <span>PDF File</span>
+                <input type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+              </label>
+              <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: "8px", marginBottom: 0, paddingBottom: "4px" }}>
+                <input type="checkbox" checked={ocr} onChange={(e) => setOcr(e.target.checked)} style={{ width: "16px", height: "16px" }} />
+                <span style={{ fontWeight: "normal", fontSize: "0.88rem", whiteSpace: "nowrap" }}>OCR scan</span>
+              </label>
+            </div>
+            <button className="primary-button" type="submit" disabled={!subjectId || !file}>Upload PDF</button>
           </form>
-        </article>
+        ) : (
+          /* ── Batch upload ───────────────────────────────────────────── */
+          <div>
+            {/* Shared settings */}
+            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "16px" }}>
+              <label className="field" style={{ flex: "1 1 200px", margin: 0 }}>
+                <span style={{ fontSize: "0.8rem" }}>Default Subject</span>
+                <select value={batchSubjectId} onChange={(e) => { setBatchSubjectId(e.target.value); setBatchQueue(prev => prev.map(i => i.status === "pending" ? { ...i, subjectId: e.target.value } : i)); }}>
+                  <option value="">— Select subject —</option>
+                  {allSubjectsFlat.map(s => <option key={s.id} value={s.id}>{s.name} ({s.className})</option>)}
+                </select>
+              </label>
+              <label className="field" style={{ flex: "0 0 160px", margin: 0 }}>
+                <span style={{ fontSize: "0.8rem" }}>Default Type</span>
+                <select value={batchBookType} onChange={(e) => { setBatchBookType(e.target.value as any); setBatchQueue(prev => prev.map(i => i.status === "pending" ? { ...i, bookType: e.target.value as any } : i)); }}>
+                  <option value="textbook">Text Book</option>
+                  <option value="reference">Reference Book</option>
+                  <option value="pyq">PYQ</option>
+                </select>
+              </label>
+            </div>
 
-        <article className="panel">
-          <h3>Uploaded Books</h3>
-          {data.books.length === 0 ? (
-            <p>No books uploaded yet.</p>
-          ) : (
-            <ul className="plain-list">
-              {data.books.map((book) => {
-                const bookChapterId = selectedChapters[book.id] || "";
-                const bookSelectedTopicIds = selectedTopicsMap[book.id] || [];
-                const bookChapters = allChapters.filter(c => c.subjectId === book.subjectId && c.bookId === book.id);
-                const allChaptersSelected = bookChapterId === "__all__";
-                const bookTopics = allChaptersSelected
-                  ? allTopics.filter(t => t.bookId === book.id)
-                  : allTopics.filter(t => t.chapterId === bookChapterId && t.bookId === book.id);
+            {/* Drop zone */}
+            <div
+              onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+              onDragLeave={() => setIsDragOver(false)}
+              onDrop={handleDrop}
+              onClick={() => batchFileInputRef.current?.click()}
+              style={{ border: `2px dashed ${isDragOver ? "var(--color-primary, #2563eb)" : "var(--color-border)"}`, borderRadius: "12px", padding: "32px", textAlign: "center", cursor: "pointer", background: isDragOver ? "rgba(37,99,235,0.04)" : "var(--color-bg-secondary)", transition: "all 0.15s", marginBottom: "16px" }}
+            >
+              <div style={{ fontSize: "2rem", marginBottom: "8px" }}>📂</div>
+              <div style={{ fontWeight: 600, marginBottom: "4px" }}>Drop PDF files here</div>
+              <div style={{ fontSize: "0.82rem", color: "var(--color-text-muted)" }}>or click to select — you can pick hundreds at once</div>
+              <input ref={batchFileInputRef} type="file" accept="application/pdf" multiple style={{ display: "none" }} onChange={(e) => { if (e.target.files) addFilesToBatch(e.target.files); e.target.value = ""; }} />
+            </div>
 
-                return (
-                  <li key={book.id} className="panel" style={{ display: "block", marginBottom: "2rem", padding: "1.5rem", borderRadius: "12px", background: "white", border: "1px solid var(--color-border)" }}>
-                    {/* Book Info Section */}
-                    <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
-                      <div style={{ 
-                        background: "rgba(0, 128, 128, 0.1)", 
-                        color: "var(--color-primary)", 
-                        padding: "8px 16px", 
-                        borderRadius: "20px", 
-                        display: "inline-block", 
-                        fontSize: "0.75rem", 
-                        fontWeight: "bold",
-                        marginBottom: "0.5rem"
-                      }}>
-                        {book.bookType === "pyq" ? "PREVIOUS YEAR PAPER" : book.bookType === "textbook" ? "TEXT BOOK" : "REFERENCE BOOK"}
-                      </div>
-                      <h4 style={{ margin: "0.5rem 0", fontSize: "1.25rem" }}>{book.title}</h4>
-                      <p className="muted-copy" style={{ fontSize: "0.85rem" }}>
-                        {book.subjectName} • {new Date(book.uploadedAt).toLocaleDateString()}
-                      </p>
-                      
-                      <div style={{ display: "flex", gap: "10px", justifyContent: "center", marginTop: "1rem" }}>
-                        <a 
-                          className="secondary-button" 
-                          href={buildPublicAssetUrl(book.fileUrl)} 
-                          target="_blank" 
-                          rel="noreferrer"
-                          style={{ fontSize: "0.85rem", padding: "6px 16px" }}
-                        >
-                          View PDF
-                        </a>
-                        <button 
-                          className="secondary-button" 
-                          disabled={detectingForBook === book.id}
-                          onClick={() => handleDetectCurriculum(book.id)}
-                          style={{ fontSize: "0.85rem", padding: "6px 16px" }}
-                        >
-                          {detectingForBook === book.id ? "Analyzing..." : "Analyze Curriculum"}
-                        </button>
-                        <button 
-                          className="secondary-button" 
-                          style={{ color: "var(--color-error)", borderColor: "var(--color-error)", fontSize: "0.85rem", padding: "6px 16px" }}
-                          onClick={async () => {
-                            if (confirm(`Delete "${book.title}"?`)) {
-                              try {
-                                await apiClient.deleteSubjectBook(book.id);
-                                loadData();
-                              } catch (e) {
-                                alert("Failed to delete book");
-                              }
-                            }
-                          }}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
+            {/* Queue table */}
+            {batchQueue.length > 0 && (
+              <div style={{ overflowX: "auto", marginBottom: "16px" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.83rem" }}>
+                  <thead>
+                    <tr style={{ background: "var(--color-bg-secondary)", borderBottom: "2px solid var(--color-border)" }}>
+                      <th style={thS}>#</th>
+                      <th style={thS}>File</th>
+                      <th style={{ ...thS, minWidth: "200px" }}>Title</th>
+                      <th style={thS}>Subject</th>
+                      <th style={thS}>Type</th>
+                      <th style={thS}>OCR</th>
+                      <th style={thS}>Status</th>
+                      <th style={thS}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {batchQueue.map((item, idx) => (
+                      <tr key={idx} style={{ borderBottom: "1px solid var(--color-border)", background: item.status === "done" ? "#f0fdf4" : item.status === "error" ? "#fef2f2" : item.status === "uploading" ? "#eff6ff" : "transparent" }}>
+                        <td style={tdS}>{idx + 1}</td>
+                        <td style={{ ...tdS, maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={item.file.name}>{item.file.name}</td>
+                        <td style={tdS}>
+                          <input value={item.title} onChange={(e) => setBatchQueue(prev => prev.map((it, i) => i === idx ? { ...it, title: e.target.value } : it))} disabled={item.status !== "pending"} style={{ width: "100%", padding: "4px 8px", borderRadius: "6px", border: "1px solid var(--color-border)", fontSize: "0.82rem", background: item.status !== "pending" ? "transparent" : undefined }} />
+                        </td>
+                        <td style={tdS}>
+                          <select value={item.subjectId} onChange={(e) => setBatchQueue(prev => prev.map((it, i) => i === idx ? { ...it, subjectId: e.target.value } : it))} disabled={item.status !== "pending"} style={{ padding: "4px 6px", borderRadius: "6px", border: "1px solid var(--color-border)", fontSize: "0.8rem" }}>
+                            <option value="">—</option>
+                            {allSubjectsFlat.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </select>
+                        </td>
+                        <td style={tdS}>
+                          <select value={item.bookType} onChange={(e) => setBatchQueue(prev => prev.map((it, i) => i === idx ? { ...it, bookType: e.target.value as any } : it))} disabled={item.status !== "pending"} style={{ padding: "4px 6px", borderRadius: "6px", border: "1px solid var(--color-border)", fontSize: "0.8rem" }}>
+                            <option value="textbook">Text</option>
+                            <option value="reference">Ref</option>
+                            <option value="pyq">PYQ</option>
+                          </select>
+                        </td>
+                        <td style={{ ...tdS, textAlign: "center" }}>
+                          <input type="checkbox" checked={item.ocr} onChange={(e) => setBatchQueue(prev => prev.map((it, i) => i === idx ? { ...it, ocr: e.target.checked } : it))} disabled={item.status !== "pending"} />
+                        </td>
+                        <td style={{ ...tdS, fontWeight: 600, color: item.status === "done" ? "#16a34a" : item.status === "error" ? "#dc2626" : item.status === "uploading" ? "#2563eb" : "var(--color-text-muted)" }}>
+                          {item.status === "done" ? "✓ Done" : item.status === "error" ? `✗ ${item.error || "Error"}` : item.status === "uploading" ? "⏳..." : "Pending"}
+                        </td>
+                        <td style={tdS}>
+                          {item.status === "pending" && (
+                            <button onClick={() => setBatchQueue(prev => prev.filter((_, i) => i !== idx))} style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626", fontSize: "0.9rem", padding: "2px 6px" }}>✕</button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
-                    {/* Detected Curriculum Section */}
-                    {detectedCurriculum?.bookId === book.id && (
-                      <div style={{ 
-                        background: "rgba(0, 112, 243, 0.05)", 
-                        padding: "1.25rem", 
-                        borderRadius: "10px", 
-                        border: "1px solid var(--color-primary-light)",
-                        marginTop: "1.5rem",
-                        marginBottom: "1.5rem"
-                      }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-                          <strong style={{ fontSize: "0.95rem" }}>Detected Structure</strong>
-                          <button className="primary-button" style={{ padding: "4px 12px", fontSize: "0.8rem" }} onClick={() => handleImportCurriculum(book)}>
-                            Import to Subject
-                          </button>
-                        </div>
-                        <div style={{ maxHeight: "200px", overflowY: "auto", fontSize: "0.85rem" }}>
-                          {detectedCurriculum.chapters.map((ch, idx) => (
-                            <div key={idx} style={{ marginBottom: "10px", borderBottom: "1px solid rgba(0,0,0,0.05)", paddingBottom: "5px" }}>
-                              <div style={{ fontWeight: "bold" }}>{ch.name}</div>
-                              <div className="muted-copy" style={{ fontSize: "0.8rem", paddingLeft: "10px" }}>
-                                {ch.topics.join(", ")}
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button className="primary-button" disabled={batchUploading || batchQueue.filter(i => i.status === "pending").length === 0} onClick={() => void handleBatchUploadAll()}>
+                {batchUploading ? `Uploading...` : `Upload All (${batchQueue.filter(i => i.status === "pending").length} pending)`}
+              </button>
+              {batchQueue.length > 0 && !batchUploading && (
+                <button className="secondary-button" onClick={() => setBatchQueue([])}>Clear Queue</button>
+              )}
+              {batchQueue.some(i => i.status === "error") && (
+                <button className="secondary-button" onClick={() => setBatchQueue(prev => prev.map(i => i.status === "error" ? { ...i, status: "pending", error: undefined } : i))}>
+                  Retry Failed
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </article>
+
+      {/* ── Book Library ─────────────────────────────────────────────────────── */}
+      <article className="panel">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+          <div>
+            <h3 style={{ margin: 0 }}>Book Library</h3>
+            <span style={{ fontSize: "0.82rem", color: "var(--color-text-muted)" }}>{filteredBooks.length} of {data.books.length} books</span>
+          </div>
+          <input
+            type="text"
+            placeholder="Search by title or subject..."
+            value={bookFilter}
+            onChange={(e) => setBookFilter(e.target.value)}
+            style={{ padding: "8px 14px", borderRadius: "8px", border: "1px solid var(--color-border)", fontSize: "0.85rem", width: "260px" }}
+          />
+        </div>
+
+        {data.books.length === 0 ? (
+          <p className="muted-copy">No books uploaded yet.</p>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+              <thead>
+                <tr style={{ background: "var(--color-bg-secondary)", borderBottom: "2px solid var(--color-border)" }}>
+                  <th style={thS}>Type</th>
+                  <th style={thS}>Title</th>
+                  <th style={thS}>Subject</th>
+                  <th style={{ ...thS, textAlign: "center" }}>Pages</th>
+                  <th style={thS}>Uploaded</th>
+                  <th style={{ ...thS, textAlign: "center" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredBooks.map((book) => {
+                  const tc = typeColor(book.bookType || "textbook");
+                  const isExpanded = expandedBookId === book.id;
+                  const bookChapterId = selectedChapters[book.id] || "";
+                  const bookSelectedTopicIds = selectedTopicsMap[book.id] || [];
+                  const bookChapters = allChapters.filter(c => c.subjectId === book.subjectId && c.bookId === book.id);
+                  const allChaptersSelected = bookChapterId === "__all__";
+                  const bookTopics = allChaptersSelected
+                    ? allTopics.filter(t => t.bookId === book.id)
+                    : allTopics.filter(t => t.chapterId === bookChapterId && t.bookId === book.id);
+                  const prog = extractionProgress[book.id];
+                  const isExtracting = extractingForBook === book.id || prog?.status === "running";
+
+                  return (
+                    <>
+                      <tr key={book.id} style={{ borderBottom: isExpanded ? "none" : "1px solid var(--color-border)", cursor: "pointer" }} onClick={() => setExpandedBookId(isExpanded ? null : book.id)}>
+                        <td style={tdS}>
+                          <span style={{ fontSize: "0.72rem", padding: "2px 7px", borderRadius: "4px", background: tc.bg, color: tc.color, fontWeight: 700 }}>{typeLabel(book.bookType || "textbook")}</span>
+                        </td>
+                        <td style={{ ...tdS, fontWeight: 600 }}>{book.title}</td>
+                        <td style={tdS}><span className="tag" style={{ fontSize: "0.75rem" }}>{book.subjectName}</span></td>
+                        <td style={{ ...tdS, textAlign: "center", color: "var(--color-text-muted)" }}>{(book as any).pageCount ?? "—"}</td>
+                        <td style={{ ...tdS, color: "var(--color-text-muted)" }}>{new Date(book.uploadedAt).toLocaleDateString()}</td>
+                        <td style={{ ...tdS, textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
+                          <div style={{ display: "flex", gap: "6px", justifyContent: "center", alignItems: "center" }}>
+                            <a className="secondary-button" href={buildPublicAssetUrl(book.fileUrl)} target="_blank" rel="noreferrer" style={{ fontSize: "0.75rem", padding: "4px 10px" }}>PDF</a>
+                            <button className="secondary-button" style={{ fontSize: "0.75rem", padding: "4px 10px" }} onClick={() => setExpandedBookId(isExpanded ? null : book.id)}>
+                              {isExpanded ? "▲ Close" : "▼ Tools"}
+                            </button>
+                            <button style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626", fontSize: "1rem", padding: "2px 6px" }}
+                              onClick={async () => { if (confirm(`Delete "${book.title}"?`)) { try { await apiClient.deleteSubjectBook(book.id); loadData(); } catch { alert("Failed to delete"); } } }}>
+                              ✕
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Expanded AI tools row */}
+                      {isExpanded && (
+                        <tr key={`${book.id}-expanded`} style={{ borderBottom: "1px solid var(--color-border)" }}>
+                          <td colSpan={6} style={{ padding: "0 0 16px 0" }}>
+                            <div style={{ margin: "0 8px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+
+                              {/* AI Generator */}
+                              <div style={{ background: "var(--color-bg-secondary)", padding: "14px 16px", borderRadius: "10px", border: "1px solid var(--color-border)" }}>
+                                <div style={{ fontWeight: 700, fontSize: "0.85rem", marginBottom: "12px", display: "flex", justifyContent: "space-between" }}>
+                                  AI Question Generator <span className="tag muted" style={{ fontSize: "0.68rem" }}>STEM-AI</span>
+                                </div>
+                                <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
+                                  <select value={bookChapterId} onChange={(e) => { const val = e.target.value; setSelectedChapters(prev => ({ ...prev, [book.id]: val })); if (val === "__all__") { setSelectedTopicsMap(prev => ({ ...prev, [book.id]: allTopics.filter(t => t.bookId === book.id).map((t: any) => t.id) })); } else { setSelectedTopicsMap(prev => ({ ...prev, [book.id]: [] })); } }} style={{ flex: 1, padding: "6px 8px", borderRadius: "6px", border: "1px solid var(--color-border)", fontSize: "0.82rem", background: "white" }}>
+                                    <option value="">Chapter...</option>
+                                    <option value="__all__">— All Chapters —</option>
+                                    {bookChapters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                  </select>
+                                  <input type="number" min={1} max={20} value={questionCount} onChange={(e) => setQuestionCount(Number(e.target.value))} style={{ width: "60px", padding: "6px 8px", borderRadius: "6px", border: "1px solid var(--color-border)", fontSize: "0.82rem", background: "white" }} />
+                                  <button className="primary-button" style={{ fontSize: "0.8rem", padding: "6px 14px", whiteSpace: "nowrap" }} disabled={generatingForBook === book.id} onClick={() => void handleGenerateQuestions(book.id)}>
+                                    {generatingForBook === book.id ? "..." : "Generate"}
+                                  </button>
+                                </div>
+                                {generatingForBook === book.id && generationProgress && (
+                                  <div style={{ fontSize: "0.78rem", color: "#1e40af", background: "#eff6ff", padding: "8px 12px", borderRadius: "6px" }}>{generationProgress}</div>
+                                )}
+                                <button className="secondary-button" style={{ width: "100%", fontSize: "0.8rem", marginTop: "8px" }} disabled={detectingForBook === book.id} onClick={() => void handleDetectCurriculum(book.id)}>
+                                  {detectingForBook === book.id ? "Analyzing..." : "Analyze Curriculum"}
+                                </button>
+                                {detectedCurriculum?.bookId === book.id && (
+                                  <div style={{ marginTop: "10px", background: "rgba(0,112,243,0.05)", border: "1px solid var(--color-primary-light)", borderRadius: "8px", padding: "10px" }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                                      <strong style={{ fontSize: "0.82rem" }}>{detectedCurriculum.chapters.length} chapters detected</strong>
+                                      <div style={{ display: "flex", gap: "6px" }}>
+                                        <button className="primary-button" style={{ fontSize: "0.75rem", padding: "3px 10px" }} onClick={() => void handleImportCurriculum(book)}>Import</button>
+                                        <button className="text-link" style={{ fontSize: "0.75rem" }} onClick={() => setDetectedCurriculum(null)}>Close</button>
+                                      </div>
+                                    </div>
+                                    <div style={{ maxHeight: "120px", overflowY: "auto", fontSize: "0.78rem" }}>
+                                      {detectedCurriculum.chapters.map((ch, i) => (
+                                        <div key={i} style={{ marginBottom: "4px" }}><strong>{ch.name}</strong> <span style={{ color: "var(--color-text-muted)" }}>— {ch.topics.slice(0, 3).join(", ")}{ch.topics.length > 3 ? "…" : ""}</span></div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Extract + Answer Key */}
+                              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                                {/* MCQ Extraction */}
+                                <div style={{ background: "var(--color-bg-secondary)", padding: "14px 16px", borderRadius: "10px", border: "1px solid var(--color-border)", flex: 1 }}>
+                                  <div style={{ fontWeight: 700, fontSize: "0.85rem", marginBottom: "10px" }}>Extract PDF MCQs</div>
+                                  {book.bookType === "pyq" && (
+                                    <div style={{ display: "flex", gap: "6px", marginBottom: "8px", flexWrap: "wrap" }}>
+                                      <input type="number" placeholder="Year" value={pyqMeta[book.id]?.pyqYear ?? ""} onChange={e => setPyqMeta(prev => ({ ...prev, [book.id]: { ...prev[book.id], pyqYear: e.target.value } }))} style={{ width: "90px", padding: "5px 8px", borderRadius: "6px", border: "1px solid var(--color-border)", fontSize: "0.8rem" }} />
+                                      <select value={pyqMeta[book.id]?.pyqExamName ?? ""} onChange={e => setPyqMeta(prev => ({ ...prev, [book.id]: { ...prev[book.id], pyqExamName: e.target.value } }))} style={{ flex: 1, padding: "5px 8px", borderRadius: "6px", border: "1px solid var(--color-border)", fontSize: "0.8rem" }}>
+                                        <option value="">Exam (auto)</option>
+                                        <option value="JEE Mains">JEE Mains</option>
+                                        <option value="JEE Advanced">JEE Advanced</option>
+                                        <option value="NEET">NEET</option>
+                                        <option value="GUJCET">GUJCET</option>
+                                      </select>
+                                      <input type="text" placeholder="Session" value={pyqMeta[book.id]?.pyqSession ?? ""} onChange={e => setPyqMeta(prev => ({ ...prev, [book.id]: { ...prev[book.id], pyqSession: e.target.value } }))} style={{ width: "90px", padding: "5px 8px", borderRadius: "6px", border: "1px solid var(--color-border)", fontSize: "0.8rem" }} />
+                                    </div>
+                                  )}
+                                  {(isExtracting || prog?.status === "done" || prog?.status === "error") && (
+                                    <div style={{ fontSize: "0.78rem", padding: "6px 10px", borderRadius: "6px", marginBottom: "8px", background: prog?.status === "error" ? "#fff0f0" : prog?.status === "done" ? "#f0fff4" : "#f0f7ff", color: prog?.status === "error" ? "#c0392b" : prog?.status === "done" ? "#1a6b45" : "#1a4a7a" }}>
+                                      {prog?.message || "Starting..."}{prog?.status === "done" && prog.count ? ` (${prog.count} Q)` : ""}
+                                    </div>
+                                  )}
+                                  <button className="secondary-button" style={{ width: "100%", fontSize: "0.8rem" }} disabled={isExtracting} onClick={() => void handleExtractQuestions(book.id)}>
+                                    {isExtracting ? "Extracting..." : "📥 Extract to Bank"}
+                                  </button>
+                                </div>
+
+                                {/* Answer Key */}
+                                <div style={{ background: "var(--color-bg-secondary)", padding: "14px 16px", borderRadius: "10px", border: "1px solid var(--color-border)" }}>
+                                  <div style={{ fontWeight: 700, fontSize: "0.85rem", marginBottom: "10px", display: "flex", justifyContent: "space-between" }}>
+                                    Answer Key <span className="tag muted" style={{ fontSize: "0.68rem" }}>OVERRIDE AI</span>
+                                  </div>
+                                  {(book as any).answerKey && (
+                                    <div style={{ fontSize: "0.75rem", color: "var(--color-primary)", marginBottom: "6px", wordBreak: "break-all" }}>Saved: {(book as any).answerKey}</div>
+                                  )}
+                                  <div style={{ display: "flex", gap: "6px" }}>
+                                    <input type="text" placeholder="D,A,C,B,A,..." value={answerKeyInputs[book.id] || ""} onChange={e => setAnswerKeyInputs(prev => ({ ...prev, [book.id]: e.target.value }))} style={{ flex: 1, padding: "5px 8px", borderRadius: "6px", border: "1px solid var(--color-border)", fontSize: "0.82rem", fontFamily: "monospace" }} />
+                                    <button className="primary-button" style={{ fontSize: "0.8rem", padding: "5px 12px", whiteSpace: "nowrap" }} disabled={applyingAnswerKey === book.id} onClick={() => void handleApplyAnswerKey(book.id)}>
+                                      {applyingAnswerKey === book.id ? "..." : "Apply"}
+                                    </button>
+                                  </div>
+                                </div>
                               </div>
                             </div>
-                          ))}
-                        </div>
-                        <button 
-                          className="text-link" 
-                          style={{ marginTop: "10px", fontSize: "0.8rem" }} 
-                          onClick={() => setDetectedCurriculum(null)}
-                        >
-                          Close Preview
-                        </button>
-                      </div>
-                    )}
-
-
-                    {/* AI Tool Section - Vertical Stack */}
-                    <div style={{ 
-                      background: "var(--color-bg-secondary)", 
-                      padding: "1.25rem", 
-                      borderRadius: "10px", 
-                      border: "1px solid var(--color-border)",
-                      marginTop: "1.5rem"
-                    }}>
-                      <div style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem", marginBottom: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <strong style={{ fontSize: "0.9rem" }}>AI Question Generator</strong>
-                        <span className="tag muted" style={{ fontSize: "0.7rem" }}>STEM-AI</span>
-                      </div>
-
-                      <div className="stack" style={{ gap: "1rem" }}>
-                        <label className="field">
-                          <span>Select Chapter</span>
-                          <select
-                            value={bookChapterId}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setSelectedChapters(prev => ({ ...prev, [book.id]: val }));
-                              // Auto-select all topics when switching to All Chapters
-                              if (val === "__all__") {
-                                const allIds = allTopics.filter(t => t.bookId === book.id).map(t => t.id);
-                                setSelectedTopicsMap(prev => ({ ...prev, [book.id]: allIds }));
-                              } else {
-                                setSelectedTopicsMap(prev => ({ ...prev, [book.id]: [] }));
-                              }
-                            }}
-                            style={{ background: "white" }}
-                          >
-                            <option value="">Choose...</option>
-                            <option value="__all__">— All Chapters —</option>
-                            {bookChapters.map(c => (
-                              <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                          </select>
-                        </label>
-
-                        <div className="field">
-                          <span>Select Topics {allChaptersSelected && bookTopics.length > 0 && <span style={{ color: "var(--color-text-muted)", fontWeight: "normal", fontSize: "0.78rem" }}>({bookTopics.length} total)</span>}</span>
-                          <div style={{
-                            background: "white",
-                            border: "1px solid var(--color-border)",
-                            borderRadius: "8px",
-                            padding: "10px",
-                            maxHeight: "200px",
-                            overflowY: "auto",
-                            marginTop: "4px"
-                          }}>
-                            <label style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px", paddingBottom: "10px", borderBottom: "1px solid var(--color-border)", fontWeight: "bold", fontSize: "0.9rem" }}>
-                              <input
-                                type="checkbox"
-                                checked={bookTopics.length > 0 && bookSelectedTopicIds.length === bookTopics.length}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setSelectedTopicsMap(prev => ({ ...prev, [book.id]: bookTopics.map(t => t.id) }));
-                                  } else {
-                                    setSelectedTopicsMap(prev => ({ ...prev, [book.id]: [] }));
-                                  }
-                                }}
-                                style={{ margin: 0, flexShrink: 0, width: "auto" }}
-                              />
-                              <span>Select All Topics</span>
-                            </label>
-
-                            {allChaptersSelected ? (
-                              // Grouped by chapter when "All Chapters" selected
-                              bookChapters.map(chapter => {
-                                const chapterTopics = allTopics.filter(t => t.chapterId === chapter.id && t.bookId === book.id);
-                                if (chapterTopics.length === 0) return null;
-                                const allChecked = chapterTopics.every(t => bookSelectedTopicIds.includes(t.id));
-                                return (
-                                  <div key={chapter.id} style={{ marginBottom: "10px" }}>
-                                    <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.8rem", fontWeight: 700, color: "var(--color-text-muted)", marginBottom: "4px" }}>
-                                      <input
-                                        type="checkbox"
-                                        checked={allChecked}
-                                        onChange={(e) => {
-                                          const chapterIds = chapterTopics.map(t => t.id);
-                                          setSelectedTopicsMap(prev => {
-                                            const current = prev[book.id] || [];
-                                            const without = current.filter(id => !chapterIds.includes(id));
-                                            return { ...prev, [book.id]: e.target.checked ? [...without, ...chapterIds] : without };
-                                          });
-                                        }}
-                                        style={{ margin: 0, width: "auto" }}
-                                      />
-                                      {chapter.name}
-                                    </label>
-                                    {chapterTopics.map(t => (
-                                      <label key={t.id} style={{ display: "flex", alignItems: "flex-start", gap: "6px", marginBottom: "4px", fontSize: "0.82rem", lineHeight: "1.4", paddingLeft: "16px" }}>
-                                        <input
-                                          type="checkbox"
-                                          checked={bookSelectedTopicIds.includes(t.id)}
-                                          onChange={(e) => {
-                                            if (e.target.checked) {
-                                              setSelectedTopicsMap(prev => ({ ...prev, [book.id]: [...(prev[book.id] || []), t.id] }));
-                                            } else {
-                                              setSelectedTopicsMap(prev => ({ ...prev, [book.id]: (prev[book.id] || []).filter(id => id !== t.id) }));
-                                            }
-                                          }}
-                                          style={{ margin: "3px 0 0 0", flexShrink: 0, width: "auto" }}
-                                        />
-                                        <span style={{ flex: 1, textAlign: "left" }}>{t.name}</span>
-                                      </label>
-                                    ))}
-                                  </div>
-                                );
-                              })
-                            ) : (
-                              // Single chapter view (original)
-                              bookTopics.map(t => (
-                                <label key={t.id} style={{ display: "flex", alignItems: "flex-start", gap: "6px", marginBottom: "8px", fontSize: "0.85rem", lineHeight: "1.4" }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={bookSelectedTopicIds.includes(t.id)}
-                                    onChange={(e) => {
-                                      if (e.target.checked) {
-                                        setSelectedTopicsMap(prev => ({ ...prev, [book.id]: [...bookSelectedTopicIds, t.id] }));
-                                      } else {
-                                        setSelectedTopicsMap(prev => ({ ...prev, [book.id]: bookSelectedTopicIds.filter(id => id !== t.id) }));
-                                      }
-                                    }}
-                                    style={{ margin: "3px 0 0 0", flexShrink: 0, width: "auto" }}
-                                  />
-                                  <span style={{ flex: 1, textAlign: "left" }}>{t.name}</span>
-                                </label>
-                              ))
-                            )}
-
-                            {bookTopics.length === 0 && (
-                              <p className="muted-copy" style={{ fontSize: "0.8rem", margin: 0 }}>
-                                {bookChapterId ? "No topics found in this chapter." : "Select a chapter to see topics."}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                        <div style={{ display: "flex", gap: "10px", alignItems: "flex-end" }}>
-                          <label className="field" style={{ flex: 1 }}>
-                            <span>Count</span>
-                            <input 
-                              type="number" 
-                              min="1" 
-                              max="20" 
-                              value={questionCount} 
-                              onChange={(e) => setQuestionCount(Number(e.target.value))} 
-                              style={{ background: "white" }}
-                            />
-                          </label>
-                          <button
-                            className="primary-button"
-                            disabled={generatingForBook === book.id}
-                            onClick={() => void handleGenerateQuestions(book.id)}
-                            style={{ flex: 2, height: "42px" }}
-                          >
-                            {generatingForBook === book.id ? "Generating..." : "Generate AI Questions"}
-                          </button>
-                        </div>
-
-                        {generatingForBook === book.id && generationProgress && (
-                          <div style={{
-                            marginTop: "10px",
-                            padding: "10px 14px",
-                            borderRadius: "8px",
-                            fontSize: "0.82rem",
-                            background: "#eff6ff",
-                            border: "1px solid #bfdbfe",
-                            color: "#1e40af",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px"
-                          }}>
-                            <span style={{ display: "inline-block", width: "12px", height: "12px", borderRadius: "50%", border: "2px solid #3b82f6", borderTopColor: "transparent", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
-                            <span>{generationProgress}</span>
-                          </div>
-                        )}
-
-                        <div style={{ marginTop: "10px" }}>
-                          {(() => {
-                            const prog = extractionProgress[book.id];
-                            const isRunning = extractingForBook === book.id || prog?.status === "running";
-                            const isDone = prog?.status === "done";
-                            const isError = prog?.status === "error";
-                            return (
-                              <>
-                                {(isRunning || isDone || isError) && (
-                                  <div style={{
-                                    marginBottom: "8px",
-                                    padding: "10px 14px",
-                                    borderRadius: "8px",
-                                    fontSize: "0.82rem",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "10px",
-                                    background: isError ? "#fff0f0" : isDone ? "#f0fff4" : "#f0f7ff",
-                                    border: `1px solid ${isError ? "#ffcccc" : isDone ? "#b2dfdb" : "#b3d4f5"}`,
-                                    color: isError ? "#c0392b" : isDone ? "#1a6b45" : "#1a4a7a"
-                                  }}>
-                                    {isRunning && (
-                                      <span style={{ display: "inline-block", width: "14px", height: "14px", border: "2px solid #1a4a7a", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
-                                    )}
-                                    {isDone && <span style={{ fontSize: "1rem" }}>✓</span>}
-                                    {isError && <span style={{ fontSize: "1rem" }}>✗</span>}
-                                    <span style={{ flex: 1 }}>
-                                      {prog?.message || "Starting..."}
-                                      {isDone && prog?.count ? ` (${prog.count} questions)` : ""}
-                                    </span>
-                                  </div>
-                                )}
-                                {book.bookType === "pyq" && (
-                                  <div style={{ display: "flex", gap: "6px", marginBottom: "8px", flexWrap: "wrap" }}>
-                                    <input
-                                      type="number"
-                                      placeholder="Year (e.g. 2022)"
-                                      value={pyqMeta[book.id]?.pyqYear ?? ""}
-                                      onChange={e => setPyqMeta(prev => ({ ...prev, [book.id]: { ...prev[book.id], pyqYear: e.target.value } }))}
-                                      style={{ width: "130px", padding: "6px 8px", borderRadius: "6px", border: "1px solid var(--color-border)", fontSize: "0.82rem" }}
-                                    />
-                                    <select
-                                      value={pyqMeta[book.id]?.pyqExamName ?? ""}
-                                      onChange={e => setPyqMeta(prev => ({ ...prev, [book.id]: { ...prev[book.id], pyqExamName: e.target.value } }))}
-                                      style={{ flex: 1, minWidth: "120px", padding: "6px 8px", borderRadius: "6px", border: "1px solid var(--color-border)", fontSize: "0.82rem" }}
-                                    >
-                                      <option value="">Exam (auto-detect)</option>
-                                      <option value="JEE Mains">JEE Mains</option>
-                                      <option value="JEE Advanced">JEE Advanced</option>
-                                      <option value="NEET">NEET</option>
-                                      <option value="GUJCET">GUJCET</option>
-                                    </select>
-                                    <input
-                                      type="text"
-                                      placeholder="Session (e.g. Jan)"
-                                      value={pyqMeta[book.id]?.pyqSession ?? ""}
-                                      onChange={e => setPyqMeta(prev => ({ ...prev, [book.id]: { ...prev[book.id], pyqSession: e.target.value } }))}
-                                      style={{ width: "130px", padding: "6px 8px", borderRadius: "6px", border: "1px solid var(--color-border)", fontSize: "0.82rem" }}
-                                    />
-                                  </div>
-                                )}
-                                <button
-                                  className="secondary-button"
-                                  disabled={isRunning}
-                                  onClick={() => void handleExtractQuestions(book.id)}
-                                  style={{ width: "100%", height: "42px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
-                                >
-                                  <span>📥</span>
-                                  <span>{isRunning ? "Extracting MCQs..." : "Extract PDF MCQs directly to Bank"}</span>
-                                </button>
-                              </>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Answer Key Section */}
-                    <div style={{
-                      background: "var(--color-bg-secondary)",
-                      padding: "1.25rem",
-                      borderRadius: "10px",
-                      border: "1px solid var(--color-border)",
-                      marginTop: "1rem"
-                    }}>
-                      <div style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem", marginBottom: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <strong style={{ fontSize: "0.9rem" }}>Answer Key</strong>
-                        <span className="tag muted" style={{ fontSize: "0.7rem" }}>OVERRIDE AI ANSWERS</span>
-                      </div>
-                      {(book as any).answerKey && (
-                        <p style={{ fontSize: "0.78rem", color: "var(--color-primary)", marginBottom: "10px", wordBreak: "break-all" }}>
-                          Saved: {(book as any).answerKey}
-                        </p>
+                          </td>
+                        </tr>
                       )}
-                      <div style={{ display: "flex", gap: "8px", alignItems: "flex-end" }}>
-                        <label className="field" style={{ flex: 1, marginBottom: 0 }}>
-                          <span style={{ fontSize: "0.82rem" }}>Enter key (e.g. D,A,C,B,A or DACBA)</span>
-                          <input
-                            type="text"
-                            placeholder="D,A,C,B,A,D,..."
-                            value={answerKeyInputs[book.id] || ""}
-                            onChange={e => setAnswerKeyInputs(prev => ({ ...prev, [book.id]: e.target.value }))}
-                            style={{ background: "white", fontFamily: "monospace", letterSpacing: "0.05em" }}
-                          />
-                        </label>
-                        <button
-                          className="primary-button"
-                          disabled={applyingAnswerKey === book.id}
-                          onClick={() => void handleApplyAnswerKey(book.id)}
-                          style={{ height: "42px", whiteSpace: "nowrap" }}
-                        >
-                          {applyingAnswerKey === book.id ? "Applying..." : "Apply Key"}
-                        </button>
-                      </div>
-                    </div>
-
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </article>
-      </section>
+                    </>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </article>
 
       <article className="panel" style={{ marginTop: "30px" }}>
         <h3>Reference Papers</h3>
@@ -762,3 +610,6 @@ export function SubjectBooksPage() {
     </div>
   );
 }
+
+const thS: React.CSSProperties = { padding: "8px 12px", textAlign: "left", fontWeight: 600, fontSize: "0.78rem", color: "var(--color-text-muted)", whiteSpace: "nowrap" };
+const tdS: React.CSSProperties = { padding: "8px 12px", verticalAlign: "middle" };
