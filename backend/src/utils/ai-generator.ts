@@ -1911,7 +1911,8 @@ RULES:
 - Graphs and geometric figures: describe the axes and key features concisely in the question text (e.g. "The graph shows concentration on y-axis vs time on x-axis, with an exponential decay curve.").
 - Set hasDiagram: true if ANY drawn structural formula, graph, geometric figure, or chemical structure image appears in the question stem OR in the options.
 - Do NOT invent questions. If a page has no MCQ questions, return {"questions": []}.
-- NEVER leave an option value empty.
+- A question is cut off at the page/crop boundary when you cannot see its number, full stem, and all 4 options within this image. Do NOT guess or fill in missing options with placeholder text like "Not provided", "Not fully provided", "N/A", or similar — OMIT that entire question from the output instead. It is far better to skip a question than to return one with fabricated or incomplete options.
+- Every option value must be real text transcribed from the image. Never leave an option value empty AND never invent one — if you can't read it, the question must be omitted entirely.
 - Output ONLY valid JSON, no markdown fences.
 
 JSON FORMAT:
@@ -2594,7 +2595,26 @@ Return JSON:
     }
   }
 
-  return uniqueQuestions.map((q: any, i: number) => {
+  // Hard guard against placeholder options: when a question is cut off at a page/crop
+  // boundary, the model sometimes ignores the "omit it" instruction above and writes
+  // filler text (e.g. "Not provided", "Not fully provided in excerpt") instead. This
+  // check does not depend on the model's compliance — it inspects the actual option
+  // text and drops any question that clearly wasn't fully read from the page.
+  const placeholderPattern = /not (fully )?provided|not available|n\/a|unavailable|unknown|not visible|not shown|cannot be determined|unable to (read|extract)/i;
+  const groundedQuestions = uniqueQuestions.filter((q: any) => {
+    const values = (q.options || []).map((o: any) => String(o.value ?? "").trim());
+    if (values.some((v: string) => !v || placeholderPattern.test(v))) {
+      console.warn(`[Extract] Dropped Q${q._questionNumber ?? "?"} — placeholder/empty option text (page likely cut off mid-question): "${(q.prompt || "").slice(0, 60)}"`);
+      return false;
+    }
+    if (values.length >= 2 && new Set(values).size < values.length) {
+      console.warn(`[Extract] Dropped Q${q._questionNumber ?? "?"} — duplicate option values (extraction likely incomplete): "${(q.prompt || "").slice(0, 60)}"`);
+      return false;
+    }
+    return true;
+  });
+
+  return groundedQuestions.map((q: any, i: number) => {
     const correctOptionIds: string[] = [];
     const options: QuestionOption[] = (q.options || []).map((o: any, idx: number) => {
       const oId = `opt-pdf-${Date.now()}-${i}-${idx}-${Math.random().toString(36).substr(2, 4)}`;
