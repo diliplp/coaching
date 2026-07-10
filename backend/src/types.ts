@@ -103,6 +103,10 @@ export interface SubjectBook {
   extractionStatus?: "idle" | "running" | "done" | "error";
   extractionProgress?: string;
   extractionQuestionCount?: number;
+  /** Optional link to a separately-uploaded solution/answer-key book for this
+   * (usually bare, answer-free) question paper. Used to auto-derive correct
+   * answers without exposing them anywhere in this book's own file or crops. */
+  answerKeyBookId?: string;
 }
 
 export interface UserAccount {

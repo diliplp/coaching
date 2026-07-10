@@ -1706,6 +1706,18 @@ function shouldSkipPage(pageText: string): boolean {
  * Returns a map of questionNumber → option label ("A"|"B"|"C"|"D").
  * Works even if the answer key page was skipped by shouldSkipPage.
  */
+/**
+ * Public entry point for deriving a question-number → answer-letter map from an
+ * already-parsed book's text (e.g. a separately-uploaded solution/answer-key PDF
+ * for a bare question paper that has no answers of its own). Splits on the same
+ * "--- PAGE N ---" delimiter used throughout parsedText, then reuses extractAnswerKey.
+ */
+export async function extractAnswerKeyFromText(text: string): Promise<Map<number, string>> {
+  const parts = text.split(/--- PAGE \d+ ---/gi);
+  const pages = parts.map((p) => p.trim()).filter(Boolean);
+  return extractAnswerKey(pages.length > 0 ? pages : [text]);
+}
+
 async function extractAnswerKey(pages: string[], pdfPath?: string): Promise<Map<number, string>> {
   const answerMap = new Map<number, string>();
 

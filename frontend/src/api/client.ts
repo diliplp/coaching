@@ -235,6 +235,11 @@ export const apiClient = {
       `/subject-books/${bookId}/apply-answer-key`,
       { method: "POST", body: JSON.stringify({ answerKey }) }
     ),
+  applyAnswerKeyFromBook: (bookId: string, answerKeyBookId: string) =>
+    request<{ message: string; updatedCount: number; total: number; source: string }>(
+      `/subject-books/${bookId}/apply-answer-key`,
+      { method: "POST", body: JSON.stringify({ answerKeyBookId }) }
+    ),
   generateExam: (blueprintId: string) =>
     request<ExamPayload>(`/exams/generate/${blueprintId}`, {
       method: "POST"

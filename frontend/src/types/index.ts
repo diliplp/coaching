@@ -118,6 +118,7 @@ export interface SubjectBook {
   pageCount?: number;
   extractedAt?: string;
   answerKey?: string;
+  answerKeyBookId?: string;
 }
 
 export interface SubjectBooksResponse {

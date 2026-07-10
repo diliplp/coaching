@@ -18,7 +18,7 @@ import {
 } from "../utils/exam-engine.js";
 import path from "node:path";
 import { extractPdfText, extractPdfDiagrams, extractPdfQuestionCrops } from "../utils/pdf.js";
-import { generateQuestionsFromText, generateQuestionsFromBiologyFigures, ensureEnoughQuestions, parseExamPrompt, detectCurriculumFromText, generateOfflineBoardPaper, extractQuestionsFromPdfText, checkAiModelHealth } from "../utils/ai-generator.js";
+import { generateQuestionsFromText, generateQuestionsFromBiologyFigures, ensureEnoughQuestions, parseExamPrompt, detectCurriculumFromText, generateOfflineBoardPaper, extractQuestionsFromPdfText, checkAiModelHealth, extractAnswerKeyFromText } from "../utils/ai-generator.js";
 import { listReferencePapers } from "../utils/reference-papers.js";
 import { findUserByEmail, generateSessionId, requireAuth, requireRole, signAuthToken, validatePasswordStrength, verifyPassword } from "../utils/auth.js";
 import { createJob, emitJobEvent, subscribeToJob } from "../utils/sse-job-store.js";
@@ -893,10 +893,72 @@ apiRouter.post("/subject-books", requireRole(["super_admin"]), upload.single("pd
 
 apiRouter.post("/subject-books/:id/apply-answer-key", requireRole(["super_admin"]), async (req, res) => {
   const { id } = req.params;
-  const { answerKey } = req.body as { answerKey: string };
+  const { answerKey, answerKeyBookId } = req.body as { answerKey?: string; answerKeyBookId?: string };
 
+  const state = await getAppState();
+  const book = state.subjectBooks.find(b => b.id === id);
+  if (!book) {
+    res.status(404).json({ message: "Book not found" });
+    return;
+  }
+
+  // Sort book questions by questionNumber (the PDF question number stored during extraction)
+  const bookQuestions = state.questions
+    .filter((q: any) => q.bookId === id)
+    .sort((a: any, b: any) => (a.questionNumber ?? 9999) - (b.questionNumber ?? 9999));
+
+  // Path 1: auto-derive the answer key from a separately-uploaded solution/answer-key
+  // book (e.g. a bare question paper paired with a full worked-solution PDF). Matches
+  // by actual question number, not position, so it stays correct even if some
+  // questions were skipped during extraction.
+  if (answerKeyBookId) {
+    const answerKeyBook = state.subjectBooks.find(b => b.id === answerKeyBookId);
+    if (!answerKeyBook) {
+      res.status(404).json({ message: "Answer key book not found" });
+      return;
+    }
+    if (!answerKeyBook.parsedText) {
+      res.status(400).json({ message: "Answer key book has no parsed text. Was it fully processed?" });
+      return;
+    }
+
+    const answerMap = await extractAnswerKeyFromText(answerKeyBook.parsedText);
+    if (answerMap.size === 0) {
+      res.status(422).json({ message: "No answer key pattern (e.g. 'Ans. : A') was found in the linked book's text." });
+      return;
+    }
+
+    // Persist the link so the admin can see/re-run this later from the book record
+    (book as any).answerKeyBookId = answerKeyBookId;
+    await upsertRecord("subjectBooks", book);
+
+    let updatedCount = 0;
+    for (const q of bookQuestions as any[]) {
+      const qNum = q.questionNumber;
+      const correctLabel = qNum ? answerMap.get(qNum) : undefined;
+      if (!correctLabel) continue;
+      const matchingOpt = (q.options || []).find((o: any) => (o.label || "").toUpperCase() === correctLabel);
+      if (matchingOpt) {
+        q.correctOptionIds = [matchingOpt.id];
+        q.isVerified = true;
+        await upsertRecord("questions", q);
+        updatedCount++;
+      }
+    }
+
+    res.json({
+      message: `Answer key auto-detected from "${answerKeyBook.title}" and applied to ${updatedCount} of ${bookQuestions.length} questions`,
+      updatedCount,
+      total: bookQuestions.length,
+      source: "linked-book",
+      answerKeyBookId
+    });
+    return;
+  }
+
+  // Path 2: manually-typed answer key string (existing behavior, unchanged).
   if (!answerKey || typeof answerKey !== "string") {
-    res.status(400).json({ message: "answerKey string required (e.g. 'D,A,C,B,A' or 'DACBA')" });
+    res.status(400).json({ message: "Provide either answerKey (e.g. 'D,A,C,B,A' or 'DACBA') or answerKeyBookId." });
     return;
   }
 
@@ -912,21 +974,9 @@ apiRouter.post("/subject-books/:id/apply-answer-key", requireRole(["super_admin"
     return;
   }
 
-  const state = await getAppState();
-  const book = state.subjectBooks.find(b => b.id === id);
-  if (!book) {
-    res.status(404).json({ message: "Book not found" });
-    return;
-  }
-
   // Persist the answer key on the book for future reference
   (book as any).answerKey = letters.join(",");
   await upsertRecord("subjectBooks", book);
-
-  // Sort book questions by questionNumber (the PDF question number stored during extraction)
-  const bookQuestions = state.questions
-    .filter((q: any) => q.bookId === id)
-    .sort((a: any, b: any) => (a.questionNumber ?? 9999) - (b.questionNumber ?? 9999));
 
   let updatedCount = 0;
   for (let i = 0; i < bookQuestions.length && i < letters.length; i++) {
@@ -947,7 +997,8 @@ apiRouter.post("/subject-books/:id/apply-answer-key", requireRole(["super_admin"
     message: `Answer key applied to ${updatedCount} of ${bookQuestions.length} questions`,
     updatedCount,
     total: bookQuestions.length,
-    applied: letters.slice(0, bookQuestions.length)
+    applied: letters.slice(0, bookQuestions.length),
+    source: "manual"
   });
 });
 
@@ -1686,7 +1737,17 @@ apiRouter.get("/exams/:examId", async (req, res) => {
     const shuffledOrder = seededShuffle(exam.questions, seed);
     const orderedQuestions = shuffledOrder
       .map(gq => questions.find(q => q.id === gq.questionId))
-      .filter(Boolean);
+      .filter(Boolean)
+      // A student taking a live exam must never receive the answer key or
+      // explanation in the API response — grading happens server-side in
+      // evaluateExamSubmission() against the DB record, not against anything
+      // the client is sent, so these fields have no legitimate reason to be
+      // here and were previously leaking straight through (visible in the
+      // browser's network tab for the whole duration of the exam).
+      .map(q => {
+        const { correctOptionIds, explanation, ...rest } = q as any;
+        return rest;
+      });
 
     res.json({
       exam: { ...exam, questions: shuffledOrder },

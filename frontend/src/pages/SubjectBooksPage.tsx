@@ -59,6 +59,7 @@ export function SubjectBooksPage() {
   const [pyqMeta, setPyqMeta] = useState<Record<string, { pyqYear?: string; pyqExamName?: string; pyqSession?: string }>>({});
   const [answerKeyInputs, setAnswerKeyInputs] = useState<Record<string, string>>({});
   const [applyingAnswerKey, setApplyingAnswerKey] = useState<string | null>(null);
+  const [answerKeyBookSelections, setAnswerKeyBookSelections] = useState<Record<string, string>>({});
   const [extractionProgress, setExtractionProgress] = useState<Record<string, { status: string; message: string; count: number }>>({});
   const pollingRef = useRef<Record<string, ReturnType<typeof setInterval>>>({});
   const [detectingForBook, setDetectingForBook] = useState<string | null>(null);
@@ -212,6 +213,18 @@ export function SubjectBooksPage() {
     try {
       const result = await apiClient.applyAnswerKey(bookId, key);
       setStatus(`${result.message}. Applied: ${result.applied.join(", ")}`);
+    } catch (error: any) { setStatus(`Failed: ${error.message || "Unknown error"}`); }
+    finally { setApplyingAnswerKey(null); }
+  };
+
+  const handleApplyAnswerKeyFromBook = async (bookId: string) => {
+    const answerKeyBookId = answerKeyBookSelections[bookId];
+    if (!answerKeyBookId) { setStatus("Select a solution/answer-key PDF first."); return; }
+    setApplyingAnswerKey(bookId);
+    try {
+      const result = await apiClient.applyAnswerKeyFromBook(bookId, answerKeyBookId);
+      setStatus(result.message);
+      await loadData();
     } catch (error: any) { setStatus(`Failed: ${error.message || "Unknown error"}`); }
     finally { setApplyingAnswerKey(null); }
   };
@@ -570,6 +583,29 @@ export function SubjectBooksPage() {
                                   {(book as any).answerKey && (
                                     <div style={{ fontSize: "0.75rem", color: "var(--color-primary)", marginBottom: "6px", wordBreak: "break-all" }}>Saved: {(book as any).answerKey}</div>
                                   )}
+                                  {(book as any).answerKeyBookId && (
+                                    <div style={{ fontSize: "0.75rem", color: "var(--color-primary)", marginBottom: "6px" }}>
+                                      Linked to: {data.books.find(b => b.id === (book as any).answerKeyBookId)?.title || (book as any).answerKeyBookId}
+                                    </div>
+                                  )}
+                                  {/* Auto-detect from a separately-uploaded solution PDF (e.g. this book is the
+                                      bare question paper; the linked one has "Ans. : X" below each question). */}
+                                  <div style={{ display: "flex", gap: "6px", marginBottom: "8px" }}>
+                                    <select
+                                      value={answerKeyBookSelections[book.id] || ""}
+                                      onChange={e => setAnswerKeyBookSelections(prev => ({ ...prev, [book.id]: e.target.value }))}
+                                      style={{ flex: 1, padding: "5px 8px", borderRadius: "6px", border: "1px solid var(--color-border)", fontSize: "0.78rem" }}
+                                    >
+                                      <option value="">Auto-detect from solution PDF...</option>
+                                      {data.books.filter(b => b.subjectId === book.subjectId && b.id !== book.id).map(b => (
+                                        <option key={b.id} value={b.id}>{b.title}</option>
+                                      ))}
+                                    </select>
+                                    <button className="secondary-button" style={{ fontSize: "0.8rem", padding: "5px 12px", whiteSpace: "nowrap" }} disabled={applyingAnswerKey === book.id || !answerKeyBookSelections[book.id]} onClick={() => void handleApplyAnswerKeyFromBook(book.id)}>
+                                      {applyingAnswerKey === book.id ? "..." : "Auto-Apply"}
+                                    </button>
+                                  </div>
+                                  <div style={{ fontSize: "0.7rem", color: "var(--color-text-secondary)", marginBottom: "6px" }}>— or type it manually —</div>
                                   <div style={{ display: "flex", gap: "6px" }}>
                                     <input type="text" placeholder="D,A,C,B,A,..." value={answerKeyInputs[book.id] || ""} onChange={e => setAnswerKeyInputs(prev => ({ ...prev, [book.id]: e.target.value }))} style={{ flex: 1, padding: "5px 8px", borderRadius: "6px", border: "1px solid var(--color-border)", fontSize: "0.82rem", fontFamily: "monospace" }} />
                                     <button className="primary-button" style={{ fontSize: "0.8rem", padding: "5px 12px", whiteSpace: "nowrap" }} disabled={applyingAnswerKey === book.id} onClick={() => void handleApplyAnswerKey(book.id)}>
