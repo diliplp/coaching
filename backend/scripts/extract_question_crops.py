@@ -62,9 +62,13 @@ def find_question_positions(doc):
                 line_text = "".join(sp.get("text", "") for sp in spans).strip()
 
                 # Format A: isolated number span  "1."  or  "1)"
-                isolated = re.match(r'^(\d{1,2})[.)]$', span_text)
                 # Format B: number at start of combined line  "1. Question..."
-                combined = re.match(r'^(\d{1,2})[.)]\s', line_text)
+                # Capped at 3 digits (1-999) — 2 digits would silently stop detecting
+                # question boundaries at #100, making every later question's crop
+                # extend until the next 2-digit-or-fewer number it can see, sometimes
+                # swallowing several unrelated questions into one oversized image.
+                isolated = re.match(r'^(\d{1,3})[.)]$', span_text)
+                combined = re.match(r'^(\d{1,3})[.)]\s', line_text)
 
                 m = isolated or combined
                 if m and x0 < pw * 0.20:
