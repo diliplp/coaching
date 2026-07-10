@@ -54,6 +54,16 @@ export function Layout() {
             <strong>{session.user.name}</strong>
             <span>{session.user.role}</span>
             <span style={{ fontSize: "0.7rem", opacity: 0.6 }}>{session.user.email}</span>
+            {!isCollapsed && (
+              <button
+                type="button"
+                className="secondary-button"
+                style={{ fontSize: "0.78rem", padding: "4px 10px" }}
+                onClick={() => navigate("/change-password")}
+              >
+                Change Password
+              </button>
+            )}
             <button
               type="button"
               className="secondary-button"

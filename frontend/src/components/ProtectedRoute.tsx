@@ -9,6 +9,10 @@ export function ProtectedRoute({ children, roles }: { children: ReactElement; ro
     return <Navigate to="/login" replace />;
   }
 
+  if (session.user.mustChangePassword) {
+    return <Navigate to="/change-password" replace />;
+  }
+
   if (roles && !roles.includes(session.user.role)) {
     return <Navigate to="/" replace />;
   }

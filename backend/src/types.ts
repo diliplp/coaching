@@ -114,6 +114,7 @@ export interface UserAccount {
   studentId?: string;
   sessionId?: string;
   sessionStartedAt?: string | null;
+  mustChangePassword?: boolean;
 }
 
 export interface AuthTokenPayload {
@@ -187,6 +188,8 @@ export interface GeneratedExamQuestion {
   questionId: string;
   order: number;
   optionOrderIds?: string[];
+  marksOverride?: number;         // exam-specific mark (manual exam builder)
+  negativeMarksOverride?: number; // exam-specific negative mark (manual exam builder)
 }
 
 export interface Exam {

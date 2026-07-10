@@ -201,6 +201,7 @@ export interface AuthUser {
   email: string;
   role: "super_admin" | "teacher" | "student";
   studentId: string | null;
+  mustChangePassword?: boolean;
 }
 
 export interface AuthResponse {
@@ -238,6 +239,19 @@ export interface BatchAdaptivePlan {
   durationMinutes: number;
   topics: AdaptivePlanTopic[];
   summary: string;
+}
+
+export interface ManualExamRequest {
+  name: string;
+  batchId: string;
+  durationMinutes: number;
+  scheduledStartTime?: string;
+  scheduledEndTime?: string;
+  questions: Array<{
+    questionId: string;
+    marks: number;
+    negativeMarks: number;
+  }>;
 }
 
 export interface ReferencePaper {

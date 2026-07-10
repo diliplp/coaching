@@ -299,7 +299,8 @@ adminRouter.post("/users", async (req, res) => {
     email,
     role,
     passwordHash,
-    studentId
+    studentId,
+    mustChangePassword: true
   };
 
   await upsertRecord("users", newUser);

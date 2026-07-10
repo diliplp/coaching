@@ -1,9 +1,20 @@
 import { useEffect, useState } from "react";
 import { apiClient, buildPublicAssetUrl } from "../api/client";
-import type { QuestionBankResponse, SubjectBook } from "../types";
+import type { OverviewResponse, QuestionBankResponse, SubjectBook } from "../types";
 import { RichText } from "../components/RichText";
 import { MathTextarea } from "../components/MathTextarea";
 import { getStoredSession } from "../auth";
+
+type SelectedQuestion = {
+  questionId: string;
+  marks: number;
+  negativeMarks: number;
+  prompt: string;
+  type: string;
+  difficulty: string;
+  topicName: string;
+  subjectName: string;
+};
 
 export function QuestionBankPage() {
   const [data, setData] = useState<QuestionBankResponse | null>(null);
@@ -41,6 +52,17 @@ export function QuestionBankPage() {
   const [activeQuestionIdForPdf, setActiveQuestionIdForPdf] = useState<string>("");
   const [pdfPageNumber, setPdfPageNumber] = useState<number>(1);
 
+  // Manual exam builder state
+  const [selectedForExam, setSelectedForExam] = useState<Map<string, SelectedQuestion>>(new Map());
+  const [isBuilderOpen, setIsBuilderOpen] = useState(false);
+  const [examName, setExamName] = useState("");
+  const [examBatchId, setExamBatchId] = useState("");
+  const [examDuration, setExamDuration] = useState(60);
+  const [examScheduleStart, setExamScheduleStart] = useState("");
+  const [examScheduleEnd, setExamScheduleEnd] = useState("");
+  const [overviewData, setOverviewData] = useState<OverviewResponse | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+
   const session = getStoredSession();
   const isTeacher = session?.user.role === "super_admin" || session?.user.role === "teacher";
 
@@ -51,7 +73,72 @@ export function QuestionBankPage() {
   useEffect(() => {
     refreshData();
     apiClient.getSubjectBooks().then(res => setBooks(res.books)).catch(console.error);
+    apiClient.getOverview().then(setOverviewData).catch(console.error);
   }, []);
+
+  const toggleQuestionSelection = (question: any) => {
+    setSelectedForExam(prev => {
+      const next = new Map(prev);
+      if (next.has(question.id)) {
+        next.delete(question.id);
+      } else {
+        next.set(question.id, {
+          questionId: question.id,
+          marks: question.marks,
+          negativeMarks: question.negativeMarks,
+          prompt: question.prompt,
+          type: question.type,
+          difficulty: question.difficulty,
+          topicName: question.topicName || "",
+          subjectName: question.subjectName || ""
+        });
+      }
+      return next;
+    });
+  };
+
+  const updateSelectedMarks = (questionId: string, field: "marks" | "negativeMarks", value: number) => {
+    setSelectedForExam(prev => {
+      const next = new Map(prev);
+      const item = next.get(questionId);
+      if (item) next.set(questionId, { ...item, [field]: value });
+      return next;
+    });
+  };
+
+  const handleGenerateManualExam = async () => {
+    if (!examName.trim() || !examBatchId) {
+      alert("Exam name and batch are required");
+      return;
+    }
+    setIsGenerating(true);
+    try {
+      await apiClient.buildManualExam({
+        name: examName,
+        batchId: examBatchId,
+        durationMinutes: examDuration,
+        scheduledStartTime: examScheduleStart || undefined,
+        scheduledEndTime: examScheduleEnd || undefined,
+        questions: Array.from(selectedForExam.values()).map(q => ({
+          questionId: q.questionId,
+          marks: q.marks,
+          negativeMarks: q.negativeMarks
+        }))
+      });
+      setSelectedForExam(new Map());
+      setIsBuilderOpen(false);
+      setExamName("");
+      setExamBatchId("");
+      setExamDuration(60);
+      setExamScheduleStart("");
+      setExamScheduleEnd("");
+      alert("Exam created successfully!");
+    } catch (e: any) {
+      alert(e?.message || "Failed to create exam");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   if (!data) {
     return <p>Loading question bank...</p>;
@@ -223,6 +310,15 @@ export function QuestionBankPage() {
               >
                 Delete Entire Bank
               </button>
+              {selectedForExam.size > 0 && (
+                <button
+                  className="primary-button"
+                  style={{ background: "#7c3aed", borderColor: "#7c3aed" }}
+                  onClick={() => setIsBuilderOpen(true)}
+                >
+                  Build Exam ({selectedForExam.size})
+                </button>
+              )}
               <button className="primary-button" onClick={() => handleOpenForm()}>
                 + Add Question
               </button>
@@ -532,7 +628,16 @@ export function QuestionBankPage() {
                     }}
                   >
                     <div className="row-between">
-                      <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                        {isTeacher && (
+                          <input
+                            type="checkbox"
+                            checked={selectedForExam.has(question.id)}
+                            onChange={() => toggleQuestionSelection(question)}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#7c3aed" }}
+                          />
+                        )}
                         <span className="tag">{question.subjectName}</span>
                         <span className="tag muted" style={{ marginLeft: "5px" }}>{question.topicName}</span>
                         {question.pageNumber && (
@@ -591,16 +696,28 @@ export function QuestionBankPage() {
       ) : (
         <div className="question-grid">
           {filteredQuestions.map((question: any) => (
-            <article className="panel question-card" key={question.id}>
+            <article
+              className="panel question-card"
+              key={question.id}
+              style={selectedForExam.has(question.id) ? { border: "2px solid #7c3aed", background: "#faf5ff" } : {}}
+            >
               <div className="row-between">
-                <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                  {isTeacher && (
+                    <input
+                      type="checkbox"
+                      checked={selectedForExam.has(question.id)}
+                      onChange={() => toggleQuestionSelection(question)}
+                      style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#7c3aed" }}
+                    />
+                  )}
                   <span className="tag">{question.subjectName}</span>
                   <span className="tag muted" style={{ marginLeft: "5px" }}>{question.topicName}</span>
                   {question.sourceType && (
-                    <span 
-                      className="tag" 
-                      style={{ 
-                        marginLeft: "5px", 
+                    <span
+                      className="tag"
+                      style={{
+                        marginLeft: "5px",
                         background: question.sourceType === "pyq" ? "#fff3cd" : (question.sourceType === "reference" ? "#d1ecf1" : "#e2e3e5"),
                         color: question.sourceType === "pyq" ? "#856404" : (question.sourceType === "reference" ? "#0c5460" : "#383d41"),
                         borderColor: question.sourceType === "pyq" ? "#ffeeba" : (question.sourceType === "reference" ? "#bee5eb" : "#d6d8db")
@@ -660,6 +777,202 @@ export function QuestionBankPage() {
               )}
             </article>
           ))}
+        </div>
+      )}
+
+      {/* Sticky bottom bar — shows when questions are selected */}
+      {isTeacher && selectedForExam.size > 0 && (
+        <div style={{
+          position: "fixed",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          background: "#7c3aed",
+          color: "white",
+          padding: "14px 24px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          zIndex: 100,
+          boxShadow: "0 -4px 20px rgba(124,58,237,0.3)"
+        }}>
+          <div style={{ display: "flex", gap: "20px", alignItems: "center" }}>
+            <strong>{selectedForExam.size} question{selectedForExam.size !== 1 ? "s" : ""} selected</strong>
+            <span style={{ opacity: 0.85 }}>
+              Total marks: {Array.from(selectedForExam.values()).reduce((s, q) => s + q.marks, 0)}
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: "10px" }}>
+            <button
+              onClick={() => setSelectedForExam(new Map())}
+              style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.4)", color: "white", padding: "8px 16px", borderRadius: "6px", cursor: "pointer" }}
+            >
+              Clear
+            </button>
+            <button
+              onClick={() => setIsBuilderOpen(true)}
+              style={{ background: "white", border: "none", color: "#7c3aed", padding: "8px 20px", borderRadius: "6px", fontWeight: "bold", cursor: "pointer" }}
+            >
+              Review & Build Exam
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Exam Builder Drawer */}
+      {isBuilderOpen && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 200,
+          display: "flex"
+        }}>
+          {/* Backdrop */}
+          <div
+            style={{ flex: 1, background: "rgba(0,0,0,0.4)" }}
+            onClick={() => setIsBuilderOpen(false)}
+          />
+          {/* Drawer panel */}
+          <div style={{
+            width: "min(520px, 95vw)",
+            background: "var(--color-bg)",
+            height: "100%",
+            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
+            boxShadow: "-4px 0 24px rgba(0,0,0,0.15)"
+          }}>
+            <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--color-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Manual Exam Builder</p>
+                <h3 style={{ margin: "4px 0 0" }}>{selectedForExam.size} Questions</h3>
+              </div>
+              <button onClick={() => setIsBuilderOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.4rem", color: "var(--color-text-muted)" }}>✕</button>
+            </div>
+
+            {/* Question list with editable marks */}
+            <div style={{ padding: "16px 24px", flex: 1 }}>
+              <p style={{ fontSize: "0.85rem", color: "var(--color-text-muted)", margin: "0 0 12px" }}>
+                Adjust per-question marks below. These apply only to this exam — the question bank is unchanged.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "24px" }}>
+                {Array.from(selectedForExam.values()).map((q, idx) => (
+                  <div key={q.questionId} style={{ padding: "12px", border: "1px solid var(--color-border)", borderRadius: "8px", background: "var(--color-bg-secondary)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: "0 0 4px", fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
+                          #{idx + 1} · {q.subjectName} · {q.topicName} · <em>{q.difficulty}</em>
+                        </p>
+                        <p style={{ margin: 0, fontSize: "0.88rem", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                          {q.prompt.replace(/<[^>]+>/g, "").slice(0, 120)}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const next = new Map(selectedForExam);
+                          next.delete(q.questionId);
+                          setSelectedForExam(next);
+                        }}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-muted)", fontSize: "1.1rem", padding: "0 4px", flexShrink: 0 }}
+                        title="Remove"
+                      >✕</button>
+                    </div>
+                    <div style={{ display: "flex", gap: "12px", marginTop: "10px" }}>
+                      <label style={{ flex: 1 }}>
+                        <span style={{ display: "block", fontSize: "0.75rem", color: "var(--color-text-muted)", marginBottom: "3px" }}>Marks (+)</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.5}
+                          value={q.marks}
+                          onChange={e => updateSelectedMarks(q.questionId, "marks", Number(e.target.value))}
+                          style={{ width: "100%", padding: "5px 8px", border: "1px solid var(--color-border)", borderRadius: "5px", background: "var(--color-bg)", color: "var(--color-text)" }}
+                        />
+                      </label>
+                      <label style={{ flex: 1 }}>
+                        <span style={{ display: "block", fontSize: "0.75rem", color: "var(--color-text-muted)", marginBottom: "3px" }}>Negative (−)</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.25}
+                          value={q.negativeMarks}
+                          onChange={e => updateSelectedMarks(q.questionId, "negativeMarks", Number(e.target.value))}
+                          style={{ width: "100%", padding: "5px 8px", border: "1px solid var(--color-border)", borderRadius: "5px", background: "var(--color-bg)", color: "var(--color-text)" }}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Exam config */}
+              <div style={{ borderTop: "1px solid var(--color-border)", paddingTop: "20px" }}>
+                <h4 style={{ margin: "0 0 14px" }}>Exam Settings</h4>
+                <div className="stack" style={{ gap: "12px" }}>
+                  <label className="field" style={{ margin: 0 }}>
+                    <span>Exam Name</span>
+                    <input
+                      type="text"
+                      value={examName}
+                      onChange={e => setExamName(e.target.value)}
+                      placeholder="e.g. Chapter 3 Practice Test"
+                    />
+                  </label>
+                  <label className="field" style={{ margin: 0 }}>
+                    <span>Batch</span>
+                    <select value={examBatchId} onChange={e => setExamBatchId(e.target.value)}>
+                      <option value="">Select batch...</option>
+                      {overviewData?.batches.map(b => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field" style={{ margin: 0 }}>
+                    <span>Duration (minutes)</span>
+                    <input
+                      type="number"
+                      min={5}
+                      value={examDuration}
+                      onChange={e => setExamDuration(Number(e.target.value))}
+                    />
+                  </label>
+                  <div className="grid-two" style={{ gap: "12px" }}>
+                    <label className="field" style={{ margin: 0 }}>
+                      <span>Scheduled Start (optional)</span>
+                      <input
+                        type="datetime-local"
+                        value={examScheduleStart}
+                        onChange={e => setExamScheduleStart(e.target.value)}
+                      />
+                    </label>
+                    <label className="field" style={{ margin: 0 }}>
+                      <span>Scheduled End (optional)</span>
+                      <input
+                        type="datetime-local"
+                        value={examScheduleEnd}
+                        onChange={e => setExamScheduleEnd(e.target.value)}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: "20px", padding: "12px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", fontSize: "0.85rem", color: "#166534" }}>
+                  <strong>Summary:</strong> {selectedForExam.size} questions •{" "}
+                  Total {Array.from(selectedForExam.values()).reduce((s, q) => s + q.marks, 0)} marks •{" "}
+                  {examDuration} min
+                </div>
+
+                <button
+                  className="primary-button"
+                  style={{ width: "100%", marginTop: "16px", padding: "12px", fontSize: "1rem" }}
+                  onClick={handleGenerateManualExam}
+                  disabled={isGenerating || !examName.trim() || !examBatchId}
+                >
+                  {isGenerating ? "Creating exam…" : "Create Exam"}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

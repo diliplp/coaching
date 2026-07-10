@@ -17,7 +17,11 @@ export function LoginPage() {
     try {
       const session = await apiClient.login({ email, password, role });
       storeSession(session);
-      navigate("/", { replace: true });
+      if (session.user.mustChangePassword) {
+        navigate("/change-password", { replace: true });
+      } else {
+        navigate("/", { replace: true });
+      }
     } catch (error: any) {
       console.error(error);
       setStatus(error?.message || "Unable to sign in. Check credentials or backend connection.");

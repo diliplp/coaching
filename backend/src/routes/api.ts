@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import bcrypt from "bcryptjs";
 import { Router, Request, Response } from "express";
 import multer from "multer";
 import { getAppState, getRecord, listRecords, upsertRecord, deleteRecord } from "../data/database.js";
@@ -6,6 +7,7 @@ import { booksUploadsRoot } from "../utils/paths.js";
 import {
   buildAdaptiveExamPlan,
   buildBatchAdaptivePlan,
+  buildManualExam,
   evaluateExamSubmission,
   generateAdaptiveExam,
   generateCombinedExam,
@@ -20,7 +22,7 @@ import { generateQuestionsFromText, generateQuestionsFromBiologyFigures, ensureE
 import { listReferencePapers } from "../utils/reference-papers.js";
 import { findUserByEmail, generateSessionId, requireAuth, requireRole, signAuthToken, verifyPassword } from "../utils/auth.js";
 import { createJob, emitJobEvent, subscribeToJob } from "../utils/sse-job-store.js";
-import type { Admission, AuthenticatedRequest, BatchNode, ExamSession, Question, QuestionSource, SubjectBook } from "../types.js";
+import type { Admission, AuthenticatedRequest, BatchNode, ExamSession, Question, QuestionSource, SubjectBook, UserAccount } from "../types.js";
 import { encrypt } from "../utils/encryption.js";
 
 export const apiRouter = Router();
@@ -118,7 +120,8 @@ apiRouter.post("/auth/login", async (req, res) => {
     name: updatedUser.name,
     email: updatedUser.email,
     role: updatedUser.role,
-    studentId: updatedUser.studentId ?? null
+    studentId: updatedUser.studentId ?? null,
+    mustChangePassword: updatedUser.mustChangePassword ?? false
   };
 
   res.json({ token, user: safeUser });
@@ -132,6 +135,49 @@ apiRouter.post("/auth/logout", requireAuth, async (req, res) => {
     await upsertRecord("users", { ...user, sessionId: "", sessionStartedAt: null });
   }
   res.status(204).end();
+});
+
+apiRouter.post("/auth/change-password", requireAuth, async (req, res) => {
+  const auth = (req as AuthenticatedRequest).auth;
+  const { currentPassword, newPassword } = req.body as { currentPassword?: string; newPassword?: string };
+
+  if (!currentPassword || !newPassword) {
+    res.status(400).json({ message: "currentPassword and newPassword are required" });
+    return;
+  }
+
+  if (newPassword.length < 6) {
+    res.status(400).json({ message: "New password must be at least 6 characters" });
+    return;
+  }
+
+  const state = await getAppState();
+  const user = state.users.find(u => u.id === auth?.sub);
+  if (!user?.passwordHash) {
+    res.status(404).json({ message: "User not found" });
+    return;
+  }
+
+  const valid = await verifyPassword(currentPassword, user.passwordHash);
+  if (!valid) {
+    res.status(401).json({ message: "Current password is incorrect" });
+    return;
+  }
+
+  const newHash = await bcrypt.hash(newPassword, 10);
+  const updatedUser: UserAccount = { ...user, passwordHash: newHash, mustChangePassword: false };
+  await upsertRecord("users", updatedUser);
+
+  const token = signAuthToken(updatedUser);
+  const safeUser = {
+    id: updatedUser.id,
+    name: updatedUser.name,
+    email: updatedUser.email,
+    role: updatedUser.role,
+    studentId: updatedUser.studentId ?? null,
+    mustChangePassword: false
+  };
+  res.json({ token, user: safeUser });
 });
 
 apiRouter.get("/debug-env", async (req, res) => {
@@ -1319,6 +1365,18 @@ apiRouter.post("/exams/generate-combined", requireRole(["super_admin", "teacher"
   res.status(201).json({
     exam: generated,
     questions: await getExamQuestions(generated.id)
+  });
+});
+
+apiRouter.post("/exams/build-manual", requireRole(["super_admin", "teacher"]), async (req, res) => {
+  const result = await buildManualExam(req.body);
+  if ("error" in result) {
+    res.status(400).json({ message: result.error });
+    return;
+  }
+  res.status(201).json({
+    exam: result,
+    questions: await getExamQuestions(result.id)
   });
 });
 

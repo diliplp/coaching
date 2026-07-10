@@ -46,6 +46,7 @@ import { MyResultsPage } from "./pages/MyResultsPage";
 import { AdmissionFormPage } from "./pages/AdmissionFormPage";
 import { AdminAdmissionsPage } from "./pages/AdminAdmissionsPage";
 import { SyllabusTrackerPage } from "./pages/SyllabusTrackerPage";
+import { ChangePasswordPage } from "./pages/ChangePasswordPage";
 import { getStoredSession, clearSession } from "./auth";
 import { apiClient } from "./api/client";
 
@@ -108,6 +109,7 @@ export default function App() {
     >
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/change-password" element={<ChangePasswordPage />} />
         <Route path="/apply" element={<AdmissionFormPage />} />
         <Route
           element={

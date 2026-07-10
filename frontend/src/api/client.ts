@@ -6,6 +6,7 @@ import type {
   CombinedExamRequest,
   ExamPayload,
   ExamResult,
+  ManualExamRequest,
   OverviewResponse,
   QuestionBankResponse,
   SubjectBook,
@@ -159,6 +160,11 @@ export const apiClient = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
+  changePassword: (payload: { currentPassword: string; newPassword: string }) =>
+    request<AuthResponse>("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
   logout: () =>
     request<void>("/auth/logout", { method: "POST" }),
   getMe: () => request<AuthResponse["user"]>("/me"),
@@ -240,6 +246,11 @@ export const apiClient = {
     }),
   generateCombinedExam: (payload: CombinedExamRequest) =>
     request<ExamPayload>("/exams/generate-combined", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  buildManualExam: (payload: ManualExamRequest) =>
+    request<ExamPayload>("/exams/build-manual", {
       method: "POST",
       body: JSON.stringify(payload)
     }),

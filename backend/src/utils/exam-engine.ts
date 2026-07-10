@@ -875,6 +875,11 @@ export async function evaluateExamSubmission(
       }
     }
 
+    // Per-question overrides (set by manual exam builder) take highest priority
+    const genQ = exam.questions.find((eq) => eq.questionId === question.id);
+    if (genQ?.marksOverride !== undefined) qMarks = genQ.marksOverride;
+    if (genQ?.negativeMarksOverride !== undefined) qNegative = genQ.negativeMarksOverride;
+
     if (countForTotal) totalMarks += qMarks;
 
     const topic = state.topics.find((item) => item.id === question.topicId);
@@ -1041,4 +1046,70 @@ export async function evaluateExamSubmission(
 
   await upsertRecord("submissions", result);
   return result;
+}
+
+export interface ManualExamRequest {
+  name: string;
+  batchId: string;
+  durationMinutes: number;
+  scheduledStartTime?: string;
+  scheduledEndTime?: string;
+  questions: Array<{
+    questionId: string;
+    marks: number;
+    negativeMarks: number;
+  }>;
+}
+
+export async function buildManualExam(request: ManualExamRequest): Promise<Exam | { error: string }> {
+  if (!request.questions || request.questions.length === 0) {
+    return { error: "No questions selected" };
+  }
+
+  const state = await getAppState();
+  const batch = state.batches.find((b) => b.id === request.batchId);
+  if (!batch) {
+    return { error: "Batch not found" };
+  }
+
+  const questionIds = new Set(request.questions.map((q) => q.questionId));
+  const foundQuestions = state.questions.filter((q) => questionIds.has(q.id));
+  if (foundQuestions.length === 0) {
+    return { error: "None of the selected questions were found" };
+  }
+
+  const questionLookup = new Map(foundQuestions.map((q) => [q.id, q]));
+  const subjectId = foundQuestions[0].subjectId;
+
+  const examQuestions: GeneratedExamQuestion[] = request.questions
+    .filter((req) => questionLookup.has(req.questionId))
+    .map((req, idx) => {
+      const q = questionLookup.get(req.questionId)!;
+      return {
+        questionId: req.questionId,
+        order: idx + 1,
+        optionOrderIds: buildOptionOrderIds(q),
+        marksOverride: req.marks,
+        negativeMarksOverride: req.negativeMarks
+      };
+    });
+
+  const exam: Exam = {
+    id: `exam-${Date.now()}`,
+    generatedAt: new Date().toISOString(),
+    blueprintId: `manual-${Date.now()}`,
+    name: request.name,
+    classId: batch.classId,
+    streamId: batch.streamId,
+    batchId: request.batchId,
+    subjectId,
+    durationMinutes: request.durationMinutes,
+    generationMode: "custom",
+    questions: examQuestions,
+    ...(request.scheduledStartTime ? { scheduledStartTime: request.scheduledStartTime } : {}),
+    ...(request.scheduledEndTime ? { scheduledEndTime: request.scheduledEndTime } : {})
+  };
+
+  await upsertRecord("exams", exam);
+  return exam;
 }
