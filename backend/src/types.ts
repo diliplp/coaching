@@ -115,6 +115,7 @@ export interface UserAccount {
   sessionId?: string;
   sessionStartedAt?: string | null;
   mustChangePassword?: boolean;
+  isActive?: boolean;
 }
 
 export interface AuthTokenPayload {

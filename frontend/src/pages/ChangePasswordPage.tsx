@@ -3,6 +3,40 @@ import { useNavigate } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { getStoredSession, storeSession, clearSession } from "../auth";
 
+const PASSWORD_RULES = [
+  { label: "At least 8 characters", test: (p: string) => p.length >= 8 },
+  { label: "Uppercase letter (A-Z)", test: (p: string) => /[A-Z]/.test(p) },
+  { label: "Lowercase letter (a-z)", test: (p: string) => /[a-z]/.test(p) },
+  { label: "Number (0-9)", test: (p: string) => /[0-9]/.test(p) },
+  { label: "Special character (!@#$%...)", test: (p: string) => /[^A-Za-z0-9]/.test(p) },
+];
+
+function PasswordStrengthMeter({ password }: { password: string }) {
+  if (!password) return null;
+  const passed = PASSWORD_RULES.filter(r => r.test(password)).length;
+  const pct = (passed / PASSWORD_RULES.length) * 100;
+  const color = passed <= 2 ? "#ef4444" : passed <= 3 ? "#f59e0b" : passed <= 4 ? "#3b82f6" : "#22c55e";
+  const label = passed <= 2 ? "Weak" : passed <= 3 ? "Fair" : passed <= 4 ? "Good" : "Strong";
+  return (
+    <div style={{ marginTop: "6px" }}>
+      <div style={{ height: "6px", background: "var(--color-border)", borderRadius: "3px", overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: "3px", transition: "width 0.3s, background 0.3s" }} />
+      </div>
+      <p style={{ fontSize: "0.75rem", color, margin: "4px 0 6px", fontWeight: "600" }}>{label}</p>
+      <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "2px" }}>
+        {PASSWORD_RULES.map(r => {
+          const ok = r.test(password);
+          return (
+            <li key={r.label} style={{ fontSize: "0.75rem", color: ok ? "#22c55e" : "var(--color-text-muted)", display: "flex", alignItems: "center", gap: "5px" }}>
+              <span>{ok ? "✓" : "○"}</span> {r.label}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 export function ChangePasswordPage() {
   const navigate = useNavigate();
   const session = getStoredSession();
@@ -30,8 +64,9 @@ export function ChangePasswordPage() {
       setStatus({ type: "error", message: "New passwords do not match." });
       return;
     }
-    if (newPassword.length < 6) {
-      setStatus({ type: "error", message: "New password must be at least 6 characters." });
+    const failedRule = PASSWORD_RULES.find(r => !r.test(newPassword));
+    if (failedRule) {
+      setStatus({ type: "error", message: failedRule.label });
       return;
     }
     setIsSubmitting(true);
@@ -88,9 +123,10 @@ export function ChangePasswordPage() {
               type="password"
               value={newPassword}
               onChange={e => setNewPassword(e.target.value)}
-              placeholder="At least 6 characters"
+              placeholder="8+ chars, upper, lower, number, special"
               required
             />
+            <PasswordStrengthMeter password={newPassword} />
           </label>
           <label className="field">
             <span>Confirm New Password</span>

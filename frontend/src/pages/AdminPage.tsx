@@ -450,33 +450,66 @@ export function AdminPage() {
                     </div>
                   ) : (
                     <div>
-                      <strong>{u.name}</strong> <span className="muted-copy">({u.email})</span>
+                      <strong style={{ opacity: u.isActive === false ? 0.45 : 1 }}>{u.name}</strong>{" "}
+                      <span className="muted-copy">({u.email})</span>
                       <span className="tag" style={{ marginLeft: "10px" }}>{u.role}</span>
                       {u.role === "student" && u.batchId && (
                         <span className="tag muted" style={{ marginLeft: "5px" }}>
                           {batches.find(b => b.id === u.batchId)?.name || "No Batch"}
                         </span>
                       )}
+                      <span className="tag" style={{
+                        marginLeft: "5px",
+                        background: u.isActive === false ? "#fee2e2" : "#dcfce7",
+                        color: u.isActive === false ? "#991b1b" : "#166534",
+                        border: `1px solid ${u.isActive === false ? "#fca5a5" : "#86efac"}`,
+                        fontSize: "0.72rem"
+                      }}>
+                        {u.isActive === false ? "Inactive" : "Active"}
+                      </span>
+                      {u.mustChangePassword && (
+                        <span className="tag" style={{ marginLeft: "5px", background: "#fef3c7", color: "#92400e", border: "1px solid #fcd34d", fontSize: "0.72rem" }}>
+                          Must Change Password
+                        </span>
+                      )}
                       {u.sessionId && (
-                        <span className="tag" style={{ marginLeft: "5px", background: "#fef3c7", color: "#92400e", border: "1px solid #fcd34d", fontSize: "0.75rem" }}>
+                        <span className="tag" style={{ marginLeft: "5px", background: "#e0f2fe", color: "#075985", border: "1px solid #7dd3fc", fontSize: "0.72rem" }}>
                           Session Active
                         </span>
                       )}
                     </div>
                   )}
-                  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
                     {actionButtons(u.id, u, () => handleUpdateUser(u.id), () => handleDeleteUser(u.id))}
+                    {editingId !== u.id && (
+                      <button
+                        className="secondary-button"
+                        style={{
+                          padding: "4px 8px", fontSize: "0.85rem",
+                          color: u.isActive === false ? "#166534" : "#991b1b",
+                          borderColor: u.isActive === false ? "#86efac" : "#fca5a5"
+                        }}
+                        onClick={() => {
+                          const action = u.isActive === false ? "activate" : "deactivate";
+                          if (!window.confirm(`${action.charAt(0).toUpperCase() + action.slice(1)} account for ${u.name}?`)) return;
+                          apiClient.admin.toggleUserActive(u.id)
+                            .then(updated => setUsers(prev => prev.map(x => x.id === u.id ? { ...x, isActive: updated.isActive } : x)))
+                            .catch(e => alert(e.message || "Failed to update status"));
+                        }}
+                      >
+                        {u.isActive === false ? "Activate" : "Deactivate"}
+                      </button>
+                    )}
                     {editingId !== u.id && (
                       <button
                         className="secondary-button"
                         style={{ padding: "4px 8px", fontSize: "0.85rem" }}
                         onClick={() => {
-                          const newPass = prompt(`Enter new password for ${u.name}:`);
-                          if (newPass) {
-                            apiClient.admin.updateUser(u.id, { password: newPass })
-                              .then(() => alert("Password updated successfully!"))
-                              .catch(e => alert(e.message || "Failed to update password"));
-                          }
+                          const newPass = prompt(`New password for ${u.name}:\n\nMust be 8+ chars with uppercase, lowercase, number & special character.`);
+                          if (!newPass) return;
+                          apiClient.admin.resetUserPassword(u.id, newPass)
+                            .then(r => alert(r.message))
+                            .catch(e => alert(e.message || "Failed to reset password"));
                         }}
                       >
                         Reset Password

@@ -20,7 +20,7 @@ import path from "node:path";
 import { extractPdfText, extractPdfDiagrams, extractPdfQuestionCrops } from "../utils/pdf.js";
 import { generateQuestionsFromText, generateQuestionsFromBiologyFigures, ensureEnoughQuestions, parseExamPrompt, detectCurriculumFromText, generateOfflineBoardPaper, extractQuestionsFromPdfText } from "../utils/ai-generator.js";
 import { listReferencePapers } from "../utils/reference-papers.js";
-import { findUserByEmail, generateSessionId, requireAuth, requireRole, signAuthToken, verifyPassword } from "../utils/auth.js";
+import { findUserByEmail, generateSessionId, requireAuth, requireRole, signAuthToken, validatePasswordStrength, verifyPassword } from "../utils/auth.js";
 import { createJob, emitJobEvent, subscribeToJob } from "../utils/sse-job-store.js";
 import type { Admission, AuthenticatedRequest, BatchNode, ExamSession, Question, QuestionSource, SubjectBook, UserAccount } from "../types.js";
 import { encrypt } from "../utils/encryption.js";
@@ -85,6 +85,11 @@ apiRouter.post("/auth/login", async (req, res) => {
     return;
   }
 
+  if (user.isActive === false) {
+    res.status(403).json({ message: "Your account has been deactivated. Please contact your administrator." });
+    return;
+  }
+
   // Validate that the selected role matches the account's actual role
   if (requestedRole) {
     // Map frontend role labels to DB roles
@@ -146,8 +151,9 @@ apiRouter.post("/auth/change-password", requireAuth, async (req, res) => {
     return;
   }
 
-  if (newPassword.length < 6) {
-    res.status(400).json({ message: "New password must be at least 6 characters" });
+  const strengthError = validatePasswordStrength(newPassword);
+  if (strengthError) {
+    res.status(400).json({ message: strengthError });
     return;
   }
 

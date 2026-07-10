@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { getAppState, listRecords, upsertRecord, deleteRecord, getRecord } from "../data/database.js";
-import { requireAuth, requireRole } from "../utils/auth.js";
+import { requireAuth, requireRole, validatePasswordStrength } from "../utils/auth.js";
 import bcrypt from "bcryptjs";
 import multer from "multer";
 import { parseCurriculumDocx } from "../utils/curriculum-bulk.js";
@@ -291,6 +291,11 @@ adminRouter.post("/users", async (req, res) => {
     await upsertRecord("students", newStudent);
   }
 
+  const strengthError = validatePasswordStrength(password);
+  if (strengthError) {
+    return res.status(400).json({ message: strengthError });
+  }
+
   const passwordHash = await bcrypt.hash(password, 10);
 
   const newUser: UserAccount = {
@@ -300,7 +305,8 @@ adminRouter.post("/users", async (req, res) => {
     role,
     passwordHash,
     studentId,
-    mustChangePassword: true
+    mustChangePassword: true,
+    isActive: true
   };
 
   await upsertRecord("users", newUser);
@@ -393,6 +399,41 @@ adminRouter.post("/users/:id/reset-session", async (req, res) => {
   }
   await upsertRecord("users", { ...user, sessionId: "", sessionStartedAt: null });
   res.json({ message: `Session reset for ${user.name}. They can now log in from a new device.` });
+});
+
+adminRouter.patch("/users/:id/toggle-active", async (req, res) => {
+  const users = await listRecords<UserAccount>("users");
+  const user = users.find(u => u.id === req.params.id);
+  if (!user) {
+    res.status(404).json({ message: "User not found" });
+    return;
+  }
+  const updated = { ...user, isActive: !(user.isActive ?? true) };
+  await upsertRecord("users", updated);
+  const { passwordHash: _ph, ...safeUser } = updated;
+  res.json(safeUser);
+});
+
+adminRouter.post("/users/:id/reset-password", async (req, res) => {
+  const { password } = req.body as { password?: string };
+  if (!password) {
+    res.status(400).json({ message: "New password is required" });
+    return;
+  }
+  const strengthError = validatePasswordStrength(password);
+  if (strengthError) {
+    res.status(400).json({ message: strengthError });
+    return;
+  }
+  const users = await listRecords<UserAccount>("users");
+  const user = users.find(u => u.id === req.params.id);
+  if (!user) {
+    res.status(404).json({ message: "User not found" });
+    return;
+  }
+  const passwordHash = await bcrypt.hash(password, 10);
+  await upsertRecord("users", { ...user, passwordHash, mustChangePassword: true, sessionId: "", sessionStartedAt: null });
+  res.json({ message: `Password reset for ${user.name}. They will be prompted to change it on next login.` });
 });
 
 // --- Bulk Curriculum Upload ---
