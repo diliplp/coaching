@@ -18,7 +18,7 @@ import {
 } from "../utils/exam-engine.js";
 import path from "node:path";
 import { extractPdfText, extractPdfDiagrams, extractPdfQuestionCrops } from "../utils/pdf.js";
-import { generateQuestionsFromText, generateQuestionsFromBiologyFigures, ensureEnoughQuestions, parseExamPrompt, detectCurriculumFromText, generateOfflineBoardPaper, extractQuestionsFromPdfText } from "../utils/ai-generator.js";
+import { generateQuestionsFromText, generateQuestionsFromBiologyFigures, ensureEnoughQuestions, parseExamPrompt, detectCurriculumFromText, generateOfflineBoardPaper, extractQuestionsFromPdfText, checkAiModelHealth } from "../utils/ai-generator.js";
 import { listReferencePapers } from "../utils/reference-papers.js";
 import { findUserByEmail, generateSessionId, requireAuth, requireRole, signAuthToken, validatePasswordStrength, verifyPassword } from "../utils/auth.js";
 import { createJob, emitJobEvent, subscribeToJob } from "../utils/sse-job-store.js";
@@ -62,6 +62,20 @@ apiRouter.get("/health", async (_req, res) => {
       books: state.subjectBooks.length,
       referencePapers: referencePapers.length
     }
+  });
+});
+
+// Model availability check for uptime monitoring: 200 when the configured AI models
+// still exist on OpenRouter, 503 when the pipeline is degraded.
+apiRouter.get("/health/ai", async (_req, res) => {
+  if (!process.env.OPENROUTER_API_KEY) {
+    res.json({ status: "skipped", reason: "OPENROUTER_API_KEY not configured" });
+    return;
+  }
+  const health = await checkAiModelHealth();
+  res.status(health.ok ? 200 : 503).json({
+    status: health.ok ? "ok" : "degraded",
+    ...health
   });
 });
 

@@ -12,6 +12,119 @@ import { extractPdfDiagrams } from "./pdf.js";
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 const RENDER_PAGE_SCRIPT = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Z]:)/, "$1")), "../../scripts/render_page.py");
 
+// --- OpenRouter model catalog validation ---
+// OpenRouter retires models without notice; a hardcoded model name eventually 404s on
+// every request. Configured models are checked against the live catalog so retired
+// ones are dropped up front, with an auto-picked replacement as the last resort.
+
+const DEFAULT_VISION_MODELS = [
+  "google/gemini-3.1-flash-lite",
+  "qwen/qwen2.5-vl-72b-instruct",
+  "openai/gpt-4o-mini"
+];
+
+interface OpenRouterCatalogModel {
+  id: string;
+  architecture?: { input_modalities?: string[] };
+  pricing?: { prompt?: string };
+}
+
+let catalogCache: { models: Map<string, OpenRouterCatalogModel>; fetchedAt: number } | null = null;
+const CATALOG_TTL_MS = 6 * 60 * 60 * 1000;
+
+async function getOpenRouterCatalog(): Promise<Map<string, OpenRouterCatalogModel> | null> {
+  if (catalogCache && Date.now() - catalogCache.fetchedAt < CATALOG_TTL_MS) return catalogCache.models;
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/models");
+    if (!response.ok) return catalogCache?.models ?? null;
+    const data = await response.json();
+    const models = new Map<string, OpenRouterCatalogModel>(
+      (data.data ?? []).map((m: OpenRouterCatalogModel) => [m.id, m] as const)
+    );
+    if (models.size > 0) catalogCache = { models, fetchedAt: Date.now() };
+    return catalogCache?.models ?? null;
+  } catch {
+    return catalogCache?.models ?? null;
+  }
+}
+
+function supportsImageInput(model: OpenRouterCatalogModel): boolean {
+  return (model.architecture?.input_modalities ?? []).includes("image");
+}
+
+// Free tiers are excluded — they are heavily rate-limited and get retired the most often.
+function cheapestPaidVisionModel(catalog: Map<string, OpenRouterCatalogModel>): string | null {
+  let best: { id: string; price: number } | null = null;
+  for (const model of catalog.values()) {
+    if (!supportsImageInput(model)) continue;
+    const price = Number(model.pricing?.prompt);
+    if (!Number.isFinite(price) || price <= 0) continue;
+    if (!best || price < best.price) best = { id: model.id, price };
+  }
+  return best?.id ?? null;
+}
+
+/**
+ * Vision model preference list: OPENROUTER_VISION_MODELS (comma-separated) followed by
+ * defaults, validated against the live catalog. Falls back to the cheapest paid
+ * vision-capable model when nothing configured is still available.
+ */
+export async function resolveVisionModels(): Promise<{ models: string[]; warnings: string[] }> {
+  const configured = (process.env.OPENROUTER_VISION_MODELS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const candidates = [...configured, ...DEFAULT_VISION_MODELS].filter((v, i, a) => a.indexOf(v) === i);
+
+  const warnings: string[] = [];
+  const catalog = await getOpenRouterCatalog();
+  if (!catalog) {
+    warnings.push("OpenRouter catalog unreachable — using configured vision models unvalidated");
+    return { models: candidates, warnings };
+  }
+
+  const models = candidates.filter((id) => {
+    const model = catalog.get(id);
+    if (!model) {
+      warnings.push(`vision model "${id}" no longer exists on OpenRouter — dropped`);
+      return false;
+    }
+    if (!supportsImageInput(model)) {
+      warnings.push(`model "${id}" does not accept image input — dropped`);
+      return false;
+    }
+    return true;
+  });
+
+  if (models.length === 0) {
+    const fallback = cheapestPaidVisionModel(catalog);
+    if (fallback) {
+      warnings.push(`no configured vision model is available — auto-selected ${fallback}`);
+      return { models: [fallback], warnings };
+    }
+    warnings.push("no vision-capable model found on OpenRouter");
+  }
+  return { models, warnings };
+}
+
+/** Validates the text + vision model configuration; used at startup and by /api/health/ai. */
+export async function checkAiModelHealth(): Promise<{
+  ok: boolean;
+  visionModels: string[];
+  textModel: string;
+  warnings: string[];
+}> {
+  const { models: visionModels, warnings } = await resolveVisionModels();
+  const textModel = process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini";
+  const catalog = await getOpenRouterCatalog();
+  if (catalog && !catalog.has(textModel)) {
+    warnings.push(`text model "${textModel}" no longer exists on OpenRouter`);
+  }
+  for (const warning of warnings) console.warn(`[AI health] ${warning}`);
+  const ok = visionModels.length > 0 && (!catalog || catalog.has(textModel));
+  return { ok, visionModels, textModel, warnings };
+}
+
 /** Renders a single PDF page (0-based index) to a base64 PNG using PyMuPDF. */
 function renderPageToBase64(pdfPath: string, pageIndex: number): string | null {
   const pythonPath = process.env.PDF_PYTHON_PATH || "python";
@@ -30,18 +143,13 @@ function renderPageToBase64(pdfPath: string, pageIndex: number): string | null {
 }
 
 async function generateVisionContent(textPrompt: string, imageBase64: string): Promise<string | null> {
-  // OpenRouter vision models — tried in order
-  const orVisionModels = [
-    process.env.OPENROUTER_MODEL || "meta-llama/llama-3.2-90b-vision-instruct:free",
-    "meta-llama/llama-3.2-90b-vision-instruct:free",
-    "qwen/qwen2.5-vl-72b-instruct:free",
-    "openai/gpt-4o-mini",
-  ].filter((v, i, a) => a.indexOf(v) === i);
-
   if (process.env.OPENROUTER_API_KEY) {
-    for (const model of orVisionModels) {
+    // `models` is OpenRouter's server-side fallback routing: it tries each listed
+    // model in order within a single request, so a retired model costs nothing.
+    const { models } = await resolveVisionModels();
+    if (models.length > 0) {
       try {
-        console.log(`[Vision] Trying OpenRouter ${model}...`);
+        console.log(`[Vision] OpenRouter routing across: ${models.join(", ")}`);
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -51,7 +159,8 @@ async function generateVisionContent(textPrompt: string, imageBase64: string): P
             "X-Title": "Coaching Portal Exam Gen"
           },
           body: JSON.stringify({
-            model,
+            model: models[0],
+            models,
             messages: [{ role: "user", content: [
               { type: "image_url", image_url: { url: `data:image/png;base64,${imageBase64}`, detail: "high" } },
               { type: "text", text: textPrompt }
@@ -63,13 +172,15 @@ async function generateVisionContent(textPrompt: string, imageBase64: string): P
         if (response.ok) {
           const data = await response.json();
           const text = data.choices?.[0]?.message?.content;
-          if (text) { console.log(`[Vision] OpenRouter ${model} succeeded.`); return text; }
+          if (text) { console.log(`[Vision] OpenRouter succeeded via ${data.model ?? models[0]}.`); return text; }
         } else {
-          console.warn(`[Vision] ${model} failed (${response.status}): ${(await response.text()).slice(0, 200)}`);
+          console.warn(`[Vision] OpenRouter failed (${response.status}): ${(await response.text()).slice(0, 200)}`);
         }
       } catch (e: any) {
-        console.warn(`[Vision] ${model} threw:`, e.message);
+        console.warn(`[Vision] OpenRouter threw:`, e.message);
       }
+    } else {
+      console.warn("[Vision] No usable OpenRouter vision models — skipping to Gemini fallback.");
     }
   }
 
@@ -2381,8 +2492,10 @@ Return JSON:
           let recoveryRaw: string | null = null;
 
           // Try OpenRouter with multiple images in content array
-          if (process.env.OPENROUTER_API_KEY) {
-            const model = process.env.OPENROUTER_MODEL || "meta-llama/llama-3.2-90b-vision-instruct:free";
+          const { models: recoveryModels } = process.env.OPENROUTER_API_KEY
+            ? await resolveVisionModels()
+            : { models: [] as string[] };
+          if (process.env.OPENROUTER_API_KEY && recoveryModels.length > 0) {
             const imageContent = recoveryImages.map(img => ({
               type: "image_url" as const,
               image_url: { url: `data:image/png;base64,${img}`, detail: "high" as const }
@@ -2396,7 +2509,8 @@ Return JSON:
                 "X-Title": "Coaching Portal Exam Gen"
               },
               body: JSON.stringify({
-                model,
+                model: recoveryModels[0],
+                models: recoveryModels,
                 messages: [{ role: "user", content: [
                   ...imageContent,
                   { type: "text", text: recoveryPrompt }

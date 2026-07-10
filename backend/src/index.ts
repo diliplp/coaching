@@ -52,3 +52,14 @@ await initDatabase();
 app.listen(port, () => {
   console.log(`Backend listening on http://localhost:${port}`);
 });
+
+// Non-blocking: surface retired/misconfigured AI models in the logs at boot
+// instead of at first extraction.
+if (process.env.OPENROUTER_API_KEY) {
+  import("./utils/ai-generator.js")
+    .then((ai) => ai.checkAiModelHealth())
+    .then(({ ok, visionModels, textModel }) => {
+      console.log(`[AI health] ${ok ? "ok" : "DEGRADED"} — text: ${textModel}, vision: ${visionModels.join(", ") || "none"}`);
+    })
+    .catch((e) => console.warn("[AI health] startup check failed:", e?.message ?? e));
+}
