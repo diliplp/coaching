@@ -80,14 +80,15 @@ def find_question_positions(doc):
 
 
 def render_crop(doc, page_idx, y_start, y_end, zoom=2.5):
-    """Render a horizontal strip of a page at the given zoom level."""
+    """Render a horizontal strip of a page at the given zoom level.
+    Caller is responsible for any padding on y_start/y_end — the right amount
+    depends on whether y_end is anchored to an Ans. marker (safe to pad past)
+    or to the next question's start (padding would bleed into its first line)."""
     page = doc[page_idx]
     pw = page.rect.width
     ph = page.rect.height
 
-    pad_top = 6       # pts above question number
-    pad_bottom = 10   # pts below last option
-    clip = fitz.Rect(0, max(0, y_start - pad_top), pw, min(ph, y_end + pad_bottom))
+    clip = fitz.Rect(0, max(0, y_start), pw, min(ph, y_end))
 
     mat = fitz.Matrix(zoom, zoom)
     pix = page.get_pixmap(matrix=mat, clip=clip, alpha=False)
@@ -130,15 +131,22 @@ def extract_question_crops(pdf_path, output_dir, book_id):
         # i.e. the first Ans. marker that is:
         #   - below y_start (after question begins)
         #   - above max_y (before next question or page end)
+        pad_top = 6      # pts above question number
+        pad_bottom = 10  # pts below last option — only safe when stopping at an Ans. marker
+
         ans_below = [y for y in ans_ys if y > y_start and y < max_y]
         if ans_below:
-            # Stop well before the Ans. line so the answer is not visible in the crop
-            y_end = min(ans_below) - 14
+            # Stop well before the Ans. line so the answer is not visible in the crop.
+            # There's genuine whitespace here, so padding past it is safe.
+            y_end = min(ans_below) - 14 + pad_bottom
         else:
+            # No Ans. marker on this page (bare question paper) — max_y is the exact
+            # y-position where the NEXT question's number starts. Padding past that
+            # bleeds its first line into this crop, so stop right at the boundary.
             y_end = max_y
 
         try:
-            pix = render_crop(doc, page_idx, y_start, y_end, zoom=2.5)
+            pix = render_crop(doc, page_idx, y_start - pad_top, y_end, zoom=2.5)
             filename = f"{book_id}_q{q_num}_crop.png"
             filepath = os.path.join(output_dir, filename)
             pix.save(filepath)

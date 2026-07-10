@@ -1311,11 +1311,6 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
       ]);
       console.log(`[Background] Crops: ${crops.length}, Diagrams: ${diagrams.length}`);
 
-      // Build a fast lookup: questionNumber -> cropUrl
-      const cropMap = new Map<number, string>(
-        crops.map(c => [c.questionNumber, c.cropUrl])
-      );
-
       const subjectTopics = state.topics
         .filter(t => t.subjectId === book.subjectId)
         .map(t => ({ id: t.id, name: t.name }));
@@ -1338,20 +1333,15 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
         pyqSession,
       });
 
-      // Embed crop URL into every question that has a known question number.
-      // The crop replaces any image previously assigned by the heuristic matcher.
-      for (const q of extracted) {
-        const qNum = (q as any).questionNumber;
-        if (typeof qNum === "number" && cropMap.has(qNum)) {
-          const cropUrl = cropMap.get(qNum)!;
-          // Replace existing [IMAGE:] tag if present, otherwise append
-          if ((q.prompt || "").includes("[IMAGE:")) {
-            q.prompt = q.prompt.replace(/\[IMAGE:[^\]]+\]/g, `[IMAGE: ${cropUrl}]`);
-          } else {
-            q.prompt = (q.prompt || "") + `\n[IMAGE: ${cropUrl}]`;
-          }
-        }
-      }
+      // Note: we deliberately do NOT blanket-embed each question's own whole-question
+      // crop image here. extractQuestionsFromPdfText already embeds a genuine, targeted
+      // diagram/graph crop when a question actually needs one (via its internal
+      // needsDiagram heuristic and assignOptionImages). Unconditionally overwriting every
+      // question's prompt with a screenshot of itself was both redundant when the text was
+      // already fully and correctly transcribed, and actively harmful for real diagram
+      // questions — it replaced the correctly targeted diagram crop with the whole-question
+      // crop instead. `crops` (per-question crops) is still generated and kept on disk for
+      // the admin question-bank thumbnails, just no longer force-inserted into prompts.
 
       const stateBefore = await getAppState();
       const existingBookQs = stateBefore.questions.filter(q => q.bookId === book.id);
