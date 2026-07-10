@@ -585,6 +585,18 @@ export async function generateQuestionsFromText(params: {
   const chemKeywords = ["chemistry", "molecule", "reaction", "bond", "acid", "organic", "compound", "structure", "formula", "chemical"];
   const isChemistry = subjectLower.includes("chemistry") || chemKeywords.some(k => textLower.includes(k));
 
+  // Narrower than isChemistry — only true when the SOURCE TEXT itself names organic
+  // compounds/structures. isChemistry alone (e.g. "reaction", "formula") also matches
+  // purely inorganic/physical chemistry text (equilibrium, kinetics, thermodynamics),
+  // which has no structures to draw and must never trigger SMILES questions.
+  const organicKeywords = [
+    "organic chemistry", "hydrocarbon", "alkane", "alkene", "alkyne", "benzene", "phenol",
+    "alcohol", "aldehyde", "ketone", "carboxylic", "ester", "amine", "amide", "aromatic",
+    "functional group", "haloalkane", "grignard", "structural isomer", "stereochemistry",
+    "smiles"
+  ];
+  const isOrganicChemistry = isChemistry && organicKeywords.some(k => textLower.includes(k));
+
   const physicsKeywords = ["physics", "force", "velocity", "acceleration", "momentum", "energy", "wave", "optics", "electric", "magnetic", "thermodynamic", "motion", "kinematics", "gravitation", "pressure", "current", "resistance"];
   const isPhysics = subjectLower.includes("physics") || physicsKeywords.some(k => textLower.includes(k));
 
@@ -758,12 +770,12 @@ STRICT STEM AND MATHEMATICAL RULES:
    - Trigonometry: $\\sin\\theta$, $\\cos\\theta$, $\\tan\\theta$ — never write sin(x) without LaTeX.
 3. Chemistry structures: Use [SMILES: notation] for any drawn chemical structure (e.g. [SMILES: CC(=O)O] for acetic acid, [SMILES: c1ccccc1] for benzene).
    IMPORTANT: SMILES notation is NOT a chemical formula. Never put atomic symbols like H2O inside [SMILES:].
-3a. ${isChemistry ? `Structure-Identification Questions (REQUIRED for chemistry): Generate at least 1–2 questions per batch where:
-   - The question stem shows a molecular structure using [SMILES: ...] and asks the student to identify it, name it, or select a matching property.
-   - Example prompt: "Identify the compound represented by the structure: [SMILES: c1ccccc1O]"
+3a. ${isOrganicChemistry ? `Structure-Identification Questions (only if the TEXT below names specific organic compounds): Generate at most 1 question per batch where:
+   - The compound in the question stem is one that is EXPLICITLY named or discussed in the TEXT below — never invent a compound absent from the text.
+   - The question stem shows that compound's structure using [SMILES: ...] and asks the student to identify it, name it, or select a matching property.
    - Each of the 4 options is ALSO a [SMILES: ...] value showing a different structure, with only one matching the question.
-   - Example option values: "[SMILES: c1ccccc1O]", "[SMILES: c1ccccc1]", "[SMILES: CC(=O)O]", "[SMILES: CCO]"
-   - Use only valid, complete SMILES strings. Never leave a SMILES string truncated or unclosed.` : "For non-chemistry subjects, skip SMILES structure questions entirely."}
+   - Use only valid, complete SMILES strings. Never leave a SMILES string truncated or unclosed.
+   - If the text does not name any specific organic compound, skip this rule entirely — do not fabricate one.` : "Do NOT generate any [SMILES: ...] or structure-identification questions — the provided text is not about organic structures."}
 4. Chemical Formulas and Equations: Format ALL chemical formulas using mhchem $\\ce{formula}$ notation:
    - $\\ce{H2O}$, $\\ce{CO2}$, $\\ce{K2SO4}$, $\\ce{Al2(SO4)3}$, $\\ce{NaCl}$, $\\ce{CaCl2}$
    - For ionic equations: $\\ce{Al4C3 + 12H2O -> 4Al(OH)3 + 3CH4}$
@@ -908,9 +920,23 @@ ${textChunk}
             };
           });
 
+          // Hard grounding guard: drop any question the model generated about a chemical
+          // structure when the source text isn't organic chemistry. This does not depend
+          // on the model following the prompt instruction — it is enforced in code.
+          const groundedQuestions = isOrganicChemistry
+            ? mappedQuestions
+            : mappedQuestions.filter((q) => {
+                const containsSmiles = q.prompt.includes("[SMILES:")
+                  || q.options.some((o) => String(o.value).includes("[SMILES:"));
+                if (containsSmiles) {
+                  console.warn(`[Generate] Dropped ungrounded SMILES question (source text is not organic chemistry): "${q.prompt.slice(0, 80)}"`);
+                }
+                return !containsSmiles;
+              });
+
           // Run Critic validation on this batch
-          onProgress?.(`Batch ${batchIndex + 1}: ${mappedQuestions.length} question(s) generated — running critic validation...`);
-          const validatedQuestions = await validateQuestionsBatch(mappedQuestions, subject);
+          onProgress?.(`Batch ${batchIndex + 1}: ${groundedQuestions.length} question(s) generated — running critic validation...`);
+          const validatedQuestions = await validateQuestionsBatch(groundedQuestions, subject);
 
           if (validatedQuestions.length > 0) {
             console.log(`Batch ${batchIndex + 1} succeeded and verified on attempt ${batchAttempts}. Yielded ${validatedQuestions.length}/${currentBatchCount} valid questions.`);
