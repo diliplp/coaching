@@ -2054,6 +2054,94 @@ function chunkPageText(pageText: string, maxQuestionsPerChunk = 6): string[] {
   return chunks;
 }
 
+type PageDiagram = { page: number; url: string; bbox: number[]; isQuestionImage?: boolean };
+
+/** True when an option value is empty, a placeholder, or too short to be a real
+ * transcribed answer (e.g. just the label). Excludes legitimate short numeric
+ * answers like "12" or "-3.5", which must never be treated as image placeholders. */
+function looksLikeUntranscribedOption(value: unknown, label: string): boolean {
+  const v = String(value ?? "").trim();
+  if (!v) return true;
+  if (/^-?\d+(\.\d+)?$/.test(v)) return false;
+  if (/not (fully )?provided|not visible|not shown|unavailable|unknown|n\/a/i.test(v)) return true;
+  if (v === label || v === `(${label})`) return true;
+  return v.length < 3;
+}
+
+/**
+ * Recovers graph/diagram-based answer options (e.g. "which v-t graph is correct") that
+ * no vision model can describe as text. extract_diagrams.py isolates each option's
+ * cropped image with a precise bbox; this groups diagrams into visual "rows" (same
+ * y-position — i.e. side-by-side thumbnails) and assigns each row, left to right, to
+ * the next question on that page whose options all look untranscribed.
+ * Mutates `questions` in place.
+ */
+function assignOptionImages(questions: any[], diagrams?: PageDiagram[]): void {
+  if (!diagrams || diagrams.length === 0) return;
+
+  const byPage = new Map<number, PageDiagram[]>();
+  for (const d of diagrams) {
+    if (!Array.isArray(d.bbox) || d.bbox.length !== 4) continue;
+    const [y1, x1, y2, x2] = d.bbox;
+    const area = Math.abs(x2 - x1) * Math.abs(y2 - y1);
+    if (area < 0.005) continue;
+    if (y2 <= 0.15 || y1 >= 0.90) continue; // header/footer guard
+    if (!byPage.has(d.page)) byPage.set(d.page, []);
+    byPage.get(d.page)!.push(d);
+  }
+
+  const rowsByPage = new Map<number, PageDiagram[][]>();
+  for (const [page, pageDiagrams] of byPage) {
+    const byY = [...pageDiagrams].sort((a, b) => a.bbox[0] - b.bbox[0]);
+    const rows: PageDiagram[][] = [];
+    for (const d of byY) {
+      const last = rows[rows.length - 1];
+      if (last && Math.abs(last[0].bbox[0] - d.bbox[0]) < 0.03) {
+        last.push(d);
+      } else {
+        rows.push([d]);
+      }
+    }
+    // Keep only rows that look like a strip of side-by-side option thumbnails: 2–4
+    // images at the same height. Bounding boxes from embedded-image extraction often
+    // have generous padding and overlap their neighbors somewhat, so x-overlap alone
+    // isn't a reliable disqualifier here — same-height clustering plus the option-count
+    // match in the caller is the real signal. Sorting by x1 still yields correct
+    // left-to-right (A, B, C, D) order regardless of padding overlap.
+    const optionRows = rows
+      .filter((row) => row.length >= 2 && row.length <= 4)
+      .map((row) => [...row].sort((a, b) => a.bbox[1] - b.bbox[1]));
+    if (optionRows.length > 0) rowsByPage.set(page, optionRows);
+  }
+  if (rowsByPage.size === 0) return;
+
+  const usedRowIndexByPage = new Map<number, Set<number>>();
+  for (const q of questions) {
+    const pageNum = q.pageNumber;
+    const options = q.options;
+    if (!pageNum || !Array.isArray(options) || options.length < 2) continue;
+
+    const allUntranscribed = options.every((o: any) => looksLikeUntranscribedOption(o.value, o.label));
+    if (!allUntranscribed) continue;
+
+    const rows = rowsByPage.get(pageNum);
+    if (!rows) continue;
+    const used = usedRowIndexByPage.get(pageNum) ?? new Set<number>();
+    const rowIdx = rows.findIndex((row, idx) => !used.has(idx) && Math.abs(row.length - options.length) <= 1);
+    if (rowIdx === -1) continue;
+
+    used.add(rowIdx);
+    usedRowIndexByPage.set(pageNum, used);
+
+    const row = rows[rowIdx];
+    options.forEach((opt: any, i: number) => {
+      if (row[i]) opt.value = `[IMAGE: ${row[i].url}]`;
+    });
+    q._hasDiagram = true;
+    console.log(`[Extract] Q${q._questionNumber ?? "?"}: recovered ${Math.min(row.length, options.length)} option image(s) from page ${pageNum}.`);
+  }
+}
+
 export async function extractQuestionsFromPdfText(params: {
   text: string;
   subjectId: string;
@@ -2595,6 +2683,14 @@ Return JSON:
     }
   }
 
+  // Some questions have graph/diagram answer options (e.g. "which v-t graph is correct")
+  // instead of text — no vision model can describe 4 tiny graphs accurately, so it either
+  // writes placeholder text or hallucinates. extract_diagrams.py already isolates each
+  // option's graph as its own cropped image with a precise bbox; this recovers those
+  // questions by matching each option to its own [IMAGE: ...] crop instead of dropping
+  // the question outright.
+  assignOptionImages(uniqueQuestions, params.diagrams);
+
   // Hard guard against placeholder options: when a question is cut off at a page/crop
   // boundary, the model sometimes ignores the "omit it" instruction above and writes
   // filler text (e.g. "Not provided", "Not fully provided in excerpt") instead. This
@@ -2675,7 +2771,7 @@ Return JSON:
         const hasImageOnlyOption = q.options?.some((opt: any) => {
           const val = (opt.value || "").trim();
           if (val.length >= 4) return false;
-          if (/^d+(.d+)?$/.test(val)) return false;  // skip pure numbers
+          if (/^-?\d+(\.\d+)?$/.test(val)) return false;  // skip pure numbers
           if (val === opt.label || val === `(${opt.label})`) return true;
           return val.length < 3; // very short non-numeric value = likely image placeholder
         }) ?? false;
