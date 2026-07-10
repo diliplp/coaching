@@ -9,6 +9,15 @@ import { referencePapersRoot, uploadsRoot } from "./utils/paths.js";
 const app = express();
 const port = Number(process.env.PORT ?? 3030);
 
+// Containers run in UTC regardless of host timezone. Format log lines in IST so
+// they're directly readable in `docker logs` / Coolify's log viewer without the
+// admin having to mentally offset by +5:30. Stored timestamps (createdAt, etc.)
+// are intentionally left as UTC ISO strings — the frontend already renders those
+// in the viewer's local timezone via toLocaleString().
+function nowIST(): string {
+  return new Date().toLocaleString("sv-SE", { timeZone: "Asia/Kolkata" }).replace(" ", "T") + "+05:30";
+}
+
 app.use(cors());
 app.use(express.json());
 app.use((req, res, next) => {
@@ -16,7 +25,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use((req, _res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
+  console.log(`[${nowIST()}] ${req.method} ${req.originalUrl}`);
   next();
 });
 app.use("/uploads", express.static(uploadsRoot));
