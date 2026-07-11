@@ -18,8 +18,9 @@ import {
 } from "../utils/exam-engine.js";
 import path from "node:path";
 import { extractPdfText, extractPdfDiagrams, extractPdfQuestionCrops } from "../utils/pdf.js";
-import { generateQuestionsFromText, generateQuestionsFromBiologyFigures, ensureEnoughQuestions, parseExamPrompt, detectCurriculumFromText, generateOfflineBoardPaper, extractQuestionsFromPdfText, checkAiModelHealth, extractAnswerKeyFromText } from "../utils/ai-generator.js";
+import { generateQuestionsFromText, generateQuestionsFromBiologyFigures, ensureEnoughQuestions, parseExamPrompt, detectCurriculumFromText, generateOfflineBoardPaper, extractQuestionsFromPdfText, checkAiModelHealth, extractAnswerKeyFromText, detectPageSections } from "../utils/ai-generator.js";
 import { listReferencePapers } from "../utils/reference-papers.js";
+import { ensureGeneralTopic } from "../utils/question-admin.js";
 import { findUserByEmail, generateSessionId, requireAuth, requireRole, signAuthToken, validatePasswordStrength, verifyPassword } from "../utils/auth.js";
 import { createJob, emitJobEvent, subscribeToJob } from "../utils/sse-job-store.js";
 import type { Admission, AuthenticatedRequest, BatchNode, ExamSession, Question, QuestionSource, SubjectBook, UserAccount } from "../types.js";
@@ -1255,26 +1256,7 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
       }
       topicIds = [generalTopic.id];
     } else {
-      const subject = state.subjects.find(s => s.id === book.subjectId);
-      const generalTopicName = `General - ${subject?.name || "Subject"}`;
-      let generalTopic = state.topics.find(t => t.subjectId === book.subjectId && t.name === generalTopicName);
-      if (!generalTopic) {
-        let generalChapter = state.chapters.find(c => c.subjectId === book.subjectId && c.name === "General Content" && c.bookId === book.id);
-        if (!generalChapter) {
-          generalChapter = { id: `ch-gen-${Date.now()}`, name: "General Content", subjectId: book.subjectId, bookId: book.id };
-          await upsertRecord("chapters", generalChapter);
-          state.chapters.push(generalChapter);
-        }
-        generalTopic = { 
-          id: `top-gen-${Date.now()}`, 
-          name: generalTopicName, 
-          subjectId: book.subjectId, 
-          chapterId: generalChapter.id,
-          bookId: book.id
-        };
-        await upsertRecord("topics", generalTopic);
-        state.topics.push(generalTopic);
-      }
+      const generalTopic = await ensureGeneralTopic(state, book.subjectId, book.id);
       topicIds = [generalTopic.id];
     }
   }
@@ -1325,6 +1307,42 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
         .map(t => ({ id: t.id, name: t.name }));
       console.log(`[ExtractMCQ] Passing ${subjectTopics.length} topics for auto-tagging: ${subjectTopics.map(t => t.name).join(", ")}`);
 
+      // Combined-subject-paper support: if the book's subject has sibling Physics/
+      // Chemistry/Biology subjects under the same class+stream, look for internal
+      // section headers ("PART A — PHYSICS", etc.) so each question can be tagged with
+      // the subject of the page it actually came from instead of the book's single
+      // subjectId. No-op (sectionMap stays empty) for the common single-subject book —
+      // detectPageSections() itself short-circuits when fewer than 2 candidates exist.
+      const bookSubject = state.subjects.find(s => s.id === book.subjectId);
+      const candidateSubjects = bookSubject
+        ? state.subjects.filter(s =>
+            s.classId === bookSubject.classId &&
+            s.streamId === bookSubject.streamId &&
+            /physics|chemistry|bio/i.test(s.name)
+          )
+        : [];
+      const pagesForSectionDetection = parsedText.split(/--- PAGE \d+ ---/gi).map(p => p.trim()).filter(Boolean);
+      const sectionMap = detectPageSections(pagesForSectionDetection, candidateSubjects);
+
+      let topicsBySubject: Map<string, { id: string; name: string }[]> | undefined;
+      if (sectionMap.size > 0) {
+        topicsBySubject = new Map();
+        for (const subj of candidateSubjects) {
+          let topicsForSubj = state.topics.filter(t => t.subjectId === subj.id).map(t => ({ id: t.id, name: t.name }));
+          if (topicsForSubj.length === 0) {
+            const generalTopic = await ensureGeneralTopic(state, subj.id, book.id);
+            topicsForSubj = [{ id: generalTopic.id, name: generalTopic.name }];
+          }
+          topicsBySubject.set(subj.id, topicsForSubj);
+        }
+        const pageCount = pagesForSectionDetection.length;
+        const bySubjectCounts = candidateSubjects.map(s => {
+          const count = [...sectionMap.values()].filter(id => id === s.id).length;
+          return `${s.name}: ${count}/${pageCount} pages`;
+        }).join(", ");
+        console.log(`[ExtractMCQ] Detected combined-subject sections — ${bySubjectCounts}`);
+      }
+
       const extracted = await extractQuestionsFromPdfText({
         text: parsedText,
         subjectId: book.subjectId,
@@ -1340,6 +1358,8 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
         pyqYear,
         pyqExamName,
         pyqSession,
+        sectionMap: sectionMap.size > 0 ? sectionMap : undefined,
+        topicsBySubject,
       });
 
       // Note: we deliberately do NOT blanket-embed each question's own whole-question

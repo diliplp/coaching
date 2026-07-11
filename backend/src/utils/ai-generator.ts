@@ -576,6 +576,63 @@ function findChapterStart(text: string, chapterName: string): number {
   return idx;
 }
 
+// Maps a section-header keyword (as captured by detectPageSections' regexes) to the
+// substring expected in that subject's name — same subject-name convention used by
+// generateQuestionsFromText's isChemistry/isPhysics/isBiology checks below
+// (subjectLower.includes("chemistry"), .includes("physics"), .includes("bio")).
+const SECTION_KEYWORD_TO_SUBJECT_NAME_FRAGMENT: Record<string, string> = {
+  chemistry: "chemistry",
+  physics: "physics",
+  biology: "bio",
+  botany: "bio",
+  zoology: "bio",
+};
+
+/**
+ * Detects internal Physics/Chemistry/Biology section boundaries within a single combined
+ * PDF (e.g. a NEET paper with three subject sections back to back) by looking for section
+ * header lines ("PART A — PHYSICS", "SECTION 2: CHEMISTRY", a standalone "Biology" line,
+ * etc.) on each page. Returns a map of 1-indexed page number -> subjectId, covering every
+ * page from the first detected header onward (a page with no header inherits the most
+ * recently seen section, since a section spans until the next header appears).
+ *
+ * Only meaningful when the book's own subject has sibling Physics/Chemistry/Biology
+ * subjects to choose between (checked by the caller before invoking this) — for the
+ * overwhelming majority of single-subject books, callers should skip this entirely so
+ * behavior for those books is unchanged.
+ */
+export function detectPageSections(
+  pages: string[],
+  candidateSubjects: { id: string; name: string }[]
+): Map<number, string> {
+  const sectionMap = new Map<number, string>();
+  if (candidateSubjects.length < 2) return sectionMap;
+
+  // Three header conventions seen across generated/compiled papers, tried in order:
+  //  1. "*  Physics  [180]" — bullet + subject + bracketed marks total (no newline
+  //     reliably separating it from the text that follows, so this can't require the
+  //     subject to be alone on its own line).
+  //  2. "PART A — PHYSICS" / "SECTION 2: CHEMISTRY" — explicit part/section marker.
+  //  3. A bare "Biology" standalone line with nothing else on it.
+  const bulletMarksRe = /[*•]\s*(physics|chemistry|biology|botany|zoology)\s*\[\s*\d+\s*\]/i;
+  const headerRe = /\b(?:part|section)\s*[-:.]?\s*[a-c1-3]\b[^\n]{0,40}?\b(physics|chemistry|biology|botany|zoology)\b/i;
+  const standaloneRe = /^[ \t]*(physics|chemistry|biology|botany|zoology)[ \t]*(section)?[ \t]*$/im;
+
+  let current: string | null = null;
+  pages.forEach((pageText, i) => {
+    const match = bulletMarksRe.exec(pageText) || headerRe.exec(pageText) || standaloneRe.exec(pageText);
+    if (match) {
+      const keyword = match[1].toLowerCase();
+      const nameFragment = SECTION_KEYWORD_TO_SUBJECT_NAME_FRAGMENT[keyword];
+      const subject = nameFragment ? candidateSubjects.find(s => s.name.toLowerCase().includes(nameFragment)) : undefined;
+      if (subject) current = subject.id;
+    }
+    if (current) sectionMap.set(i + 1, current);
+  });
+
+  return sectionMap;
+}
+
 /**
  * Vision extraction via Gemini SDK (primary) — retries on 429 instead of falling back
  * to a lower-quality model.
@@ -2230,6 +2287,14 @@ export async function extractQuestionsFromPdfText(params: {
   pyqYear?: number;
   pyqExamName?: string;
   pyqSession?: string;
+  // Combined-subject-paper support (e.g. a NEET paper with internal Physics/Chemistry/
+  // Biology sections): when the book's subject has sibling subjects under the same
+  // class/stream, the caller runs detectPageSections() and passes the result here so
+  // each question gets tagged with the subject of the page it actually came from,
+  // instead of the single book-level params.subjectId. Absent/empty for the common
+  // single-subject book, in which case behavior is unchanged.
+  sectionMap?: Map<number, string>;
+  topicsBySubject?: Map<string, { id: string; name: string }[]>;
 }): Promise<Question[]> {
   const pageDelimiter = /--- PAGE \d+ ---/gi;
   const parts = params.text.split(pageDelimiter);
@@ -2892,10 +2957,18 @@ Return JSON:
     const promptHash = crypto.createHash("sha256").update(normalizedPrompt).digest("hex").substring(0, 16);
     const qId = `que-pdf-${params.bookId || "book"}-${promptHash}`;
 
-    const resolvedTopicId = matchTopicId(q.topicName, params.topics ?? []) ?? params.topicId;
+    const resolvedSubjectId = params.sectionMap?.get(pageNum) ?? params.subjectId;
+    const topicsForResolvedSubject = params.topicsBySubject?.get(resolvedSubjectId) ?? params.topics ?? [];
+    // If the section map put this question under a different subject than the book's
+    // default, params.topicId (the book-level default topic) belongs to the WRONG
+    // subject and must not be used as a fallback — fall back to that subject's own
+    // topic list instead, and only use params.topicId when we're on the book's own
+    // default subject (the common case, where it's always correct).
+    const fallbackTopicId = resolvedSubjectId === params.subjectId ? params.topicId : topicsForResolvedSubject[0]?.id ?? params.topicId;
+    const resolvedTopicId = matchTopicId(q.topicName, topicsForResolvedSubject) ?? fallbackTopicId;
     return {
       id: qId,
-      subjectId: params.subjectId,
+      subjectId: resolvedSubjectId,
       topicId: resolvedTopicId,
       type: correctOptionIds.length > 1 ? "multi_correct" : "single_correct",
       prompt: promptText,
