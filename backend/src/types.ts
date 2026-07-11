@@ -107,6 +107,10 @@ export interface SubjectBook {
    * (usually bare, answer-free) question paper. Used to auto-derive correct
    * answers without exposing them anywhere in this book's own file or crops. */
   answerKeyBookId?: string;
+  /** Manually-typed answer key string (e.g. "D,A,C,B,A" or "DACBA"), applied by array
+   * position rather than question number — the alternative to answerKeyBookId's
+   * more robust number-matched linking. See POST /subject-books/:id/apply-answer-key. */
+  answerKey?: string;
 }
 
 export interface UserAccount {
@@ -161,6 +165,14 @@ export interface Question {
   pyqExamName?: string;       // e.g. "JEE Mains", "NEET", "GUJCET", "JEE Advanced"
   pyqSession?: string;        // e.g. "January Session", "Paper 1"
   passageText?: string;       // paragraph/comprehension stimulus shown above the question
+  pageNumber?: number;        // source PDF page this question was extracted from (extraction pipeline only)
+  /** Post-extraction QA signals (additive to isVerified, not a replacement — isVerified
+   * only means "an answer was found"; these mean "extraction fidelity was checked").
+   * Set by verifyExtractedQuestions() at the end of the extraction pipeline. Never
+   * auto-"approved" — a clean question stays "unreviewed" until a human glances at it. */
+  qaFlags?: string[];
+  qaStatus?: "unreviewed" | "flagged" | "approved" | "rejected";
+  qaCheckedAt?: string;
 }
 
 export interface ExamBlueprintTopicRule {

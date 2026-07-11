@@ -2191,6 +2191,39 @@ function ensureMathDelimited(value: string): string {
   return `$${v}$`;
 }
 
+// Detection-only counterpart to ensureMathDelimited, for prompt/explanation text: those
+// mix prose and math, so unlike a pure-math option value there's no safe way to
+// auto-wrap "the whole string" — attempting to guess where an embedded math fragment
+// ends within a sentence is a fabrication risk on a live exam. Instead this just flags
+// the question for a human glance (see qaFlags below) by checking whether a raw LaTeX
+// command survives outside of any existing $...$ span.
+function hasUndelimitedLatex(text: string): boolean {
+  if (!text) return false;
+  const withoutMathSpans = text.replace(/\${1,2}[^$]*\${1,2}/g, "");
+  return RAW_LATEX_COMMAND.test(withoutMathSpans);
+}
+
+// Shared by the diagram-embedding logic in extractQuestionsFromPdfText's final .map()
+// and the Tier-1 QA check below — both need "does this prompt talk about a figure that
+// isn't actually present" using the exact same keyword list, so it's defined once here.
+function promptMentionsFigure(promptLower: string): boolean {
+  return (
+    promptLower.includes("figure") ||
+    promptLower.includes("diagram") ||
+    promptLower.includes("image") ||
+    promptLower.includes("shown below") ||
+    promptLower.includes("given below") ||
+    promptLower.includes("above reaction") ||
+    promptLower.includes("following structure") ||
+    promptLower.includes("the structure") ||
+    promptLower.includes("given :") ||
+    promptLower.includes("given:") ||
+    promptLower.includes("piston") ||
+    promptLower.includes("semi-permeable") ||
+    promptLower.includes("membrane")
+  );
+}
+
 function looksLikeUntranscribedOption(value: unknown, label: string): boolean {
   const v = String(value ?? "").trim();
   if (!v) return true;
@@ -2853,12 +2886,22 @@ Return JSON:
       };
     });
 
+    // Captured before the answer-key override below so the QA pass can flag cases where
+    // the vision model's own answer guess disagrees with the authoritative key — two
+    // independent reads landing on different answers is worth a human glance even though
+    // the key wins.
+    const visionGuessedOptionId = correctOptionIds.length === 1 ? correctOptionIds[0] : null;
+    let answerKeyConflict = false;
+
     // Override with answer key if available for this question number
     const qNum = q._questionNumber;
     if (qNum && answerKey.has(qNum)) {
       const correctLabel = answerKey.get(qNum)!;
       const matchingOpt = options.find(o => o.label.toUpperCase() === correctLabel);
       if (matchingOpt) {
+        if (visionGuessedOptionId && visionGuessedOptionId !== matchingOpt.id) {
+          answerKeyConflict = true;
+        }
         // Replace whatever AI guessed with the authoritative answer key answer
         correctOptionIds.length = 0;
         correctOptionIds.push(matchingOpt.id);
@@ -2907,23 +2950,7 @@ Return JSON:
           return val.length < 3; // very short non-numeric value = likely image placeholder
         }) ?? false;
 
-        const mentionsFigure = (
-          lowerPrompt.includes("figure") ||
-          lowerPrompt.includes("diagram") ||
-          lowerPrompt.includes("image") ||
-          lowerPrompt.includes("shown below") ||
-          lowerPrompt.includes("given below") ||
-          lowerPrompt.includes("above reaction") ||
-          lowerPrompt.includes("following structure") ||
-          lowerPrompt.includes("the structure") ||
-          lowerPrompt.includes("given :") ||
-          lowerPrompt.includes("given:") ||
-          lowerPrompt.includes("piston") ||
-          lowerPrompt.includes("semi-permeable") ||
-          lowerPrompt.includes("membrane")
-        );
-
-        const needsDiagram = visionReportedDiagram || mentionsFigure || hasImageOnlyOption;
+        const needsDiagram = visionReportedDiagram || promptMentionsFigure(lowerPrompt) || hasImageOnlyOption;
 
         if (needsDiagram && !promptText.includes("[IMAGE:")) {
           // Prefer question-area images (above the Ans. marker on the page).
@@ -2957,6 +2984,31 @@ Return JSON:
     const promptHash = crypto.createHash("sha256").update(normalizedPrompt).digest("hex").substring(0, 16);
     const qId = `que-pdf-${params.bookId || "book"}-${promptHash}`;
 
+    // Tier-1 QA pass (deterministic, no extra API cost — see the Phase-4 reliability
+    // plan): every question gets checked here at assembly time, since all the context
+    // (final promptText, options, pre/post answer-key correctOptionIds) is already at
+    // hand. Tier-2 (a per-page vision fidelity cross-check) runs separately afterward
+    // via verifyExtractedQuestions() and appends to qaFlags/qaStatus set here.
+    const qaFlags: string[] = [];
+    if (options.length !== 4) {
+      qaFlags.push(`wrong_option_count:${options.length}`);
+    }
+    if (PLACEHOLDER_OPTION_PATTERN.test(promptText) || PLACEHOLDER_OPTION_PATTERN.test(q.explanation || "")) {
+      qaFlags.push("placeholder_leak");
+    }
+    if (hasUndelimitedLatex(promptText) || hasUndelimitedLatex(q.explanation || "")) {
+      qaFlags.push("undelimited_latex");
+    }
+    if (promptMentionsFigure(promptText.toLowerCase()) && !promptText.includes("[IMAGE:")) {
+      qaFlags.push("missing_referenced_diagram");
+    }
+    if (correctOptionIds.length === 0) {
+      qaFlags.push("no_answer_detected");
+    }
+    if (answerKeyConflict) {
+      qaFlags.push("answer_key_conflict");
+    }
+
     const resolvedSubjectId = params.sectionMap?.get(pageNum) ?? params.subjectId;
     const topicsForResolvedSubject = params.topicsBySubject?.get(resolvedSubjectId) ?? params.topics ?? [];
     // If the section map put this question under a different subject than the book's
@@ -2984,11 +3036,116 @@ Return JSON:
       isVerified: correctOptionIds.length > 0,
       pageNumber: pageNum,
       questionNumber: q._questionNumber,
+      qaFlags,
+      qaStatus: qaFlags.length > 0 ? "flagged" : "unreviewed",
+      qaCheckedAt: new Date().toISOString(),
       ...(params.pyqYear !== undefined && { pyqYear: params.pyqYear }),
       ...(params.pyqExamName !== undefined && { pyqExamName: params.pyqExamName }),
       ...(params.pyqSession !== undefined && { pyqSession: params.pyqSession }),
     };
   });
+}
+
+/**
+ * Tier-2 QA pass: one extra vision call PER PAGE (not per question) using a cheap,
+ * independent model, asking it to flag any question on that page whose extracted text
+ * doesn't faithfully match what's actually printed. Tier-1 deterministic flags are
+ * already set inline during extraction (see the qaFlags block in
+ * extractQuestionsFromPdfText's final .map()); this ADDS to those, merged by
+ * questionNumber, mutating `questions` in place. No-ops entirely when pdfPath or an
+ * OpenRouter key isn't available — Tier-1 flags still stand on their own either way, per
+ * the plan's persist-then-flag decision (never block extraction on this).
+ */
+export async function verifyExtractedQuestions(
+  questions: Question[],
+  pdfPath?: string
+): Promise<void> {
+  if (!pdfPath || !process.env.OPENROUTER_API_KEY) return;
+
+  let verifyModel = process.env.OPENROUTER_VERIFY_MODEL;
+  if (!verifyModel) {
+    const catalog = await getOpenRouterCatalog();
+    verifyModel = catalog ? cheapestPaidVisionModel(catalog) ?? undefined : undefined;
+  }
+  if (!verifyModel) {
+    console.warn("[Verify] No usable verification vision model — skipping Tier-2 fidelity check.");
+    return;
+  }
+
+  const byPage = new Map<number, Question[]>();
+  for (const q of questions) {
+    if (q.questionNumber == null || q.pageNumber == null) continue;
+    const list = byPage.get(q.pageNumber) ?? [];
+    list.push(q);
+    byPage.set(q.pageNumber, list);
+  }
+
+  for (const [pageNumber, pageQuestions] of byPage) {
+    const imageBase64 = renderPageToBase64(pdfPath, pageNumber - 1);
+    if (!imageBase64) continue;
+
+    const questionsPayload = pageQuestions.map(q => ({
+      questionNumber: q.questionNumber,
+      prompt: q.prompt,
+      options: q.options.map(o => ({ label: o.label, value: o.value }))
+    }));
+
+    const verifyPrompt = `You are proofreading extracted exam questions against the original page image. Below is JSON of what was extracted from THIS page:
+
+${JSON.stringify(questionsPayload)}
+
+Compare each question's transcribed text and options against what is actually printed on the page image. Flag ONLY questions where the extracted text does NOT faithfully match the page (garbled text, wrong numbers/symbols, options that don't match what's printed, or a visibly different marked answer). Do not flag minor formatting differences.
+
+Return JSON: {"flagged": [{"questionNumber": <number>, "reason": "<short reason>"}]}
+If everything matches, return {"flagged": []}.`;
+
+    try {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://railway.app",
+          "X-Title": "Coaching Portal Exam Gen"
+        },
+        body: JSON.stringify({
+          model: verifyModel,
+          messages: [{ role: "user", content: [
+            { type: "image_url", image_url: { url: `data:image/png;base64,${imageBase64}`, detail: "high" } },
+            { type: "text", text: verifyPrompt }
+          ]}],
+          response_format: { type: "json_object" },
+          max_tokens: 2000
+        })
+      });
+      if (!response.ok) {
+        console.warn(`[Verify] Page ${pageNumber}: verify call failed (${response.status})`);
+        continue;
+      }
+      const data = await response.json();
+      const raw = data.choices?.[0]?.message?.content;
+      if (!raw) continue;
+      const parsed = JSON.parse(repairJsonString(raw));
+      const flagged: Array<{ questionNumber: number; reason: string }> = parsed.flagged || [];
+      for (const f of flagged) {
+        const match = pageQuestions.find(q => q.questionNumber === f.questionNumber);
+        if (!match) continue;
+        match.qaFlags = [...(match.qaFlags ?? []), `fidelity_mismatch: ${f.reason}`];
+        match.qaStatus = "flagged";
+        console.warn(`[Verify] Q${f.questionNumber} (page ${pageNumber}) flagged: ${f.reason}`);
+      }
+    } catch (e: any) {
+      console.warn(`[Verify] Page ${pageNumber} verify threw:`, e.message);
+    }
+
+    // Reuse the same adaptive delay as primary extraction so this second vision pass
+    // doesn't pile a fresh burst of requests on top of a provider that just rate-limited
+    // us during extraction.
+    await new Promise(resolve => setTimeout(resolve, nextVisionDelayMs()));
+  }
+
+  const checkedAt = new Date().toISOString();
+  for (const q of questions) q.qaCheckedAt = checkedAt;
 }
 
 const BIOLOGY_VISION_PROMPT = `You are a biology exam question generator. You will receive an image from a biology textbook.

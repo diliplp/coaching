@@ -18,7 +18,7 @@ import {
 } from "../utils/exam-engine.js";
 import path from "node:path";
 import { extractPdfText, extractPdfDiagrams, extractPdfQuestionCrops } from "../utils/pdf.js";
-import { generateQuestionsFromText, generateQuestionsFromBiologyFigures, ensureEnoughQuestions, parseExamPrompt, detectCurriculumFromText, generateOfflineBoardPaper, extractQuestionsFromPdfText, checkAiModelHealth, extractAnswerKeyFromText, detectPageSections } from "../utils/ai-generator.js";
+import { generateQuestionsFromText, generateQuestionsFromBiologyFigures, ensureEnoughQuestions, parseExamPrompt, detectCurriculumFromText, generateOfflineBoardPaper, extractQuestionsFromPdfText, checkAiModelHealth, extractAnswerKeyFromText, detectPageSections, verifyExtractedQuestions } from "../utils/ai-generator.js";
 import { listReferencePapers } from "../utils/reference-papers.js";
 import { ensureGeneralTopic } from "../utils/question-admin.js";
 import { findUserByEmail, generateSessionId, requireAuth, requireRole, signAuthToken, validatePasswordStrength, verifyPassword } from "../utils/auth.js";
@@ -1372,6 +1372,18 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
       // crop instead. `crops` (per-question crops) is still generated and kept on disk for
       // the admin question-bank thumbnails, just no longer force-inserted into prompts.
 
+      // Tier-1 QA flags are already set per-question inside extractQuestionsFromPdfText.
+      // Tier-2 adds one extra vision call per PAGE to cross-check extracted text/options
+      // against the actual page image — persist-then-flag per the reliability plan, so
+      // this never blocks saving even if the verify model/call fails outright.
+      await updateExtractionStatus("running", "Running QA verification pass...");
+      try {
+        await verifyExtractedQuestions(extracted, pdfPath);
+      } catch (verifyError: any) {
+        console.warn(`[Background] QA verification pass failed (continuing without it): ${verifyError.message}`);
+      }
+      const flaggedCount = extracted.filter(q => q.qaStatus === "flagged").length;
+
       const stateBefore = await getAppState();
       const existingBookQs = stateBefore.questions.filter(q => q.bookId === book.id);
       await updateExtractionStatus("running", `Saving ${extracted.length} questions...`);
@@ -1385,8 +1397,11 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
         await upsertRecord("questions", q);
       }
 
-      await updateExtractionStatus("done", `Done! ${extracted.length} questions extracted.`, extracted.length);
-      console.log(`[Background] Successfully extracted and saved ${extracted.length} questions for book ${book.id}.`);
+      const doneMessage = flaggedCount > 0
+        ? `Done! ${extracted.length} questions extracted, ${flaggedCount} flagged for review.`
+        : `Done! ${extracted.length} questions extracted.`;
+      await updateExtractionStatus("done", doneMessage, extracted.length);
+      console.log(`[Background] Successfully extracted and saved ${extracted.length} questions for book ${book.id} (${flaggedCount} flagged).`);
     } catch (bgError: any) {
       console.error(`[Background] Error during question extraction for book ${book.id}:`, bgError);
       await updateExtractionStatus("error", `Error: ${bgError.message || "Unknown error"}`);
