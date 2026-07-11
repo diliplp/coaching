@@ -142,6 +142,22 @@ function renderPageToBase64(pdfPath: string, pageIndex: number): string | null {
   }
 }
 
+// Adaptive per-page delay: stay fast in the normal case, back off only when the
+// provider actually rate-limits us (HTTP 429), instead of a flat worst-case sleep
+// on every single page regardless of need.
+let consecutiveVisionRateLimitHits = 0;
+
+function recordVisionRateLimitOutcome(rateLimited: boolean) {
+  consecutiveVisionRateLimitHits = rateLimited ? consecutiveVisionRateLimitHits + 1 : 0;
+}
+
+function nextVisionDelayMs(): number {
+  const base = Number(process.env.VISION_PAGE_DELAY_MS || 2000);
+  if (consecutiveVisionRateLimitHits === 0) return base;
+  const backoff = Number(process.env.VISION_RATE_LIMIT_BACKOFF_MS || 20000);
+  return Math.min(backoff * Math.pow(2, consecutiveVisionRateLimitHits - 1), 120000);
+}
+
 async function generateVisionContent(textPrompt: string, imageBase64: string): Promise<string | null> {
   if (process.env.OPENROUTER_API_KEY) {
     // `models` is OpenRouter's server-side fallback routing: it tries each listed
@@ -170,10 +186,12 @@ async function generateVisionContent(textPrompt: string, imageBase64: string): P
           })
         });
         if (response.ok) {
+          recordVisionRateLimitOutcome(false);
           const data = await response.json();
           const text = data.choices?.[0]?.message?.content;
           if (text) { console.log(`[Vision] OpenRouter succeeded via ${data.model ?? models[0]}.`); return text; }
         } else {
+          recordVisionRateLimitOutcome(response.status === 429);
           console.warn(`[Vision] OpenRouter failed (${response.status}): ${(await response.text()).slice(0, 200)}`);
         }
       } catch (e: any) {
@@ -2078,6 +2096,30 @@ type PageDiagram = { page: number; url: string; bbox: number[]; isQuestionImage?
 // isn't apologetic text, just a stand-in label the model uses instead of real content.
 const PLACEHOLDER_OPTION_PATTERN = /not (fully )?provided|not available|n\/a|unavailable|unknown|not visible|not shown|cannot be determined|unable to (read|extract)|\[\s*image\s*[a-d]?\s*\]/i;
 
+// Hard guard against placeholder options: when a question is cut off at a page/crop
+// boundary, the model sometimes ignores the "omit it" instruction and writes filler text
+// (e.g. "Not provided", "(A) [Image A]") instead, or repeats the same value across
+// options. This check does not depend on the model's compliance — it inspects the actual
+// option text and drops any question that clearly wasn't fully read from the page.
+// Mutates `questions` in place (same in-place-replace pattern used elsewhere in this file
+// so callers holding a reference to the array keep seeing the filtered contents).
+function applyGroundingFilter(questions: any[]): void {
+  const kept = questions.filter((q: any) => {
+    const values = (q.options || []).map((o: any) => String(o.value ?? "").trim());
+    if (values.some((v: string) => !v || PLACEHOLDER_OPTION_PATTERN.test(v))) {
+      console.warn(`[Extract] Dropped Q${q._questionNumber ?? "?"} — placeholder/empty option text (page likely cut off mid-question): "${(q.prompt || "").slice(0, 60)}"`);
+      return false;
+    }
+    if (values.length >= 2 && new Set(values).size < values.length) {
+      console.warn(`[Extract] Dropped Q${q._questionNumber ?? "?"} — duplicate option values (extraction likely incomplete): "${(q.prompt || "").slice(0, 60)}"`);
+      return false;
+    }
+    return true;
+  });
+  questions.length = 0;
+  questions.push(...kept);
+}
+
 // Catches a specific, recurring vision-extraction slip: an option value is valid
 // LaTeX (e.g. "\frac{V}{4}") but the model forgot to wrap it in $...$, so it rendered
 // as literal backslash-command text in the question bank instead of a fraction. Every
@@ -2263,8 +2305,7 @@ export async function extractQuestionsFromPdfText(params: {
 
       allParsedQuestions.push(...validList.map(q => ({ ...q, pageNumber: 1 })));
       if (i < chunks.length - 1) {
-        const delay = 8000;
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise(resolve => setTimeout(resolve, nextVisionDelayMs()));
       }
     }
   } else {
@@ -2300,7 +2341,7 @@ export async function extractQuestionsFromPdfText(params: {
         // Vision path: one call per page, no chunking needed — model reads the full page image
         const qList = await extractFromChunkText(pageTextWithOverlap, pageImageBase64, topicNames);
         allParsedQuestions.push(...qList.map((q: any) => ({ ...q, pageNumber: i + 1 })));
-        await new Promise(resolve => setTimeout(resolve, 15000));
+        await new Promise(resolve => setTimeout(resolve, nextVisionDelayMs()));
       } else {
         // Text-only path: chunk large pages to stay within token limits
         const chunks = chunkPageText(pageTextWithOverlap, 6);
@@ -2325,7 +2366,7 @@ export async function extractQuestionsFromPdfText(params: {
             return true;
           });
           allParsedQuestions.push(...validList.map((q: any) => ({ ...q, pageNumber: i + 1 })));
-          await new Promise(resolve => setTimeout(resolve, 15000));
+          await new Promise(resolve => setTimeout(resolve, nextVisionDelayMs()));
         }
       }
     }
@@ -2583,6 +2624,17 @@ export async function extractQuestionsFromPdfText(params: {
     return (a.pageNumber ?? 0) - (b.pageNumber ?? 0);
   });
 
+  // Some questions have graph/diagram answer options (e.g. "which v-t graph is correct")
+  // instead of text — no vision model can describe 4 tiny graphs accurately, so it either
+  // writes placeholder text or hallucinates. extract_diagrams.py already isolates each
+  // option's graph as its own cropped image with a precise bbox; this recovers those
+  // questions by matching each option to its own [IMAGE: ...] crop instead of dropping
+  // the question outright. Runs before the missing-number recovery below so a question
+  // that gets dropped here (placeholder/incomplete options) is treated as "missing" and
+  // gets a real shot at cross-page recovery, instead of silently vanishing.
+  assignOptionImages(uniqueQuestions, params.diagrams);
+  applyGroundingFilter(uniqueQuestions);
+
   // Diagnostic + recovery: find missing question numbers and attempt cross-page recovery
   const foundNumbers = uniqueQuestions
     .map(q => q._questionNumber)
@@ -2716,35 +2768,15 @@ Return JSON:
     }
   }
 
-  // Some questions have graph/diagram answer options (e.g. "which v-t graph is correct")
-  // instead of text — no vision model can describe 4 tiny graphs accurately, so it either
-  // writes placeholder text or hallucinates. extract_diagrams.py already isolates each
-  // option's graph as its own cropped image with a precise bbox; this recovers those
-  // questions by matching each option to its own [IMAGE: ...] crop instead of dropping
-  // the question outright.
+  // Recovery above pushes reconstructed questions straight into uniqueQuestions without
+  // re-validating them, so run the grounding filter once more (idempotent on questions
+  // that already passed) to catch the rare case where even the targeted multi-page
+  // recovery still comes back with placeholder/incomplete options — those are genuinely
+  // unrecoverable and get dropped here with a clear log line rather than shipping garbage.
   assignOptionImages(uniqueQuestions, params.diagrams);
+  applyGroundingFilter(uniqueQuestions);
 
-  // Hard guard against placeholder options: when a question is cut off at a page/crop
-  // boundary, the model sometimes ignores the "omit it" instruction above and writes
-  // filler text (e.g. "Not provided", "(A) [Image A]") instead. This check does not
-  // depend on the model's compliance — it inspects the actual option text and drops
-  // any question that clearly wasn't fully read from the page. Runs after
-  // assignOptionImages so questions it already recovered with real [IMAGE: ...] crops
-  // pass straight through.
-  const groundedQuestions = uniqueQuestions.filter((q: any) => {
-    const values = (q.options || []).map((o: any) => String(o.value ?? "").trim());
-    if (values.some((v: string) => !v || PLACEHOLDER_OPTION_PATTERN.test(v))) {
-      console.warn(`[Extract] Dropped Q${q._questionNumber ?? "?"} — placeholder/empty option text (page likely cut off mid-question): "${(q.prompt || "").slice(0, 60)}"`);
-      return false;
-    }
-    if (values.length >= 2 && new Set(values).size < values.length) {
-      console.warn(`[Extract] Dropped Q${q._questionNumber ?? "?"} — duplicate option values (extraction likely incomplete): "${(q.prompt || "").slice(0, 60)}"`);
-      return false;
-    }
-    return true;
-  });
-
-  return groundedQuestions.map((q: any, i: number) => {
+  return uniqueQuestions.map((q: any, i: number) => {
     const correctOptionIds: string[] = [];
     const options: QuestionOption[] = (q.options || []).map((o: any, idx: number) => {
       const oId = `opt-pdf-${Date.now()}-${i}-${idx}-${Math.random().toString(36).substr(2, 4)}`;
@@ -2939,7 +2971,12 @@ export async function generateQuestionsFromBiologyFigures(params: {
   onProgress?.("Extracting diagrams from PDF...");
   let diagrams: Array<{ page: number; url: string; bbox: number[]; isQuestionImage?: boolean }>;
   try {
-    diagrams = await extractPdfDiagrams(pdfPath, bookId);
+    const diagramsResult = await extractPdfDiagrams(pdfPath, bookId);
+    if (diagramsResult.failed) {
+      onProgress?.(`Diagram extraction failed: ${diagramsResult.errorMessage}`);
+      return [];
+    }
+    diagrams = diagramsResult.items;
   } catch (e: any) {
     onProgress?.(`Diagram extraction failed: ${e.message}`);
     return [];

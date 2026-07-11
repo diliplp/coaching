@@ -835,7 +835,7 @@ apiRouter.get("/subject-books", async (_req: Request, res: Response) => {
 apiRouter.get("/subject-books/:id/extraction-status", requireAuth, async (req, res) => {
   const { getRecord } = await import("../data/database.js");
   const bookId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const book = await getRecord<any>("books", bookId);
+  const book = await getRecord<any>("subjectBooks", bookId);
   if (!book) return res.status(404).json({ message: "Book not found" });
   res.json({
     extractionStatus: book.extractionStatus ?? "idle",
@@ -1289,7 +1289,7 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
   // Helper: write extraction status back to the book record in DB
   const updateExtractionStatus = async (status: string, progress: string, questionCount = 0) => {
     try {
-      await upsertRecord("books", { ...book, extractionStatus: status, extractionProgress: progress, extractionQuestionCount: questionCount });
+      await upsertRecord("subjectBooks", { ...book, extractionStatus: status, extractionProgress: progress, extractionQuestionCount: questionCount });
     } catch (e) {
       console.warn("[Progress] Failed to write extraction status:", e);
     }
@@ -1305,11 +1305,20 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
 
       // Extract high-res question crops (primary visual content) and legacy diagrams in parallel
       await updateExtractionStatus("running", "Extracting question images...");
-      const [crops, diagrams] = await Promise.all([
+      const [cropsResult, diagramsResult] = await Promise.all([
         extractPdfQuestionCrops(pdfPath, book.id),
         extractPdfDiagrams(pdfPath, book.id),
       ]);
+      const crops = cropsResult.items;
+      const diagrams = diagramsResult.items;
       console.log(`[Background] Crops: ${crops.length}, Diagrams: ${diagrams.length}`);
+      if (cropsResult.failed || diagramsResult.failed) {
+        const parts = [
+          cropsResult.failed ? `question-crop extraction: ${cropsResult.errorMessage}` : null,
+          diagramsResult.failed ? `diagram extraction: ${diagramsResult.errorMessage}` : null,
+        ].filter(Boolean);
+        await updateExtractionStatus("running", `Warning: ${parts.join("; ")} — continuing with text-only extraction`);
+      }
 
       const subjectTopics = state.topics
         .filter(t => t.subjectId === book.subjectId)
