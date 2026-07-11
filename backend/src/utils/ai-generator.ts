@@ -902,7 +902,7 @@ ${textChunk}
             const correctOptionIds: string[] = [];
             const options: QuestionOption[] = rawOptions.map((opt, optIndex) => {
               if (opt.isCorrect) correctOptionIds.push(opt.id);
-              return { id: opt.id, label: String.fromCharCode(65 + optIndex), value: opt.value };
+              return { id: opt.id, label: String.fromCharCode(65 + optIndex), value: ensureMathDelimited(String(opt.value ?? "")) };
             });
 
             return {
@@ -2071,11 +2071,32 @@ type PageDiagram = { page: number; url: string; bbox: number[]; isQuestionImage?
 /** True when an option value is empty, a placeholder, or too short to be a real
  * transcribed answer (e.g. just the label). Excludes legitimate short numeric
  * answers like "12" or "-3.5", which must never be treated as image placeholders. */
+// Shared across the untranscribed-option check and the post-extraction drop filter.
+// Covers every placeholder phrasing seen in practice: prose ("Not provided", "cannot
+// be determined") and the model's own bracket convention for "an image goes here"
+// (e.g. "(A) [Image A]") — the latter isn't caught by the prose patterns since it
+// isn't apologetic text, just a stand-in label the model uses instead of real content.
+const PLACEHOLDER_OPTION_PATTERN = /not (fully )?provided|not available|n\/a|unavailable|unknown|not visible|not shown|cannot be determined|unable to (read|extract)|\[\s*image\s*[a-d]?\s*\]/i;
+
+// Catches a specific, recurring vision-extraction slip: an option value is valid
+// LaTeX (e.g. "\frac{V}{4}") but the model forgot to wrap it in $...$, so it rendered
+// as literal backslash-command text in the question bank instead of a fraction. Every
+// case seen in practice was the *entire* option value being pure math with no
+// surrounding prose, so wrapping the whole string is safe — this does not attempt to
+// handle options that mix plain text and math (rare, and riskier to auto-wrap).
+const RAW_LATEX_COMMAND = /\\(frac|dfrac|text|times|sqrt|left|right|Delta|nabla|partial|infty|alpha|beta|gamma|theta|lambda|mu|omega|pi|sigma|phi|psi|cup|cap|subseteq|subset|supseteq|cdot|ge|le|neq|approx|pm|rightleftharpoons|rightarrow|leftarrow|Rightarrow|ce|vec|hat|overline|underline|begin|end)\b/;
+
+function ensureMathDelimited(value: string): string {
+  const v = value.trim();
+  if (!v || v.includes("$") || !RAW_LATEX_COMMAND.test(v)) return value;
+  return `$${v}$`;
+}
+
 function looksLikeUntranscribedOption(value: unknown, label: string): boolean {
   const v = String(value ?? "").trim();
   if (!v) return true;
   if (/^-?\d+(\.\d+)?$/.test(v)) return false;
-  if (/not (fully )?provided|not visible|not shown|unavailable|unknown|n\/a/i.test(v)) return true;
+  if (PLACEHOLDER_OPTION_PATTERN.test(v)) return true;
   if (v === label || v === `(${label})`) return true;
   return v.length < 3;
 }
@@ -2705,13 +2726,14 @@ Return JSON:
 
   // Hard guard against placeholder options: when a question is cut off at a page/crop
   // boundary, the model sometimes ignores the "omit it" instruction above and writes
-  // filler text (e.g. "Not provided", "Not fully provided in excerpt") instead. This
-  // check does not depend on the model's compliance — it inspects the actual option
-  // text and drops any question that clearly wasn't fully read from the page.
-  const placeholderPattern = /not (fully )?provided|not available|n\/a|unavailable|unknown|not visible|not shown|cannot be determined|unable to (read|extract)/i;
+  // filler text (e.g. "Not provided", "(A) [Image A]") instead. This check does not
+  // depend on the model's compliance — it inspects the actual option text and drops
+  // any question that clearly wasn't fully read from the page. Runs after
+  // assignOptionImages so questions it already recovered with real [IMAGE: ...] crops
+  // pass straight through.
   const groundedQuestions = uniqueQuestions.filter((q: any) => {
     const values = (q.options || []).map((o: any) => String(o.value ?? "").trim());
-    if (values.some((v: string) => !v || placeholderPattern.test(v))) {
+    if (values.some((v: string) => !v || PLACEHOLDER_OPTION_PATTERN.test(v))) {
       console.warn(`[Extract] Dropped Q${q._questionNumber ?? "?"} — placeholder/empty option text (page likely cut off mid-question): "${(q.prompt || "").slice(0, 60)}"`);
       return false;
     }
@@ -2730,7 +2752,7 @@ Return JSON:
       return {
         id: oId,
         label: o.label || String.fromCharCode(65 + idx),
-        value: o.value || ""
+        value: ensureMathDelimited(o.value || "")
       };
     });
 
