@@ -97,6 +97,37 @@ export function QuestionBankPage() {
     });
   };
 
+  const selectAllQuestions = (questions: any[]) => {
+    setSelectedForExam(prev => {
+      const next = new Map(prev);
+      for (const question of questions) {
+        if (!next.has(question.id)) {
+          next.set(question.id, {
+            questionId: question.id,
+            marks: question.marks,
+            negativeMarks: question.negativeMarks,
+            prompt: question.prompt,
+            type: question.type,
+            difficulty: question.difficulty,
+            topicName: question.topicName || "",
+            subjectName: question.subjectName || ""
+          });
+        }
+      }
+      return next;
+    });
+  };
+
+  const deselectAllQuestions = (questions: any[]) => {
+    setSelectedForExam(prev => {
+      const next = new Map(prev);
+      for (const question of questions) {
+        next.delete(question.id);
+      }
+      return next;
+    });
+  };
+
   const updateSelectedMarks = (questionId: string, field: "marks" | "negativeMarks", value: number) => {
     setSelectedForExam(prev => {
       const next = new Map(prev);
@@ -570,10 +601,24 @@ export function QuestionBankPage() {
         </div>
       </article>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px", flexWrap: "wrap", gap: "10px" }}>
         <p className="muted-copy" style={{ margin: 0 }}>
           Showing <strong>{filteredQuestions.length}</strong> of {data.questions.length} questions
         </p>
+        {isTeacher && filteredQuestions.length > 0 && (
+          <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.85rem", cursor: "pointer", margin: 0 }}>
+            <input
+              type="checkbox"
+              checked={filteredQuestions.every((q: any) => selectedForExam.has(q.id))}
+              onChange={(e) => {
+                if (e.target.checked) selectAllQuestions(filteredQuestions);
+                else deselectAllQuestions(filteredQuestions);
+              }}
+              style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#7c3aed" }}
+            />
+            Select all {filteredQuestions.length} filtered question{filteredQuestions.length !== 1 ? "s" : ""} for exam
+          </label>
+        )}
       </div>
 
       {selectedBookId ? (
