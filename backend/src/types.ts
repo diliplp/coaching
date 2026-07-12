@@ -242,6 +242,12 @@ export interface TeacherCustomExamRequest {
   scheduledEndTime?: string;
   rules: WeightedExamRule[];
   allowedSourceTypes?: QuestionSource[];
+  /** When true, hard-excludes questions already used in ANY previous exam for this
+   * batch (not just exams with the same generation signature — see the existing softer
+   * sourceSignature-based dedup in getUsedQuestionIds/pickQuestions, which only avoids
+   * repeats within identically-shaped re-generations). Opt-in via a checkbox in the
+   * exam builder UI. */
+  excludeUsedQuestions?: boolean;
 }
 
 export interface StudentAnswerInput {

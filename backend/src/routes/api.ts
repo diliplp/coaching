@@ -350,8 +350,8 @@ apiRouter.get("/overview", async (req, res) => {
 
 apiRouter.post("/exams/self-generate", requireRole(["student", "super_admin", "teacher"]), async (req, res) => {
   try {
-    const { topicId, topicIds: rawTopicIds, questionCount, allowedSourceTypes } = req.body;
-    
+    const { topicId, topicIds: rawTopicIds, questionCount, allowedSourceTypes, excludeUsedQuestions } = req.body;
+
     let targetTopicIds: string[] = [];
     if (Array.isArray(rawTopicIds)) {
       targetTopicIds = rawTopicIds.map(String);
@@ -369,7 +369,11 @@ apiRouter.post("/exams/self-generate", requireRole(["student", "super_admin", "t
 
     const subjectId = validTopics[0].subjectId;
     const targetCount = Number(questionCount) || 10;
-    
+
+    const auth = (req as AuthenticatedRequest).auth;
+    const user = state.users.find(u => u.id === auth?.sub);
+    const student = state.students.find(s => s.id === user?.studentId);
+
     // Re-fetch questions — exclude any with no correct answer (garbled OCR / pending review)
     let questions = state.questions.filter(q =>
       targetTopicIds.includes(q.topicId) && q.correctOptionIds && q.correctOptionIds.length > 0
@@ -379,17 +383,28 @@ apiRouter.post("/exams/self-generate", requireRole(["student", "super_admin", "t
     if (Array.isArray(allowedSourceTypes) && allowedSourceTypes.length > 0) {
       questions = questions.filter(q => allowedSourceTypes.includes(q.sourceType || "custom"));
     }
-    
+
+    // Opt-in: hard-exclude questions that appeared in any exam (official or self-practice)
+    // this student has already submitted — "review" reflects the questions actually
+    // presented in a completed attempt, which is a more precise signal than the exam's
+    // full question list (which could include questions the student never reached).
+    if (excludeUsedQuestions && student) {
+      const usedQuestionIds = new Set(
+        state.submissions
+          .filter(s => s.studentId === student.id)
+          .flatMap(s => (s.review || []).map(r => r.questionId))
+      );
+      questions = questions.filter(q => !usedQuestionIds.has(q.id));
+    }
+
     if (questions.length === 0) {
-      return res.status(400).json({ message: "No questions found for the selected topics and source filters. Please ask your teacher to add questions to the question bank for these topics." });
+      return res.status(400).json({ message: excludeUsedQuestions
+        ? "No unused questions remain for the selected topics — try unchecking \"skip already-used questions\" or picking different topics."
+        : "No questions found for the selected topics and source filters. Please ask your teacher to add questions to the question bank for these topics." });
     }
 
     const count = Math.min(questions.length, targetCount);
     const selectedQuestions = questions.sort(() => 0.5 - Math.random()).slice(0, count);
-
-    const auth = (req as AuthenticatedRequest).auth;
-    const user = state.users.find(u => u.id === auth?.sub);
-    const student = state.students.find(s => s.id === user?.studentId);
 
     const exam = {
       id: `self-${Date.now()}`,

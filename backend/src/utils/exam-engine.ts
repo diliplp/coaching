@@ -299,10 +299,22 @@ export async function generateCustomExam(request: TeacherCustomExamRequest): Pro
 
   const subjectTopics = state.topics.filter((topic) => targetSubjectIds.includes(topic.subjectId));
   let subjectQuestions = state.questions.filter((question) => targetSubjectIds.includes(question.subjectId));
-  
+
   // Apply Source Filtering
   if (Array.isArray(request.allowedSourceTypes) && request.allowedSourceTypes.length > 0) {
     subjectQuestions = subjectQuestions.filter(q => request.allowedSourceTypes?.includes(q.sourceType || "custom"));
+  }
+
+  // Opt-in hard exclusion of questions already used in ANY previous exam for this batch
+  // (distinct from the softer sourceSignature-based preference below, which only avoids
+  // repeats across identically-shaped re-generations of the same exam).
+  if (request.excludeUsedQuestions) {
+    const batchUsedQuestionIds = new Set(
+      state.exams
+        .filter((exam) => exam.batchId === request.batchId)
+        .flatMap((exam) => exam.questions.map((question) => question.questionId))
+    );
+    subjectQuestions = subjectQuestions.filter((question) => !batchUsedQuestionIds.has(question.id));
   }
 
   const availabilityByEntity = new Map<string, number>();

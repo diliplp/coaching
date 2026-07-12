@@ -43,6 +43,7 @@ export function DashboardPage() {
   const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
   const [allowedSources, setAllowedSources] = useState<string[]>(["pyq", "reference", "textbook", "ai_generated", "custom"]);
   const [qCount, setQCount] = useState(10);
+  const [excludeUsedQuestions, setExcludeUsedQuestions] = useState(false);
 
   useEffect(() => {
     apiClient.getOverview().then(setData).catch(console.error);
@@ -163,7 +164,8 @@ export function DashboardPage() {
       const payload = await apiClient.selfGenerateExam({
         topicIds: selectedTopicIds,
         questionCount: qCount,
-        allowedSourceTypes: allowedSources as any
+        allowedSourceTypes: allowedSources as any,
+        excludeUsedQuestions
       });
       liveExamState.generatedExam = payload;
       liveExamState.latestResult = null;
@@ -434,6 +436,22 @@ export function DashboardPage() {
                   ))}
                 </div>
               </div>
+
+              <label style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                cursor: "pointer",
+                fontSize: "0.9rem",
+                width: "fit-content"
+              }}>
+                <input
+                  type="checkbox"
+                  checked={excludeUsedQuestions}
+                  onChange={(e) => setExcludeUsedQuestions(e.target.checked)}
+                />
+                <span>Skip questions I've already used in a previous test</span>
+              </label>
 
               <div className="grid-two" style={{ alignItems: "flex-end", gap: "20px" }}>
                 <label className="field" style={{ flex: 1 }}>

@@ -94,6 +94,7 @@ export function ExamBuilderPage() {
   const [scheduledEndTime, setScheduledEndTime] = useState("");
   const [weightages, setWeightages] = useState<Record<string, string>>({});
   const [allowedSources, setAllowedSources] = useState<string[]>(["pyq", "reference", "textbook", "ai_generated", "custom"]);
+  const [excludeUsedQuestions, setExcludeUsedQuestions] = useState(false);
   const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [combinedExamName, setCombinedExamName] = useState("PCM/PCB Combined Test");
@@ -272,7 +273,8 @@ export function ExamBuilderPage() {
             weightagePercent: Number(weightagePercent) || 0
           }))
           .filter((rule) => rule.weightagePercent > 0),
-        allowedSourceTypes: allowedSources as any
+        allowedSourceTypes: allowedSources as any,
+        excludeUsedQuestions
       });
       liveExamState.generatedExam = payload;
       liveExamState.latestResult = null;
@@ -703,6 +705,14 @@ export function ExamBuilderPage() {
                   ))}
                 </div>
               </div>
+              <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "0.85rem", marginTop: "14px" }}>
+                <input
+                  type="checkbox"
+                  checked={excludeUsedQuestions}
+                  onChange={(e) => setExcludeUsedQuestions(e.target.checked)}
+                />
+                Skip questions already used in a previous exam for this batch
+              </label>
             </div>
           )}
         </div>

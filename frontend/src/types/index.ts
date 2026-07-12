@@ -80,6 +80,8 @@ export interface TeacherCustomExamRequest {
     weightagePercent: number;
   }>;
   allowedSourceTypes?: QuestionSource[];
+  /** Hard-excludes questions already used in any previous exam for this batch. */
+  excludeUsedQuestions?: boolean;
 }
 
 export interface ExamSection {
