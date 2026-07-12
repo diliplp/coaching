@@ -424,9 +424,33 @@ apiRouter.post("/exams/self-generate", requireRole(["student", "super_admin", "t
 apiRouter.get("/question-bank", requireAuth, async (req, res) => {
   const auth = (req as AuthenticatedRequest).auth;
   const state = await getAppState();
-  
+  const isStudent = auth?.role === "student";
+
+  // Students only get subjects/chapters/topics for their own class+stream (e.g. a
+  // student in 11th Science shouldn't see 12th-JEE or 11th-Commerce subjects in their
+  // Self-Practice Builder) — mirrors the same classId+streamId match already used for
+  // batch-scoped exam generation in exam-engine.ts and ExamBuilderPage.tsx. Teachers and
+  // admins keep the full unfiltered list, same as before.
+  let subjects = state.subjects;
+  let chapters = state.chapters;
+  let topics = state.topics;
+  if (isStudent) {
+    const user = state.users.find(u => u.id === auth?.sub);
+    const student = user?.studentId ? state.students.find(s => s.id === user.studentId) : undefined;
+    if (student) {
+      subjects = state.subjects.filter(s => s.classId === student.classId && s.streamId === student.streamId);
+      const subjectIds = new Set(subjects.map(s => s.id));
+      chapters = state.chapters.filter(c => subjectIds.has(c.subjectId));
+      topics = state.topics.filter(t => subjectIds.has(t.subjectId));
+    } else {
+      subjects = [];
+      chapters = [];
+      topics = [];
+    }
+  }
+
   // If student, return metadata but NO questions
-  const questions = auth?.role === "student" ? [] : state.questions.map((question) => ({
+  const questions = isStudent ? [] : state.questions.map((question) => ({
     ...question,
     subjectName: state.subjects.find((subject) => subject.id === question.subjectId)?.name ?? "Unknown",
     topicName: state.topics.find((topic) => topic.id === question.topicId)?.name ?? "Unknown",
@@ -436,9 +460,9 @@ apiRouter.get("/question-bank", requireAuth, async (req, res) => {
   }));
 
   res.json({
-    subjects: state.subjects,
-    chapters: state.chapters,
-    topics: state.topics,
+    subjects,
+    chapters,
+    topics,
     questions
   });
 });
@@ -525,12 +549,18 @@ apiRouter.get("/analytics", requireRole(["super_admin", "teacher", "student"]), 
     const takenExamIds = new Set(studentSubmissions.map((s) => s.examId));
     const studentExams = state.exams.filter((e) => takenExamIds.has(e.id));
 
+    // Same classId+streamId scoping as GET /question-bank — a student should never see
+    // subjects outside their own class/stream, even in an analytics payload.
+    const studentSubjects = student
+      ? state.subjects.filter(s => s.classId === student.classId && s.streamId === student.streamId)
+      : [];
+
     res.json({
       submissions: studentSubmissions,
       exams: studentExams,
       students: student ? [student] : [],
       batches: studentBatch,
-      subjects: state.subjects
+      subjects: studentSubjects
     });
   } else {
     res.json({
