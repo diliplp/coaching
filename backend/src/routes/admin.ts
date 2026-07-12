@@ -1,13 +1,16 @@
 import { Router, Request, Response } from "express";
+import path from "node:path";
+import fs from "node:fs";
 import { getAppState, listRecords, upsertRecord, deleteRecord, getRecord } from "../data/database.js";
 import { requireAuth, requireRole, validatePasswordStrength } from "../utils/auth.js";
 import bcrypt from "bcryptjs";
 import multer from "multer";
 import { parseCurriculumDocx } from "../utils/curriculum-bulk.js";
-import { uploadsRoot } from "../utils/paths.js";
-import type { Admission, ClassNode, StreamNode, BatchNode, UserAccount, Student, Question } from "../types.js";
+import { uploadsRoot, booksUploadsRoot } from "../utils/paths.js";
+import type { Admission, ClassNode, StreamNode, BatchNode, UserAccount, Student, Question, SubjectBook } from "../types.js";
 import { decrypt } from "../utils/encryption.js";
 import { reassignQuestions } from "../utils/question-admin.js";
+import { reviewQuestionAgainstSource } from "../utils/ai-generator.js";
 
 export const adminRouter = Router();
 
@@ -563,6 +566,66 @@ adminRouter.post("/questions/bulk-reassign", async (req: Request, res: Response)
     const questions = state.questions.filter((q: Question) => questionIds.includes(q.id));
     const updated = await reassignQuestions(questions, { subjectId, topicId });
     res.json({ message: `Reassigned ${updated} question${updated !== 1 ? "s" : ""}.`, count: updated });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// On-demand single-question AI review — the "AI Review" button in QuestionBankPage's
+// PDF-vs-question split view. Read-only: returns a suggestion for the admin to accept
+// (via the normal PUT /questions/:id edit flow) or dismiss, never writes to the DB itself.
+adminRouter.post("/questions/:id/ai-review", async (req: Request, res: Response) => {
+  try {
+    const q = await getRecord<Question>("questions", req.params.id as string);
+    if (!q) return res.status(404).json({ error: "Question not found" });
+    if (!q.bookId || !q.pageNumber) {
+      return res.status(400).json({ error: "This question has no linked source PDF page to review against." });
+    }
+    const book = await getRecord<SubjectBook>("subjectBooks", q.bookId);
+    if (!book?.fileUrl) {
+      return res.status(400).json({ error: "Source book for this question was not found." });
+    }
+    const filename = book.fileUrl.split("/").pop() || "";
+    const pdfPath = path.join(booksUploadsRoot, filename);
+
+    const currentCorrectLabels = q.options.filter((o) => q.correctOptionIds.includes(o.id)).map((o) => o.label);
+    const suggestion = await reviewQuestionAgainstSource(
+      { prompt: q.prompt, options: q.options.map((o) => ({ label: o.label, value: o.value })), explanation: q.explanation },
+      currentCorrectLabels,
+      pdfPath,
+      q.pageNumber
+    );
+    res.json(suggestion);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Direct image upload for the question editor's "Insert Image" buttons — writes into the
+// same uploads/diagrams directory the extraction pipeline's diagram crops already live
+// in, so images inserted this way are served identically via /uploads/diagrams/....
+const diagramsUploadDir = path.join(uploadsRoot, "diagrams");
+fs.mkdirSync(diagramsUploadDir, { recursive: true });
+const imageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, diagramsUploadDir),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase() || ".png";
+      cb(null, `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
+    }
+  }),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype.startsWith("image/")) return cb(new Error("Only image files are allowed"));
+    cb(null, true);
+  }
+});
+
+adminRouter.post("/upload-image", imageUpload.single("image"), async (req: Request, res: Response) => {
+  try {
+    const file = (req as any).file as Express.Multer.File | undefined;
+    if (!file) return res.status(400).json({ error: "No image uploaded" });
+    res.json({ url: `/uploads/diagrams/${file.filename}` });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }

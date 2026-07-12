@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiClient, buildPublicAssetUrl } from "../api/client";
 import type { OverviewResponse, QuestionBankResponse, SubjectBook } from "../types";
 import { RichText } from "../components/RichText";
@@ -51,6 +51,13 @@ export function QuestionBankPage() {
   const [selectedBookId, setSelectedBookId] = useState<string>("");
   const [activeQuestionIdForPdf, setActiveQuestionIdForPdf] = useState<string>("");
   const [pdfPageNumber, setPdfPageNumber] = useState<number>(1);
+
+  // AI Review + image upload state
+  const [aiReviewLoadingId, setAiReviewLoadingId] = useState<string>("");
+  const [aiReviewNotes, setAiReviewNotes] = useState<string>("");
+  const [uploadTarget, setUploadTarget] = useState<"prompt" | number | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const imageFileInputRef = useRef<HTMLInputElement>(null);
 
   // Manual exam builder state
   const [selectedForExam, setSelectedForExam] = useState<Map<string, SelectedQuestion>>(new Map());
@@ -185,6 +192,7 @@ export function QuestionBankPage() {
   });
 
   const handleOpenForm = (question?: any) => {
+    setAiReviewNotes("");
     if (question) {
       setEditingQuestion(question);
       setFormData({
@@ -241,10 +249,92 @@ export function QuestionBankPage() {
         await apiClient.createQuestion(formData);
       }
       setIsFormOpen(false);
+      setAiReviewNotes("");
       refreshData();
     } catch (error) {
       alert("Error saving question");
       console.error(error);
+    }
+  };
+
+  // Renders the source PDF page next to the question and asks a vision model to compare
+  // the two — returns a suggestion only, never writes directly. If it finds an issue, we
+  // open the normal edit form pre-filled with the AI's corrected fields so the admin can
+  // review/tweak before saving, same as if they'd typed the fix by hand.
+  const handleAiReview = async (question: any) => {
+    setAiReviewLoadingId(question.id);
+    try {
+      const result = await apiClient.admin.aiReviewQuestion(question.id);
+      if (!result.needsCorrection) {
+        alert(`AI Review: ${result.notes || "No issues found."}`);
+        return;
+      }
+      const baseOptions = question.options.map((o: any) => ({ ...o }));
+      const nextOptions = result.options
+        ? result.options.map((opt, idx) => ({
+            id: baseOptions[idx]?.id || `opt-${idx + 1}`,
+            label: opt.label,
+            value: opt.value
+          }))
+        : baseOptions;
+      const nextCorrectOptionIds = result.correctLabels
+        ? nextOptions.filter((o: any) => result.correctLabels!.includes(o.label)).map((o: any) => o.id)
+        : question.correctOptionIds;
+
+      setEditingQuestion(question);
+      setFormData({
+        subjectId: question.subjectId,
+        topicId: question.topicId,
+        type: nextCorrectOptionIds.length > 1 ? "multi_correct" : "single_correct",
+        prompt: result.prompt ?? question.prompt,
+        difficulty: question.difficulty,
+        marks: question.marks,
+        negativeMarks: question.negativeMarks,
+        correctOptionIds: nextCorrectOptionIds,
+        options: nextOptions,
+        explanation: result.explanation ?? (question.explanation || ""),
+        passageText: question.passageText || "",
+        sourceType: question.sourceType || "custom",
+        bookId: question.bookId || "",
+        pageNumber: question.pageNumber,
+        isVerified: question.isVerified || false
+      });
+      setAiReviewNotes(result.notes || "");
+      setIsFormOpen(true);
+    } catch (e: any) {
+      alert(e?.message || "AI review failed");
+    } finally {
+      setAiReviewLoadingId("");
+    }
+  };
+
+  const triggerImageUpload = (target: "prompt" | number) => {
+    setUploadTarget(target);
+    imageFileInputRef.current?.click();
+  };
+
+  const handleImageFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || uploadTarget === null) return;
+    setIsUploadingImage(true);
+    try {
+      const { url } = await apiClient.admin.uploadImage(file);
+      const token = `[IMAGE: ${url}]`;
+      if (uploadTarget === "prompt") {
+        setFormData((prev) => ({ ...prev, prompt: prev.prompt ? `${prev.prompt}\n${token}` : token }));
+      } else {
+        const targetIndex = uploadTarget;
+        setFormData((prev) => ({
+          ...prev,
+          options: prev.options.map((o, idx) => (idx === targetIndex ? { ...o, value: o.value ? `${o.value}\n${token}` : token } : o))
+        }));
+      }
+    } catch (err: any) {
+      alert(err?.message || "Image upload failed");
+    } finally {
+      setIsUploadingImage(false);
+      setUploadTarget(null);
     }
   };
 
@@ -358,9 +448,22 @@ export function QuestionBankPage() {
         </div>
       </section>
 
+      <input
+        ref={imageFileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={handleImageFileSelected}
+      />
+
       {isFormOpen && (
         <article className="panel" style={{ marginBottom: "30px", border: "2px solid var(--color-primary)" }}>
           <h3>{editingQuestion ? "Edit Question" : "Add New Question"}</h3>
+          {aiReviewNotes && (
+            <div style={{ margin: "10px 0", padding: "12px", background: "#eef2ff", border: "1px solid #c7d2fe", borderRadius: "8px", fontSize: "0.9rem" }}>
+              <strong>🤖 AI Review:</strong> {aiReviewNotes}
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="stack">
             <div className="grid-two">
               <label className="field">
@@ -427,7 +530,18 @@ export function QuestionBankPage() {
             </label>
 
             <div className="field">
-              <span>Question Prompt (Supports LaTeX and SMILES)</span>
+              <div className="row-between" style={{ marginBottom: "4px" }}>
+                <span>Question Prompt (Supports LaTeX and SMILES)</span>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  style={{ padding: "3px 10px", fontSize: "0.78rem" }}
+                  disabled={isUploadingImage}
+                  onClick={() => triggerImageUpload("prompt")}
+                >
+                  📎 Insert Image
+                </button>
+              </div>
               <MathTextarea
                 rows={4}
                 value={formData.prompt}
@@ -465,6 +579,15 @@ export function QuestionBankPage() {
                         required
                       />
                     </div>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      style={{ padding: "3px 10px", fontSize: "0.78rem", marginTop: "4px" }}
+                      disabled={isUploadingImage}
+                      onClick={() => triggerImageUpload(index)}
+                    >
+                      📎
+                    </button>
                   </div>
                 ))}
               </div>
@@ -491,7 +614,7 @@ export function QuestionBankPage() {
             </div>
 
             <div className="row-between" style={{ marginTop: "20px" }}>
-              <button type="button" className="secondary-button" onClick={() => setIsFormOpen(false)}>Cancel</button>
+              <button type="button" className="secondary-button" onClick={() => { setIsFormOpen(false); setAiReviewNotes(""); }}>Cancel</button>
               <button type="submit" className="primary-button">Save Question</button>
             </div>
           </form>
@@ -708,6 +831,16 @@ export function QuestionBankPage() {
                               onClick={() => handleVerify(question.id)}
                             >
                               Verify
+                            </button>
+                          )}
+                          {question.bookId && question.pageNumber && (
+                            <button
+                              className="secondary-button"
+                              style={{ padding: "4px 8px", fontSize: "0.8rem", color: "#4338ca", borderColor: "#4338ca" }}
+                              disabled={aiReviewLoadingId === question.id}
+                              onClick={() => handleAiReview(question)}
+                            >
+                              {aiReviewLoadingId === question.id ? "Reviewing…" : "🤖 AI Review"}
                             </button>
                           )}
                           <button className="secondary-button" style={{ padding: "4px 8px", fontSize: "0.8rem" }} onClick={() => handleOpenForm(question)}>Edit</button>

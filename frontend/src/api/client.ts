@@ -467,6 +467,23 @@ export const apiClient = {
       request<{ success: boolean; qaStatus: string }>(`/admin/questions/${id}/qa-review`, { method: "POST", body: JSON.stringify({ action, note }) }),
     bulkReassignQuestions: (payload: { questionIds: string[]; subjectId?: string; topicId?: string }) =>
       request<{ message: string; count: number }>("/admin/questions/bulk-reassign", { method: "POST", body: JSON.stringify(payload) }),
+    aiReviewQuestion: (id: string) =>
+      request<{ needsCorrection: boolean; notes: string; prompt?: string; options?: { label: string; value: string }[]; correctLabels?: string[]; explanation?: string }>(
+        `/admin/questions/${id}/ai-review`,
+        { method: "POST" }
+      ),
+    uploadImage: async (file: File): Promise<{ url: string }> => {
+      const session = getStoredSession();
+      const formData = new FormData();
+      formData.append("image", file);
+      const response = await fetch(buildApiUrl("/admin/upload-image"), {
+        method: "POST",
+        headers: session?.token ? { Authorization: `Bearer ${session.token}` } : undefined,
+        body: formData
+      });
+      if (!response.ok) throw new Error("Failed to upload image");
+      return response.json();
+    },
 
     getUsers: () => request<any[]>("/admin/users"),
     createUser: (payload: any) => request<any>("/admin/users", { method: "POST", body: JSON.stringify(payload) }),

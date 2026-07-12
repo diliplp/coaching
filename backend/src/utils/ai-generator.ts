@@ -3148,6 +3148,122 @@ If everything matches, return {"flagged": []}.`;
   for (const q of questions) q.qaCheckedAt = checkedAt;
 }
 
+export interface AiReviewSuggestion {
+  needsCorrection: boolean;
+  notes: string;
+  prompt?: string;
+  options?: { label: string; value: string }[];
+  correctLabels?: string[];
+  explanation?: string;
+}
+
+/**
+ * On-demand, single-question counterpart to verifyExtractedQuestions' Tier-2 pass —
+ * powers the "AI Review" button in the admin question editor (QuestionBankPage's
+ * PDF-vs-question split view). Re-renders the question's own source page and asks a
+ * vision model to compare it against what's currently stored, returning ONLY the fields
+ * that need to change plus a plain-English explanation.
+ *
+ * Deliberately returns a suggestion rather than mutating anything — the caller (admin.ts
+ * POST /questions/:id/ai-review) never writes to the DB itself; the admin reviews the
+ * diff and applies it (or not) via the existing PUT /questions/:id edit flow. Some of
+ * these questions may already be in a scheduled or completed exam, so a silent
+ * auto-correction that's subtly wrong would be worse than the original error — same
+ * persist-then-flag philosophy as the rest of the QA pipeline, applied per-question.
+ */
+export async function reviewQuestionAgainstSource(
+  question: { prompt: string; options: { label: string; value: string }[]; explanation: string },
+  currentCorrectLabels: string[],
+  pdfPath: string,
+  pageNumber: number
+): Promise<AiReviewSuggestion> {
+  if (!process.env.OPENROUTER_API_KEY) {
+    return { needsCorrection: false, notes: "AI review unavailable — OPENROUTER_API_KEY not configured." };
+  }
+
+  const imageBase64 = renderPageToBase64(pdfPath, pageNumber - 1);
+  if (!imageBase64) {
+    return { needsCorrection: false, notes: "Could not render the source PDF page for review." };
+  }
+
+  const { models } = await resolveVisionModels();
+  if (models.length === 0) {
+    return { needsCorrection: false, notes: "No usable vision model available for review." };
+  }
+
+  const currentPayload = {
+    prompt: question.prompt,
+    options: question.options,
+    markedCorrect: currentCorrectLabels,
+    explanation: question.explanation
+  };
+
+  const reviewPrompt = `You are proofreading one exam question against its original source page image.
+
+Currently stored question data:
+${JSON.stringify(currentPayload, null, 2)}
+
+Carefully compare against the page image. Check: (1) is the question text transcribed correctly, including all LaTeX/math/chemical formulas, (2) are all options transcribed correctly, (3) is the marked correct answer actually correct per the page (an answer-key marker if visible, otherwise your own careful derivation), (4) is the explanation accurate and consistent with the correct answer.
+
+If everything is already correct, return exactly: {"needsCorrection": false, "notes": "brief confirmation of what you checked"}.
+
+If something is wrong, return corrected fields — include ONLY the fields that actually need to change, omit anything already correct:
+{
+  "needsCorrection": true,
+  "notes": "short explanation of what was wrong and what you changed",
+  "prompt": "corrected prompt text using $...$ for inline math and $$...$$ for block math — omit if unchanged",
+  "options": [{"label":"A","value":"..."}, {"label":"B","value":"..."}, {"label":"C","value":"..."}, {"label":"D","value":"..."}],
+  "correctLabels": ["A"],
+  "explanation": "corrected explanation — omit if unchanged"
+}
+If you include "options" at all, include all of them (not just the changed one), since options are replaced as a set.
+
+Do NOT invent content that isn't visible on the page. If a diagram/image seems to be missing but you can't describe it precisely enough from what's visible, say so in "notes" rather than guessing at its content.`;
+
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://railway.app",
+        "X-Title": "Coaching Portal Exam Gen"
+      },
+      body: JSON.stringify({
+        model: models[0],
+        models,
+        messages: [{ role: "user", content: [
+          { type: "image_url", image_url: { url: `data:image/png;base64,${imageBase64}`, detail: "high" } },
+          { type: "text", text: reviewPrompt }
+        ]}],
+        response_format: { type: "json_object" },
+        max_tokens: 3000
+      })
+    });
+    if (!response.ok) {
+      return { needsCorrection: false, notes: `Review call failed (HTTP ${response.status}).` };
+    }
+    const data = await response.json();
+    const raw = data.choices?.[0]?.message?.content;
+    if (!raw) return { needsCorrection: false, notes: "Empty response from review model." };
+
+    const parsed = JSON.parse(repairJsonString(raw));
+    if (!parsed.needsCorrection) {
+      return { needsCorrection: false, notes: parsed.notes || "No issues found." };
+    }
+    return {
+      needsCorrection: true,
+      notes: parsed.notes || "",
+      prompt: typeof parsed.prompt === "string" ? parsed.prompt : undefined,
+      options: Array.isArray(parsed.options) ? parsed.options : undefined,
+      correctLabels: Array.isArray(parsed.correctLabels) ? parsed.correctLabels : undefined,
+      explanation: typeof parsed.explanation === "string" ? parsed.explanation : undefined
+    };
+  } catch (e: any) {
+    return { needsCorrection: false, notes: `Review threw an error: ${e.message}` };
+  }
+}
+
 const BIOLOGY_VISION_PROMPT = `You are a biology exam question generator. You will receive an image from a biology textbook.
 
 FIRST, decide if the image is a proper biological diagram or scientific figure (e.g. cell diagrams, organ cross-sections, microscopy images, plant/animal structure illustrations, biological process diagrams, labelled anatomical figures).
