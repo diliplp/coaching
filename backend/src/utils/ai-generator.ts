@@ -190,6 +190,13 @@ async function generateVisionContent(textPrompt: string, imageBase64: string): P
               { type: "text", text: textPrompt }
             ]}],
             response_format: { type: "json_object" },
+            // Faithful transcription, not creative generation — no temperature was ever
+            // set here before, meaning every extraction call ran at each provider's
+            // default (commonly ~1.0), so the exact same page image could yield a
+            // slightly different (and occasionally incomplete) transcription from one
+            // call to the next. Low temperature makes "read exactly what's on the page"
+            // far more repeatable.
+            temperature: 0.1,
             max_tokens: 8000
           })
         });
@@ -225,7 +232,7 @@ async function generateVisionContent(textPrompt: string, imageBase64: string): P
           { inlineData: { mimeType: "image/png", data: imageBase64 } },
           { text: textPrompt }
         ]}],
-        config: { responseMimeType: "application/json", maxOutputTokens: 8192 }
+        config: { responseMimeType: "application/json", maxOutputTokens: 8192, temperature: 0.1 }
       });
       const text = result.text;
       if (text) { console.log(`[Vision] Gemini ${name} fallback succeeded.`); return text; }
@@ -2822,6 +2829,7 @@ Return JSON:
                   { type: "text", text: recoveryPrompt }
                 ]}],
                 response_format: { type: "json_object" },
+                temperature: 0.1,
                 max_tokens: 4000
               })
             });
@@ -2843,7 +2851,7 @@ Return JSON:
                 const result = await client.models.generateContent({
                   model: GEMINI_MODEL,
                   contents: [{ parts }],
-                  config: { responseMimeType: "application/json", maxOutputTokens: 4096 }
+                  config: { responseMimeType: "application/json", maxOutputTokens: 4096, temperature: 0.1 }
                 });
                 if (result.text) { recoveryRaw = result.text; break; }
               } catch (e: any) {
@@ -2882,7 +2890,7 @@ Return JSON:
   assignOptionImages(uniqueQuestions, params.diagrams);
   applyGroundingFilter(uniqueQuestions);
 
-  return uniqueQuestions.map((q: any, i: number) => {
+  const finalQuestions: Question[] = uniqueQuestions.map((q: any, i: number) => {
     const correctOptionIds: string[] = [];
     const options: QuestionOption[] = (q.options || []).map((o: any, idx: number) => {
       const oId = `opt-pdf-${Date.now()}-${i}-${idx}-${Math.random().toString(36).substr(2, 4)}`;
@@ -2990,7 +2998,16 @@ Return JSON:
 
     const normalizedPrompt = promptText.toLowerCase().replace(/[^a-z0-9]/g, "");
     const promptHash = crypto.createHash("sha256").update(normalizedPrompt).digest("hex").substring(0, 16);
-    const qId = `que-pdf-${params.bookId || "book"}-${promptHash}`;
+    // Include the question number in the id whenever one was detected, so two genuinely
+    // different questions can never collide on id just because their transcribed text
+    // happened to normalize identically. A pure text-hash id has no such guarantee —
+    // this is a real, observed failure mode: it silently overwrites one of the two
+    // during the upsert save loop in api.ts, with zero warning anywhere. The dedup-by-
+    // number pass earlier in this function already guarantees each q._questionNumber is
+    // unique within this book by this point, so this is safe.
+    const qId = q._questionNumber
+      ? `que-pdf-${params.bookId || "book"}-q${q._questionNumber}-${promptHash}`
+      : `que-pdf-${params.bookId || "book"}-${promptHash}`;
 
     // Tier-1 QA pass (deterministic, no extra API cost — see the Phase-4 reliability
     // plan): every question gets checked here at assembly time, since all the context
@@ -3052,6 +3069,23 @@ Return JSON:
       ...(params.pyqSession !== undefined && { pyqSession: params.pyqSession }),
     };
   });
+
+  // Defense-in-depth: if any two questions still ended up with the same id (e.g. two
+  // questions with no detected number at all, so the id fell back to hash-only), the
+  // save loop in api.ts would silently overwrite one via upsert with no error anywhere.
+  // Surface that loudly here instead — this is exactly the kind of gap that lost 3
+  // questions from a 180-question book without a single log line pointing at it.
+  const idCounts = new Map<string, number>();
+  for (const q of finalQuestions) idCounts.set(q.id, (idCounts.get(q.id) ?? 0) + 1);
+  const collided = [...idCounts.entries()].filter(([, count]) => count > 1);
+  if (collided.length > 0) {
+    console.warn(
+      `[Extract] WARNING: ${collided.length} id collision(s) detected — these questions will silently overwrite each other on save: ` +
+      collided.map(([id, count]) => `${id} (x${count})`).join(", ")
+    );
+  }
+
+  return finalQuestions;
 }
 
 /**
@@ -3123,6 +3157,7 @@ If everything matches, return {"flagged": []}.`;
             { type: "text", text: verifyPrompt }
           ]}],
           response_format: { type: "json_object" },
+          temperature: 0.1,
           max_tokens: 2000
         })
       });
@@ -3245,6 +3280,7 @@ Do NOT invent content that isn't visible on the page. If a diagram/image seems t
           { type: "text", text: reviewPrompt }
         ]}],
         response_format: { type: "json_object" },
+        temperature: 0.1,
         max_tokens: 3000
       })
     });
