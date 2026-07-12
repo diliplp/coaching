@@ -17,7 +17,15 @@ const RENDER_PAGE_SCRIPT = path.join(path.dirname(new URL(import.meta.url).pathn
 // every request. Configured models are checked against the live catalog so retired
 // ones are dropped up front, with an auto-picked replacement as the last resort.
 
+// gemini-3.1-pro-preview leads: the flash-lite tier was found to occasionally drop one
+// question on structurally complex pages (multi-statement lists, matching tables) even
+// though the rest of that page's questions extracted cleanly — consistent with a
+// lite-tier model skipping the hardest item on a busy page. Flash-lite stays as the
+// first fallback (cheap, usually fine) rather than being removed, in case pro-preview
+// is ever unavailable/retired — resolveVisionModels() already validates all of these
+// against the live OpenRouter catalog and drops whichever no longer exist.
 const DEFAULT_VISION_MODELS = [
+  "google/gemini-3.1-pro-preview",
   "google/gemini-3.1-flash-lite",
   "qwen/qwen2.5-vl-72b-instruct",
   "openai/gpt-4o-mini"
