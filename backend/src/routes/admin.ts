@@ -7,6 +7,7 @@ import { parseCurriculumDocx } from "../utils/curriculum-bulk.js";
 import { uploadsRoot } from "../utils/paths.js";
 import type { Admission, ClassNode, StreamNode, BatchNode, UserAccount, Student, Question } from "../types.js";
 import { decrypt } from "../utils/encryption.js";
+import { reassignQuestions } from "../utils/question-admin.js";
 
 export const adminRouter = Router();
 
@@ -499,6 +500,69 @@ adminRouter.post("/questions/:id/verify", async (req: Request, res: Response) =>
     q.isVerified = true;
     await upsertRecord("questions", q);
     res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── QA Report (Phase 4/5 of the extraction-reliability plan) ──────────────────
+
+adminRouter.get("/questions/qa-report", async (req: Request, res: Response) => {
+  try {
+    const { bookId, subjectId, status } = req.query;
+    const state = await getAppState();
+
+    let questions = state.questions.filter((q: Question) => (q.qaFlags?.length ?? 0) > 0 || (q.qaStatus && q.qaStatus !== "unreviewed"));
+    if (bookId && typeof bookId === "string") questions = questions.filter((q: Question) => q.bookId === bookId);
+    if (subjectId && typeof subjectId === "string") questions = questions.filter((q: Question) => q.subjectId === subjectId);
+    if (status && typeof status === "string") questions = questions.filter((q: Question) => (q.qaStatus ?? "unreviewed") === status);
+
+    const enriched = questions
+      .map((q: Question) => ({
+        ...q,
+        subjectName: state.subjects.find((s) => s.id === q.subjectId)?.name ?? "Unknown",
+        topicName: state.topics.find((t) => t.id === q.topicId)?.name ?? "Unknown",
+        bookTitle: state.subjectBooks.find((b) => b.id === q.bookId)?.title ?? null
+      }))
+      .sort((a, b) => (a.bookId ?? "").localeCompare(b.bookId ?? "") || (a.pageNumber ?? 0) - (b.pageNumber ?? 0));
+
+    res.json({ questions: enriched, count: enriched.length });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+adminRouter.post("/questions/:id/qa-review", async (req: Request, res: Response) => {
+  try {
+    const { action, note } = req.body as { action?: "approve" | "reject"; note?: string };
+    if (action !== "approve" && action !== "reject") {
+      return res.status(400).json({ error: 'action must be "approve" or "reject"' });
+    }
+    const q = await getRecord<Question>("questions", req.params.id as string);
+    if (!q) return res.status(404).json({ error: "Question not found" });
+
+    q.qaStatus = action === "approve" ? "approved" : "rejected";
+    if (note) q.qaReviewNotes = note;
+    await upsertRecord("questions", q);
+    res.json({ success: true, qaStatus: q.qaStatus });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+adminRouter.post("/questions/bulk-reassign", async (req: Request, res: Response) => {
+  try {
+    const { questionIds, subjectId, topicId } = req.body as { questionIds?: string[]; subjectId?: string; topicId?: string };
+    if (!Array.isArray(questionIds) || questionIds.length === 0) {
+      return res.status(400).json({ error: "questionIds must be a non-empty array" });
+    }
+    if (!subjectId && !topicId) {
+      return res.status(400).json({ error: "At least one of subjectId or topicId is required" });
+    }
+    const state = await getAppState();
+    const questions = state.questions.filter((q: Question) => questionIds.includes(q.id));
+    const updated = await reassignQuestions(questions, { subjectId, topicId });
+    res.json({ message: `Reassigned ${updated} question${updated !== 1 ? "s" : ""}.`, count: updated });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }

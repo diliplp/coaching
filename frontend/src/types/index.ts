@@ -39,6 +39,12 @@ export interface Question {
   pyqExamName?: string;
   pyqSession?: string;
   passageText?: string;
+  pageNumber?: number;
+  isVerified?: boolean;
+  qaFlags?: string[];
+  qaStatus?: "unreviewed" | "flagged" | "approved" | "rejected";
+  qaCheckedAt?: string;
+  qaReviewNotes?: string;
 }
 
 export interface ExamPayload {

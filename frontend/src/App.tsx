@@ -34,6 +34,7 @@ import { ExamBuilderPage } from "./pages/ExamBuilderPage";
 import { LiveExamPage } from "./pages/LiveExamPage";
 import { LoginPage } from "./pages/LoginPage";
 import { QuestionBankPage } from "./pages/QuestionBankPage";
+import { QAReportPage } from "./pages/QAReportPage";
 import { SubjectBooksPage } from "./pages/SubjectBooksPage";
 import { AdminPage } from "./pages/AdminPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
@@ -119,12 +120,16 @@ export default function App() {
           }
         >
           <Route path="/" element={<DashboardPage />} />
-          <Route 
-            path="/question-bank" 
-            element={<ProtectedRoute roles={["super_admin", "teacher"]}><QuestionBankPage /></ProtectedRoute>} 
+          <Route
+            path="/question-bank"
+            element={<ProtectedRoute roles={["super_admin", "teacher"]}><QuestionBankPage /></ProtectedRoute>}
           />
-          <Route 
-            path="/exam-builder" 
+          <Route
+            path="/qa-report"
+            element={<ProtectedRoute roles={["super_admin", "teacher"]}><QAReportPage /></ProtectedRoute>}
+          />
+          <Route
+            path="/exam-builder"
             element={<ProtectedRoute roles={["super_admin", "teacher"]}><ExamBuilderPage /></ProtectedRoute>} 
           />
           <Route 

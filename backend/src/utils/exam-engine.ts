@@ -280,7 +280,7 @@ export async function generateExamFromBlueprint(blueprintId: string): Promise<Ex
 
   const selectedQuestions = blueprint.topicRules.flatMap((rule) => {
     const candidates = state.questions.filter(
-      (question) => question.topicId === rule.topicId && question.subjectId === blueprint.subjectId
+      (question) => question.topicId === rule.topicId && question.subjectId === blueprint.subjectId && question.qaStatus !== "rejected"
     );
     return pickQuestions(candidates, rule.questionCount, usedQuestionIds, selectedQuestionIds);
   });
@@ -335,7 +335,7 @@ export async function generateCustomExam(request: TeacherCustomExamRequest): Pro
   }
 
   const subjectTopics = state.topics.filter((topic) => targetSubjectIds.includes(topic.subjectId));
-  let subjectQuestions = state.questions.filter((question) => targetSubjectIds.includes(question.subjectId));
+  let subjectQuestions = state.questions.filter((question) => targetSubjectIds.includes(question.subjectId) && question.qaStatus !== "rejected");
 
   // Apply Source Filtering
   if (Array.isArray(request.allowedSourceTypes) && request.allowedSourceTypes.length > 0) {
@@ -473,7 +473,7 @@ export async function generateCombinedExam(request: CombinedExamRequest): Promis
   if (request.subjectTypeAllocations?.length) {
     // Type-aware picking: MCQ first, then integer — preserves section order for preset exams
     for (const typeAlloc of request.subjectTypeAllocations) {
-      let pool = state.questions.filter((q) => q.subjectId === typeAlloc.subjectId);
+      let pool = state.questions.filter((q) => q.subjectId === typeAlloc.subjectId && q.qaStatus !== "rejected");
       if (request.allowedSourceTypes?.length) {
         pool = pool.filter((q) => request.allowedSourceTypes!.includes((q.sourceType || "custom") as QuestionSource));
       }
@@ -490,7 +490,7 @@ export async function generateCombinedExam(request: CombinedExamRequest): Promis
     }
   } else {
     for (const alloc of allocations) {
-      let pool = state.questions.filter((q) => q.subjectId === alloc.subjectId);
+      let pool = state.questions.filter((q) => q.subjectId === alloc.subjectId && q.qaStatus !== "rejected");
       if (request.allowedSourceTypes?.length) {
         pool = pool.filter((q) => request.allowedSourceTypes!.includes((q.sourceType || "custom") as QuestionSource));
       }
@@ -580,7 +580,7 @@ export async function buildAdaptiveExamPlan(studentId: string, subjectId?: strin
   }
 
   const subject = state.subjects.find((item) => item.id === preferredSubjectId);
-  const relevantQuestions = state.questions.filter((question) => question.subjectId === preferredSubjectId);
+  const relevantQuestions = state.questions.filter((question) => question.subjectId === preferredSubjectId && question.qaStatus !== "rejected");
 
   const topicMetrics = new Map<
     string,
@@ -661,7 +661,7 @@ export async function generateAdaptiveExam(studentId: string, subjectId?: string
   const selectedQuestionIds = new Set<string>();
   const selectedQuestions = plan.topics.flatMap((topic) => {
     const candidates = state.questions
-      .filter((question) => question.subjectId === plan.subjectId && question.topicId === topic.topicId)
+      .filter((question) => question.subjectId === plan.subjectId && question.topicId === topic.topicId && question.qaStatus !== "rejected")
       .sort((left, right) => left.marks - right.marks);
     return pickQuestions(candidates, topic.questionCount, usedQuestionIds, selectedQuestionIds);
   });
@@ -737,7 +737,7 @@ export async function buildBatchAdaptivePlan(batchId: string, subjectId?: string
   }
 
   const subject = state.subjects.find((item) => item.id === preferredSubjectId);
-  const relevantQuestions = state.questions.filter((question) => question.subjectId === preferredSubjectId);
+  const relevantQuestions = state.questions.filter((question) => question.subjectId === preferredSubjectId && question.qaStatus !== "rejected");
   const topicMetrics = new Map<
     string,
     {

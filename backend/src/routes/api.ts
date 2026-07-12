@@ -375,8 +375,9 @@ apiRouter.post("/exams/self-generate", requireRole(["student", "super_admin", "t
     const student = state.students.find(s => s.id === user?.studentId);
 
     // Re-fetch questions — exclude any with no correct answer (garbled OCR / pending review)
+    // and any an admin has rejected via the QA report (see admin.ts qa-review).
     let questions = state.questions.filter(q =>
-      targetTopicIds.includes(q.topicId) && q.correctOptionIds && q.correctOptionIds.length > 0
+      targetTopicIds.includes(q.topicId) && q.correctOptionIds && q.correctOptionIds.length > 0 && q.qaStatus !== "rejected"
     );
 
     // Filter by source if specified

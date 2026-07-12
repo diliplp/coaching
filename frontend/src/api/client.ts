@@ -8,6 +8,7 @@ import type {
   ExamResult,
   ManualExamRequest,
   OverviewResponse,
+  Question,
   QuestionBankResponse,
   SubjectBook,
   SubjectBooksResponse,
@@ -454,7 +455,19 @@ export const apiClient = {
     verifyQuestion: (id: string) => request<any>(`/admin/questions/${id}/verify`, { method: "POST" }),
     clearAllQuestions: () => request<void>("/admin/questions/clear-all", { method: "DELETE" }),
     clearSubjectQuestions: (subjectId: string) => request<{ message: string; count: number }>(`/admin/questions/by-subject/${subjectId}`, { method: "DELETE" }),
-    
+    getQaReport: (filters?: { bookId?: string; subjectId?: string; status?: string }) => {
+      const params = new URLSearchParams();
+      if (filters?.bookId) params.set("bookId", filters.bookId);
+      if (filters?.subjectId) params.set("subjectId", filters.subjectId);
+      if (filters?.status) params.set("status", filters.status);
+      const qs = params.toString();
+      return request<{ questions: Question[]; count: number }>(`/admin/questions/qa-report${qs ? `?${qs}` : ""}`);
+    },
+    qaReview: (id: string, action: "approve" | "reject", note?: string) =>
+      request<{ success: boolean; qaStatus: string }>(`/admin/questions/${id}/qa-review`, { method: "POST", body: JSON.stringify({ action, note }) }),
+    bulkReassignQuestions: (payload: { questionIds: string[]; subjectId?: string; topicId?: string }) =>
+      request<{ message: string; count: number }>("/admin/questions/bulk-reassign", { method: "POST", body: JSON.stringify(payload) }),
+
     getUsers: () => request<any[]>("/admin/users"),
     createUser: (payload: any) => request<any>("/admin/users", { method: "POST", body: JSON.stringify(payload) }),
     updateUser: (id: string, payload: any) => request<any>(`/admin/users/${id}`, { method: "PUT", body: JSON.stringify(payload) }),

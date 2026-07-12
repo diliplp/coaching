@@ -173,6 +173,9 @@ export interface Question {
   qaFlags?: string[];
   qaStatus?: "unreviewed" | "flagged" | "approved" | "rejected";
   qaCheckedAt?: string;
+  /** Optional free-text note an admin left when approving/rejecting via POST
+   * /admin/questions/:id/qa-review. */
+  qaReviewNotes?: string;
 }
 
 export interface ExamBlueprintTopicRule {
