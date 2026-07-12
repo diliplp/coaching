@@ -12,6 +12,7 @@ import type {
   Question,
   QuestionSource,
   StudentAnswerInput,
+  Subject,
   TeacherCustomExamRequest,
   Topic,
   TopicInsight,
@@ -67,8 +68,42 @@ function buildOptionOrderIds(question: Question) {
   return randomize(question.options.map((option) => option.id));
 }
 
-function formatQuestionsForExam(selectedQuestions: Question[]): GeneratedExamQuestion[] {
-  return randomize(selectedQuestions).map((question, index) => ({
+// Canonical section order matching how real exam papers are laid out — Physics first,
+// then Chemistry, then Mathematics/Biology (only one of the two applies per exam type,
+// so tying them at the same rank is fine; neither ever co-occurs with the other in
+// practice). Anything else (e.g. a "General" subject) sorts last, alphabetically among
+// ties. A flat cross-subject shuffle doesn't match how students expect a real paper to
+// read, so questions are grouped into subject sections in this fixed order, and only
+// shuffled *within* each section.
+function subjectSectionRank(subjectName: string): number {
+  const name = subjectName.toLowerCase();
+  if (name.includes("physics")) return 0;
+  if (name.includes("chemistry")) return 1;
+  if (name.includes("math") || name.includes("bio")) return 2;
+  return 3;
+}
+
+function orderQuestionsBySection(questions: Question[], subjects: Subject[]): Question[] {
+  const subjectNameById = new Map(subjects.map((s) => [s.id, s.name]));
+  const groups = new Map<string, Question[]>();
+  for (const question of questions) {
+    const list = groups.get(question.subjectId) ?? [];
+    list.push(question);
+    groups.set(question.subjectId, list);
+  }
+
+  const orderedSubjectIds = [...groups.keys()].sort((a, b) => {
+    const nameA = subjectNameById.get(a) ?? "";
+    const nameB = subjectNameById.get(b) ?? "";
+    const rankDiff = subjectSectionRank(nameA) - subjectSectionRank(nameB);
+    return rankDiff !== 0 ? rankDiff : nameA.localeCompare(nameB);
+  });
+
+  return orderedSubjectIds.flatMap((subjectId) => randomize(groups.get(subjectId)!));
+}
+
+function formatQuestionsForExam(selectedQuestions: Question[], subjects: Subject[]): GeneratedExamQuestion[] {
+  return orderQuestionsBySection(selectedQuestions, subjects).map((question, index) => ({
     questionId: question.id,
     order: index + 1,
     optionOrderIds: buildOptionOrderIds(question)
@@ -201,12 +236,13 @@ function getUsedQuestionIds(state: Awaited<ReturnType<typeof getAppState>>, sour
 function createExamFromQuestions(input: {
   exam: Omit<Exam, "id" | "generatedAt" | "questions">;
   questions: Question[];
+  subjects: Subject[];
 }) {
   const exam: Exam = {
     id: `exam-${Date.now()}`,
     generatedAt: new Date().toISOString(),
     ...input.exam,
-    questions: formatQuestionsForExam(input.questions)
+    questions: formatQuestionsForExam(input.questions, input.subjects)
   };
 
   return exam;
@@ -263,7 +299,8 @@ export async function generateExamFromBlueprint(blueprintId: string): Promise<Ex
       ...(blueprint.examPattern ? { examPattern: blueprint.examPattern } : {}),
       ...(blueprint.sections ? { sections: blueprint.sections } : {})
     },
-    questions: selectedQuestions
+    questions: selectedQuestions,
+    subjects: state.subjects
   });
 
   await upsertRecord("exams", exam);
@@ -414,7 +451,8 @@ export async function generateCustomExam(request: TeacherCustomExamRequest): Pro
       scheduledStartTime: request.scheduledStartTime,
       scheduledEndTime: request.scheduledEndTime
     },
-    questions: selectedQuestions
+    questions: selectedQuestions,
+    subjects: state.subjects
   });
 
   await upsertRecord("exams", exam);
@@ -489,7 +527,8 @@ export async function generateCombinedExam(request: CombinedExamRequest): Promis
       scheduledEndTime: request.scheduledEndTime,
       ...(request.sections ? { sections: request.sections } : {})
     },
-    questions: selectedQuestions
+    questions: selectedQuestions,
+    subjects: state.subjects
   });
 
   await upsertRecord("exams", exam);
@@ -642,7 +681,8 @@ export async function generateAdaptiveExam(studentId: string, subjectId?: string
       adaptiveSummary: plan.summary,
       sourceSignature
     },
-    questions: selectedQuestions
+    questions: selectedQuestions,
+    subjects: state.subjects
   });
 
   await upsertRecord("exams", exam);
