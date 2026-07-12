@@ -17,15 +17,19 @@ const RENDER_PAGE_SCRIPT = path.join(path.dirname(new URL(import.meta.url).pathn
 // every request. Configured models are checked against the live catalog so retired
 // ones are dropped up front, with an auto-picked replacement as the last resort.
 
-// gemini-3.1-pro-preview leads: the flash-lite tier was found to occasionally drop one
-// question on structurally complex pages (multi-statement lists, matching tables) even
-// though the rest of that page's questions extracted cleanly — consistent with a
-// lite-tier model skipping the hardest item on a busy page. Flash-lite stays as the
-// first fallback (cheap, usually fine) rather than being removed, in case pro-preview
-// is ever unavailable/retired — resolveVisionModels() already validates all of these
-// against the live OpenRouter catalog and drops whichever no longer exist.
+// flash-lite leads, back to its original position: pro-preview was tried as primary
+// after flash-lite missed 3 questions in one book, but a controlled re-test (8 repeated
+// isolated calls against the exact page/model that missed them, 4 at default
+// temperature and 4 at temperature=0.1) got all 4 questions right every single time —
+// the actual bug was a prompt-hash id collision silently overwriting rows on save (now
+// fixed separately), not model quality. flash-lite is ~8x cheaper and ~2x faster than
+// pro-preview with no measured accuracy difference, so there's no reason to pay the
+// premium. Capped at 3 entries: OpenRouter's `models` fallback-routing array rejects
+// anything longer than that with HTTP 400 ("'models' array must have 3 items or
+// fewer") — a 4-entry list (from an earlier attempt at this same swap) silently broke
+// every OpenRouter vision call for the time it was live, falling back to the Gemini SDK
+// path on every single request without any visible error.
 const DEFAULT_VISION_MODELS = [
-  "google/gemini-3.1-pro-preview",
   "google/gemini-3.1-flash-lite",
   "qwen/qwen2.5-vl-72b-instruct",
   "openai/gpt-4o-mini"
@@ -77,6 +81,13 @@ function cheapestPaidVisionModel(catalog: Map<string, OpenRouterCatalogModel>): 
  * defaults, validated against the live catalog. Falls back to the cheapest paid
  * vision-capable model when nothing configured is still available.
  */
+// OpenRouter's `models` fallback-routing array rejects anything longer than this with a
+// flat HTTP 400 ("'models' array must have 3 items or fewer") — enforced here, once, so
+// no future change to DEFAULT_VISION_MODELS or OPENROUTER_VISION_MODELS can silently
+// break every vision call again the way a 4-entry list did earlier (every request
+// failed on OpenRouter and fell back to the Gemini SDK path with no visible error).
+const MAX_OPENROUTER_MODELS = 3;
+
 export async function resolveVisionModels(): Promise<{ models: string[]; warnings: string[] }> {
   const configured = (process.env.OPENROUTER_VISION_MODELS ?? "")
     .split(",")
@@ -88,7 +99,7 @@ export async function resolveVisionModels(): Promise<{ models: string[]; warning
   const catalog = await getOpenRouterCatalog();
   if (!catalog) {
     warnings.push("OpenRouter catalog unreachable — using configured vision models unvalidated");
-    return { models: candidates, warnings };
+    return { models: capModelList(candidates, warnings), warnings };
   }
 
   const models = candidates.filter((id) => {
@@ -112,7 +123,13 @@ export async function resolveVisionModels(): Promise<{ models: string[]; warning
     }
     warnings.push("no vision-capable model found on OpenRouter");
   }
-  return { models, warnings };
+  return { models: capModelList(models, warnings), warnings };
+}
+
+function capModelList(models: string[], warnings: string[]): string[] {
+  if (models.length <= MAX_OPENROUTER_MODELS) return models;
+  warnings.push(`${models.length} vision models configured, OpenRouter allows at most ${MAX_OPENROUTER_MODELS} — dropped: ${models.slice(MAX_OPENROUTER_MODELS).join(", ")}`);
+  return models.slice(0, MAX_OPENROUTER_MODELS);
 }
 
 /** Validates the text + vision model configuration; used at startup and by /api/health/ai. */
