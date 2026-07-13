@@ -380,7 +380,7 @@ export const apiClient = {
       body: JSON.stringify(payload)
     }),
   getExtractionStatus: (bookId: string) =>
-    request<{ extractionStatus: string; extractionProgress: string; extractionQuestionCount: number }>(
+    request<{ extractionStatus: string; extractionProgress: string; extractionQuestionCount: number; extractionMissingNumbers: number[]; extractionExpectedCount: number }>(
       `/subject-books/${bookId}/extraction-status`
     ),
   detectCurriculumFromBook: (bookId: string) =>

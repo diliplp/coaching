@@ -103,6 +103,13 @@ export interface SubjectBook {
   extractionStatus?: "idle" | "running" | "done" | "error";
   extractionProgress?: string;
   extractionQuestionCount?: number;
+  /** Question numbers reconciled from the crop detector/OCR scan/vision extraction that
+   * still couldn't be recovered after 2 cross-page attempts — surfaced to admins so a
+   * gap is a visible flag instead of a silent count discrepancy. */
+  extractionMissingNumbers?: number[];
+  /** Best-known true question count for this book (crop detector / OCR scan / vision,
+   * whichever found the most), used to show "178 of 180 extracted" instead of just "178". */
+  extractionExpectedCount?: number;
   /** Optional link to a separately-uploaded solution/answer-key book for this
    * (usually bare, answer-free) question paper. Used to auto-derive correct
    * answers without exposing them anywhere in this book's own file or crops. */

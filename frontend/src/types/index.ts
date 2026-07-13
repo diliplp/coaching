@@ -127,6 +127,8 @@ export interface SubjectBook {
   extractedAt?: string;
   answerKey?: string;
   answerKeyBookId?: string;
+  extractionMissingNumbers?: number[];
+  extractionExpectedCount?: number;
 }
 
 export interface SubjectBooksResponse {

@@ -2339,6 +2339,154 @@ function assignOptionImages(questions: any[], diagrams?: PageDiagram[]): void {
   }
 }
 
+/**
+ * Attempts to reconstruct ONE missing question by number from its surrounding page
+ * images. Pure function (no shared-state mutation) so it can be retried with a wider
+ * page window without duplicating the request-building/provider-fallback logic.
+ * Returns the recovered question object (caller sets _questionNumber/pageNumber) or
+ * null if every provider/parse attempt failed.
+ */
+async function recoverQuestionByNumber(
+  missingNum: number,
+  startPage: number,
+  endPage: number,
+  pdfPath: string
+): Promise<any | null> {
+  const recoveryImages: string[] = [];
+  for (let p = startPage; p <= endPage; p++) {
+    const img = renderPageToBase64(pdfPath, p - 1);
+    if (img) recoveryImages.push(img);
+  }
+  if (recoveryImages.length === 0) return null;
+
+  const recoveryPrompt = `These ${recoveryImages.length} exam page image(s) together contain question number ${missingNum}. The question may start on one page and its options continue on the next page.
+
+Extract ONLY question number ${missingNum} — its full text and all 4 options (A, B, C, D) exactly as printed.
+
+Return JSON:
+{
+  "questions": [{
+    "questionNumber": ${missingNum},
+    "prompt": "full question text in LaTeX where needed",
+    "difficulty": "medium",
+    "marks": 4,
+    "negativeMarks": 1,
+    "options": [
+      {"label":"A","value":"...","isCorrect":false},
+      {"label":"B","value":"...","isCorrect":false},
+      {"label":"C","value":"...","isCorrect":false},
+      {"label":"D","value":"...","isCorrect":false}
+    ],
+    "explanation": ""
+  }]
+}`;
+
+  try {
+    let recoveryRaw: string | null = null;
+
+    // Try OpenRouter with multiple images in content array
+    const { models: recoveryModels } = process.env.OPENROUTER_API_KEY
+      ? await resolveVisionModels()
+      : { models: [] as string[] };
+    if (process.env.OPENROUTER_API_KEY && recoveryModels.length > 0) {
+      const imageContent = recoveryImages.map(img => ({
+        type: "image_url" as const,
+        image_url: { url: `data:image/png;base64,${img}`, detail: "high" as const }
+      }));
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://railway.app",
+          "X-Title": "Coaching Portal Exam Gen"
+        },
+        body: JSON.stringify({
+          model: recoveryModels[0],
+          models: recoveryModels,
+          messages: [{ role: "user", content: [
+            ...imageContent,
+            { type: "text", text: recoveryPrompt }
+          ]}],
+          response_format: { type: "json_object" },
+          temperature: 0.1,
+          max_tokens: 4000
+        })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        recoveryRaw = data.choices?.[0]?.message?.content ?? null;
+      } else {
+        console.warn(`[Recovery] OpenRouter failed: ${(await response.text()).slice(0, 200)}`);
+      }
+    }
+
+    // Fallback: Gemini with first image only
+    if (!recoveryRaw) {
+      const clients = getGeminiClients();
+      for (const { client, name } of clients) {
+        try {
+          const parts: any[] = recoveryImages.map(img => ({ inlineData: { mimeType: "image/png", data: img } }));
+          parts.push({ text: recoveryPrompt });
+          const result = await client.models.generateContent({
+            model: GEMINI_MODEL,
+            contents: [{ parts }],
+            config: { responseMimeType: "application/json", maxOutputTokens: 4096, temperature: 0.1 }
+          });
+          if (result.text) { recoveryRaw = result.text; break; }
+        } catch (e: any) {
+          console.warn(`[Recovery] Gemini ${name} failed:`, e?.message);
+        }
+      }
+    }
+
+    if (!recoveryRaw) { console.warn(`[Recovery] Q${missingNum}: all providers failed.`); return null; }
+
+    const start = recoveryRaw.indexOf("{");
+    const end   = recoveryRaw.lastIndexOf("}");
+    if (start === -1 || end === -1) return null;
+    const parsed = JSON.parse(repairJsonString(recoveryRaw.substring(start, end + 1)));
+    const recovered = (parsed.questions || [])[0];
+    return recovered && recovered.prompt ? recovered : null;
+  } catch (e: any) {
+    console.warn(`[Recovery] Q${missingNum} recovery threw:`, e.message);
+    return null;
+  }
+}
+
+/**
+ * Runs recoverQuestionByNumber for each number in `missingNums`, pushing any success
+ * straight into `uniqueQuestions` (caller re-runs the grounding filter afterward — a
+ * recovered result isn't pre-validated). `pagePad` widens the page window on each side;
+ * used for a second, wider-window attempt on numbers a first pass still couldn't recover.
+ */
+async function runRecoveryRound(
+  missingNums: number[],
+  uniqueQuestions: any[],
+  pages: string[],
+  pdfPath: string,
+  pagePad: number
+): Promise<void> {
+  for (const missingNum of missingNums) {
+    const prevQ = uniqueQuestions.find(q => q._questionNumber === missingNum - 1);
+    const nextQ = uniqueQuestions.find(q => q._questionNumber === missingNum + 1);
+    const startPage = Math.max(1, (prevQ?.pageNumber ?? 1) - pagePad);
+    const endPage   = Math.min(pages.length, (nextQ?.pageNumber ?? pages.length) + pagePad);
+
+    console.log(`[Recovery] Q${missingNum}: sending pages ${startPage}–${endPage}${pagePad > 0 ? ` (widened ±${pagePad})` : ""} for targeted recovery...`);
+    const recovered = await recoverQuestionByNumber(missingNum, startPage, endPage, pdfPath);
+    if (recovered) {
+      recovered._questionNumber = missingNum;
+      recovered.pageNumber = startPage;
+      uniqueQuestions.push(recovered);
+      console.log(`[Recovery] Q${missingNum} successfully recovered: "${String(recovered.prompt).slice(0, 60)}..."`);
+      uniqueQuestions.sort((a, b) => (a._questionNumber ?? 9999) - (b._questionNumber ?? 9999));
+    } else {
+      console.warn(`[Recovery] Q${missingNum}: recovery attempt failed.`);
+    }
+  }
+}
+
 export async function extractQuestionsFromPdfText(params: {
   text: string;
   subjectId: string;
@@ -2360,7 +2508,13 @@ export async function extractQuestionsFromPdfText(params: {
   // single-subject book, in which case behavior is unchanged.
   sectionMap?: Map<number, string>;
   topicsBySubject?: Map<string, { id: string; name: string }[]>;
-}): Promise<Question[]> {
+  // Independent ground truth for which question numbers actually exist in this PDF,
+  // sourced from extractPdfQuestionCrops() (PDF text-layer positions, not vision) — the
+  // caller already computes this for free before calling here. Filling this in lets the
+  // missing-question diagnostic below catch a question vision never mentioned on ANY
+  // page (so it never even entered foundNumbers), not just gaps below vision's own max.
+  expectedQuestionNumbers?: number[];
+}): Promise<{ questions: Question[]; missingNumbers: number[]; expectedTotal: number }> {
   const pageDelimiter = /--- PAGE \d+ ---/gi;
   const parts = params.text.split(pageDelimiter);
   const pages = parts.map(p => p.trim()).filter(Boolean);
@@ -2765,147 +2919,61 @@ export async function extractQuestionsFromPdfText(params: {
   assignOptionImages(uniqueQuestions, params.diagrams);
   applyGroundingFilter(uniqueQuestions);
 
-  // Diagnostic + recovery: find missing question numbers and attempt cross-page recovery
-  const foundNumbers = uniqueQuestions
-    .map(q => q._questionNumber)
-    .filter((n): n is number => typeof n === "number")
-    .sort((a, b) => a - b);
-  if (foundNumbers.length > 0) {
-    const expectedMax = Math.max(...foundNumbers);
-    const missing = Array.from({ length: expectedMax }, (_, i) => i + 1)
-      .filter(n => !foundNumbers.includes(n));
-    console.log(`[Diagnostic] Found question numbers: ${foundNumbers.join(", ")}`);
-    if (missing.length > 0) {
-      console.log(`[Diagnostic] MISSING question numbers: ${missing.join(", ")} — attempting cross-page recovery`);
+  // Diagnostic + recovery: reconcile what vision found against every independent signal
+  // of the true question count — vision's own found numbers, the PDF-text-layer
+  // question-crop detector (params.expectedQuestionNumbers, from extractPdfQuestionCrops
+  // in pdf.ts — reads actual glyph positions, so unlike OCR reading order it isn't
+  // scrambled by multi-column layouts), and the OCR-text regex scan (maxQuestionNumber,
+  // computed above). Using only "gaps below vision's own highest found number" (the old
+  // approach) silently missed any question vision never mentioned on ANY page at all —
+  // e.g. a final question on a near-blank last page with zero trace in the logs.
+  const targetNumbers = new Set<number>();
+  for (const q of uniqueQuestions) {
+    if (typeof q._questionNumber === "number") targetNumbers.add(q._questionNumber);
+  }
+  for (const n of params.expectedQuestionNumbers ?? []) targetNumbers.add(n);
+  if (maxQuestionNumber > 0) {
+    for (let n = 1; n <= maxQuestionNumber; n++) targetNumbers.add(n);
+  }
 
-      for (const missingNum of missing) {
-        if (!params.pdfPath) break;
+  const computeMissing = (): number[] => {
+    const found = new Set(
+      uniqueQuestions.map(q => q._questionNumber).filter((n): n is number => typeof n === "number")
+    );
+    return [...targetNumbers].filter(n => !found.has(n)).sort((a, b) => a - b);
+  };
 
-        // Find the pages where the surrounding questions live
-        const prevQ = uniqueQuestions.find(q => q._questionNumber === missingNum - 1);
-        const nextQ = uniqueQuestions.find(q => q._questionNumber === missingNum + 1);
-        const startPage = Math.max(1, prevQ?.pageNumber ?? 1);
-        const endPage   = Math.min(pages.length, nextQ?.pageNumber ?? pages.length);
+  console.log(`[Diagnostic] Found question numbers: ${[...targetNumbers].filter(n => uniqueQuestions.some(q => q._questionNumber === n)).sort((a, b) => a - b).join(", ")}`);
 
-        // Render all pages from startPage to endPage (0-based for renderer)
-        const recoveryImages: string[] = [];
-        for (let p = startPage; p <= endPage; p++) {
-          const img = renderPageToBase64(params.pdfPath, p - 1);
-          if (img) recoveryImages.push(img);
-        }
-        if (recoveryImages.length === 0) continue;
-
-        console.log(`[Recovery] Q${missingNum}: sending pages ${startPage}–${endPage} (${recoveryImages.length} images) for targeted recovery...`);
-        const recoveryPrompt = `These ${recoveryImages.length} exam page image(s) together contain question number ${missingNum}. The question may start on one page and its options continue on the next page.
-
-Extract ONLY question number ${missingNum} — its full text and all 4 options (A, B, C, D) exactly as printed.
-
-Return JSON:
-{
-  "questions": [{
-    "questionNumber": ${missingNum},
-    "prompt": "full question text in LaTeX where needed",
-    "difficulty": "medium",
-    "marks": 4,
-    "negativeMarks": 1,
-    "options": [
-      {"label":"A","value":"...","isCorrect":false},
-      {"label":"B","value":"...","isCorrect":false},
-      {"label":"C","value":"...","isCorrect":false},
-      {"label":"D","value":"...","isCorrect":false}
-    ],
-    "explanation": ""
-  }]
-}`;
-
-        try {
-          let recoveryRaw: string | null = null;
-
-          // Try OpenRouter with multiple images in content array
-          const { models: recoveryModels } = process.env.OPENROUTER_API_KEY
-            ? await resolveVisionModels()
-            : { models: [] as string[] };
-          if (process.env.OPENROUTER_API_KEY && recoveryModels.length > 0) {
-            const imageContent = recoveryImages.map(img => ({
-              type: "image_url" as const,
-              image_url: { url: `data:image/png;base64,${img}`, detail: "high" as const }
-            }));
-            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://railway.app",
-                "X-Title": "Coaching Portal Exam Gen"
-              },
-              body: JSON.stringify({
-                model: recoveryModels[0],
-                models: recoveryModels,
-                messages: [{ role: "user", content: [
-                  ...imageContent,
-                  { type: "text", text: recoveryPrompt }
-                ]}],
-                response_format: { type: "json_object" },
-                temperature: 0.1,
-                max_tokens: 4000
-              })
-            });
-            if (response.ok) {
-              const data = await response.json();
-              recoveryRaw = data.choices?.[0]?.message?.content ?? null;
-            } else {
-              console.warn(`[Recovery] OpenRouter failed: ${(await response.text()).slice(0, 200)}`);
-            }
-          }
-
-          // Fallback: Gemini with first image only
-          if (!recoveryRaw) {
-            const clients = getGeminiClients();
-            for (const { client, name } of clients) {
-              try {
-                const parts: any[] = recoveryImages.map(img => ({ inlineData: { mimeType: "image/png", data: img } }));
-                parts.push({ text: recoveryPrompt });
-                const result = await client.models.generateContent({
-                  model: GEMINI_MODEL,
-                  contents: [{ parts }],
-                  config: { responseMimeType: "application/json", maxOutputTokens: 4096, temperature: 0.1 }
-                });
-                if (result.text) { recoveryRaw = result.text; break; }
-              } catch (e: any) {
-                console.warn(`[Recovery] Gemini ${name} failed:`, e?.message);
-              }
-            }
-          }
-
-          if (!recoveryRaw) { console.warn(`[Recovery] Q${missingNum}: all providers failed.`); continue; }
-
-          const start = recoveryRaw.indexOf("{");
-          const end   = recoveryRaw.lastIndexOf("}");
-          if (start === -1 || end === -1) continue;
-          const parsed = JSON.parse(repairJsonString(recoveryRaw.substring(start, end + 1)));
-          const recovered = (parsed.questions || [])[0];
-          if (recovered && recovered.prompt) {
-            recovered._questionNumber = missingNum;
-            recovered.pageNumber = startPage;
-            uniqueQuestions.push(recovered);
-            console.log(`[Recovery] Q${missingNum} successfully recovered: "${String(recovered.prompt).slice(0, 60)}..."`);
-            // Re-sort after inserting
-            uniqueQuestions.sort((a, b) => (a._questionNumber ?? 9999) - (b._questionNumber ?? 9999));
-          }
-        } catch (e: any) {
-          console.warn(`[Recovery] Q${missingNum} recovery threw:`, e.message);
-        }
-      }
-    }
+  let missing = computeMissing();
+  if (missing.length > 0 && params.pdfPath) {
+    console.log(`[Diagnostic] MISSING question numbers: ${missing.join(", ")} — attempting cross-page recovery`);
+    await runRecoveryRound(missing, uniqueQuestions, pages, params.pdfPath, 0);
   }
 
   // Recovery above pushes reconstructed questions straight into uniqueQuestions without
   // re-validating them, so run the grounding filter once more (idempotent on questions
-  // that already passed) to catch the rare case where even the targeted multi-page
-  // recovery still comes back with placeholder/incomplete options — those are genuinely
-  // unrecoverable and get dropped here with a clear log line rather than shipping garbage.
+  // that already passed) to catch questions where the targeted recovery came back with
+  // placeholder/incomplete options.
   assignOptionImages(uniqueQuestions, params.diagrams);
   applyGroundingFilter(uniqueQuestions);
+
+  // Second, wider-window pass: anything still missing — never recovered, or recovered
+  // but dropped again by the grounding filter because the true question boundary fell
+  // just outside the original page window — gets one more attempt with the window
+  // padded by 1 page on each side before it's flagged as genuinely unrecoverable.
+  missing = computeMissing();
+  if (missing.length > 0 && params.pdfPath) {
+    console.log(`[Diagnostic] Still missing after first recovery pass: ${missing.join(", ")} — retrying with a wider page window`);
+    await runRecoveryRound(missing, uniqueQuestions, pages, params.pdfPath, 1);
+    assignOptionImages(uniqueQuestions, params.diagrams);
+    applyGroundingFilter(uniqueQuestions);
+  }
+
+  const finalMissing = computeMissing();
+  if (finalMissing.length > 0) {
+    console.warn(`[Extract] UNRECOVERABLE after 2 recovery attempts: Q${finalMissing.join(", Q")} — flagging for admin, needs manual entry.`);
+  }
 
   const finalQuestions: Question[] = uniqueQuestions.map((q: any, i: number) => {
     const correctOptionIds: string[] = [];
@@ -3102,7 +3170,7 @@ Return JSON:
     );
   }
 
-  return finalQuestions;
+  return { questions: finalQuestions, missingNumbers: finalMissing, expectedTotal: targetNumbers.size };
 }
 
 /**

@@ -75,7 +75,7 @@ export function SubjectBooksPage() {
           clearInterval(pollingRef.current[bookId]);
           delete pollingRef.current[bookId];
           setExtractingForBook(null);
-          if (res.extractionStatus === "done") { setStatus(`Done! ${res.extractionQuestionCount} questions extracted.`); await loadData(); }
+          if (res.extractionStatus === "done") { setStatus(res.extractionProgress || `Done! ${res.extractionQuestionCount} questions extracted.`); await loadData(); }
           else setStatus(`Extraction failed: ${res.extractionProgress}`);
         }
       } catch { /* ignore transient */ }
@@ -483,7 +483,17 @@ export function SubjectBooksPage() {
                         <td style={tdS}>
                           <span style={{ fontSize: "0.72rem", padding: "2px 7px", borderRadius: "4px", background: tc.bg, color: tc.color, fontWeight: 700 }}>{typeLabel(book.bookType || "textbook")}</span>
                         </td>
-                        <td style={{ ...tdS, fontWeight: 600 }}>{book.title}</td>
+                        <td style={{ ...tdS, fontWeight: 600 }}>
+                          {book.title}
+                          {(book.extractionMissingNumbers?.length ?? 0) > 0 && (
+                            <div
+                              title={`Questions ${book.extractionMissingNumbers!.join(", ")} could not be extracted after 2 recovery attempts — add them manually in the Question Bank.`}
+                              style={{ marginTop: "4px", fontSize: "0.72rem", fontWeight: 700, color: "#b91c1c" }}
+                            >
+                              ⚠ {book.extractionMissingNumbers!.length} question{book.extractionMissingNumbers!.length > 1 ? "s" : ""} missing (Q{book.extractionMissingNumbers!.join(", Q")})
+                            </div>
+                          )}
+                        </td>
                         <td style={tdS}><span className="tag" style={{ fontSize: "0.75rem" }}>{book.subjectName}</span></td>
                         <td style={{ ...tdS, textAlign: "center", color: "var(--color-text-muted)" }}>{(book as any).pageCount ?? "—"}</td>
                         <td style={{ ...tdS, color: "var(--color-text-muted)" }}>{new Date(book.uploadedAt).toLocaleDateString()}</td>

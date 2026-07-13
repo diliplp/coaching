@@ -887,7 +887,9 @@ apiRouter.get("/subject-books/:id/extraction-status", requireAuth, async (req, r
   res.json({
     extractionStatus: book.extractionStatus ?? "idle",
     extractionProgress: book.extractionProgress ?? "",
-    extractionQuestionCount: book.extractionQuestionCount ?? 0
+    extractionQuestionCount: book.extractionQuestionCount ?? 0,
+    extractionMissingNumbers: book.extractionMissingNumbers ?? [],
+    extractionExpectedCount: book.extractionExpectedCount ?? 0
   });
 });
 
@@ -1315,9 +1317,22 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
   const parsedText = book.parsedText;
 
   // Helper: write extraction status back to the book record in DB
-  const updateExtractionStatus = async (status: string, progress: string, questionCount = 0) => {
+  const updateExtractionStatus = async (
+    status: string,
+    progress: string,
+    questionCount = 0,
+    missingNumbers?: number[],
+    expectedCount?: number
+  ) => {
     try {
-      await upsertRecord("subjectBooks", { ...book, extractionStatus: status, extractionProgress: progress, extractionQuestionCount: questionCount });
+      await upsertRecord("subjectBooks", {
+        ...book,
+        extractionStatus: status,
+        extractionProgress: progress,
+        extractionQuestionCount: questionCount,
+        ...(missingNumbers !== undefined && { extractionMissingNumbers: missingNumbers }),
+        ...(expectedCount !== undefined && { extractionExpectedCount: expectedCount }),
+      });
     } catch (e) {
       console.warn("[Progress] Failed to write extraction status:", e);
     }
@@ -1389,7 +1404,13 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
         console.log(`[ExtractMCQ] Detected combined-subject sections — ${bySubjectCounts}`);
       }
 
-      const extracted = await extractQuestionsFromPdfText({
+      // The PDF-text-layer crop detector (extract_question_crops.py) locates question
+      // numbers from actual glyph positions, so it isn't scrambled by multi-column
+      // layouts the way OCR reading order is — pass its numbers through as an
+      // independent ground truth for the missing-question diagnostic below.
+      const expectedQuestionNumbers = [...new Set(crops.map((c: any) => c.questionNumber).filter((n: any) => typeof n === "number"))] as number[];
+
+      const { questions: extracted, missingNumbers, expectedTotal } = await extractQuestionsFromPdfText({
         text: parsedText,
         subjectId: book.subjectId,
         topicId: topicIds[0],
@@ -1406,6 +1427,7 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
         pyqSession,
         sectionMap: sectionMap.size > 0 ? sectionMap : undefined,
         topicsBySubject,
+        expectedQuestionNumbers,
       });
 
       // Note: we deliberately do NOT blanket-embed each question's own whole-question
@@ -1443,11 +1465,14 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
         await upsertRecord("questions", q);
       }
 
-      const doneMessage = flaggedCount > 0
-        ? `Done! ${extracted.length} questions extracted, ${flaggedCount} flagged for review.`
+      const missingPart = missingNumbers.length > 0
+        ? `Done! ${extracted.length} of ${expectedTotal} questions extracted — ${missingNumbers.length} MISSING (Q${missingNumbers.join(", Q")}). These need manual entry in Question Bank.`
         : `Done! ${extracted.length} questions extracted.`;
-      await updateExtractionStatus("done", doneMessage, extracted.length);
-      console.log(`[Background] Successfully extracted and saved ${extracted.length} questions for book ${book.id} (${flaggedCount} flagged).`);
+      const doneMessage = flaggedCount > 0
+        ? `${missingPart} ${flaggedCount} more flagged for review.`
+        : missingPart;
+      await updateExtractionStatus("done", doneMessage, extracted.length, missingNumbers, expectedTotal);
+      console.log(`[Background] Successfully extracted and saved ${extracted.length} questions for book ${book.id} (${flaggedCount} flagged, ${missingNumbers.length} missing).`);
     } catch (bgError: any) {
       console.error(`[Background] Error during question extraction for book ${book.id}:`, bgError);
       await updateExtractionStatus("error", `Error: ${bgError.message || "Unknown error"}`);
