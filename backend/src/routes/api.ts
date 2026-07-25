@@ -2043,8 +2043,7 @@ apiRouter.post("/exams/:examId/heartbeat", async (req, res) => {
     status: "taking" | "submitted";
   };
   const authUserId = (req as AuthenticatedRequest).auth?.sub;
-  const state = await getAppState();
-  const authUser = state.users.find((item) => item.id === authUserId);
+  const authUser = authUserId ? await getRecord<UserAccount>("users", authUserId) : null;
   const effectiveStudentId = authUser?.studentId ?? authUserId;
 
   if (!effectiveStudentId) {
@@ -2060,7 +2059,7 @@ apiRouter.post("/exams/:examId/heartbeat", async (req, res) => {
     return;
   }
 
-  const student = state.students.find((s) => s.id === effectiveStudentId);
+  const student = await getRecord<{ id: string; name?: string }>("students", effectiveStudentId);
   const studentName = student?.name || authUser?.name || "Unknown Student";
 
   const tracker = {
@@ -2232,8 +2231,7 @@ apiRouter.patch("/exams/:examId/session/answer", requireAuth, async (req, res) =
   const { examId } = req.params;
   const { questionId, selectedOptionIds } = req.body as { questionId: string; selectedOptionIds: string[] };
   const authUserId = (req as AuthenticatedRequest).auth?.sub;
-  const state = await getAppState();
-  const authUser = state.users.find((u) => u.id === authUserId);
+  const authUser = authUserId ? await getRecord<UserAccount>("users", authUserId) : null;
   const effectiveStudentId = authUser?.studentId ?? authUserId;
 
   if (!effectiveStudentId || !questionId) {
@@ -2260,8 +2258,7 @@ apiRouter.patch("/exams/:examId/session/index", requireAuth, async (req, res) =>
   const { examId } = req.params;
   const { currentQuestionIndex } = req.body as { currentQuestionIndex: number };
   const authUserId = (req as AuthenticatedRequest).auth?.sub;
-  const state = await getAppState();
-  const authUser = state.users.find((u) => u.id === authUserId);
+  const authUser = authUserId ? await getRecord<UserAccount>("users", authUserId) : null;
   const effectiveStudentId = authUser?.studentId ?? authUserId;
 
   if (!effectiveStudentId || typeof currentQuestionIndex !== "number") {
