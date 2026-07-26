@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { Router, Request, Response } from "express";
 import multer from "multer";
 import { getAppState, getRecord, listRecords, upsertRecord, deleteRecord } from "../data/database.js";
+import type { AppStore } from "../data/seed-data.js";
 import { booksUploadsRoot } from "../utils/paths.js";
 import {
   buildAdaptiveExamPlan,
@@ -2280,19 +2281,22 @@ apiRouter.patch("/exams/:examId/session/index", requireAuth, async (req, res) =>
 
 apiRouter.get("/exams/:examId/live-status", requireRole(["super_admin", "teacher"]), async (req, res) => {
   const { examId } = req.params;
-  const state = await getAppState();
   const { listRecords } = await import("../data/database.js");
 
-  const exam = state.exams.find((e) => e.id === examId);
+  const exam = await getRecord<AppStore["exams"][number]>("exams", examId as string);
   if (!exam) {
     res.status(404).json({ message: "Exam not found" });
     return;
   }
 
-  const batchStudents = state.students.filter((s) => s.batchId === exam.batchId);
-  const allTrackers = await listRecords<any>("liveTrackers");
+  const [allStudents, allTrackers, allSubmissions] = await Promise.all([
+    listRecords<AppStore["students"][number]>("students"),
+    listRecords<any>("liveTrackers"),
+    listRecords<AppStore["submissions"][number]>("submissions")
+  ]);
+  const batchStudents = allStudents.filter((s) => s.batchId === exam.batchId);
   const examTrackers = allTrackers.filter((t) => t.examId === examId);
-  const examSubmissions = state.submissions.filter((s) => s.examId === examId);
+  const examSubmissions = allSubmissions.filter((s) => s.examId === examId);
 
   const now = Date.now();
   const activeThresholdMs = 20 * 1000;
