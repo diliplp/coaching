@@ -989,7 +989,7 @@ ${textChunk}
             }
           }
 
-          const mappedQuestions = parsedArr.map((item: any, idx: number) => {
+          const mappedQuestions = parsedArr.map((item: any, idx: number): Question => {
             const qId = `q-ai-${Date.now()}-${batchIndex}-${idx}`;
 
             // Assign IDs first, preserving isCorrect flag, then shuffle to randomize answer position
@@ -1012,18 +1012,28 @@ ${textChunk}
               return { id: opt.id, label: String.fromCharCode(65 + optIndex), value: ensureMathDelimited(String(opt.value ?? "")) };
             });
 
+            const promptText = ensureMathDelimited(String(item.prompt ?? ""), false);
+            const explanationText = ensureMathDelimited(String(item.explanation ?? ""), false);
+            const qaFlags: string[] = [];
+            if (hasUndelimitedLatex(promptText) || hasUndelimitedLatex(explanationText)) {
+              qaFlags.push("undelimited_latex");
+            }
+
             return {
               id: qId,
               subjectId,
               topicId,
               type: (correctOptionIds.length > 1 ? "multi_correct" : "single_correct") as "multi_correct" | "single_correct",
-              prompt: item.prompt,
+              prompt: promptText,
               difficulty: item.difficulty,
               marks: item.marks || 2,
               negativeMarks: item.negativeMarks || 0,
               options,
               correctOptionIds,
-              explanation: item.explanation,
+              explanation: explanationText,
+              qaFlags,
+              qaStatus: qaFlags.length > 0 ? "flagged" : "unreviewed",
+              qaCheckedAt: new Date().toISOString(),
             };
           });
 
@@ -2217,22 +2227,93 @@ function applyGroundingFilter(questions: any[]): void {
 // handle options that mix plain text and math (rare, and riskier to auto-wrap).
 const RAW_LATEX_COMMAND = /\\(frac|dfrac|text|times|sqrt|left|right|Delta|nabla|partial|infty|alpha|beta|gamma|theta|lambda|mu|omega|pi|sigma|phi|psi|cup|cap|subseteq|subset|supseteq|cdot|ge|le|neq|approx|pm|rightleftharpoons|rightarrow|leftarrow|Rightarrow|ce|vec|hat|overline|underline|begin|end)\b/;
 
-function ensureMathDelimited(value: string): string {
-  const v = value.trim();
-  if (!v || v.includes("$") || !RAW_LATEX_COMMAND.test(v)) return value;
-  return `$${v}$`;
+// Bare ASCII math the model sometimes emits instead of proper LaTeX ("x^2", "H_2O",
+// "sqrt(x)") instead of "\sqrt{x}", which renders as literal caret/underscore/text
+// because there's no $...$ around it. Bases/tails are deliberately length-bounded (not
+// unbounded + or *) so a match can only ever be a short, unambiguous math token:
+//   - exponent base is unbounded-length alnum (or a closing bracket) because "^" almost
+//     never appears in ordinary prose, so "10^-3" / "cm^2" / "log^2" are all safe to wrap
+//     in full.
+//   - subscript base is capped at 2 chars because "_" DOES appear in ordinary prose/
+//     identifiers ("user_id", "Section_A", "test_case") — a 2-char cap keeps matches to
+//     atomic-symbol/single-variable length ("H_2", "NH_4", "Ca_3") without ever reaching
+//     the underscore in a real multi-char word (deliberate tradeoff: "log_10" is not
+//     auto-wrapped as a result — see the report for this and other skipped edge cases).
+const EXP_BASE = "[A-Za-z0-9]+";
+const EXP_TAIL = "\\{?-?[A-Za-z0-9]{1,6}\\}?";
+const SUB_BASE = "[A-Za-z0-9]{1,2}";
+const SUB_TAIL = "\\{?[A-Za-z0-9]{1,6}\\}?";
+
+const BARE_EXPONENT_WHOLE = new RegExp(`^(?:${EXP_BASE}|[)\\]])\\^${EXP_TAIL}$`);
+const BARE_SUBSCRIPT_WHOLE = new RegExp(`^${SUB_BASE}_${SUB_TAIL}$`);
+const BARE_SQRT_WHOLE = /^sqrt\s*\([^()]*\)$/i;
+
+const BARE_EXPONENT_TOKEN = new RegExp(`\\b${EXP_BASE}\\^${EXP_TAIL}|[)\\]]\\^${EXP_TAIL}`, "g");
+const BARE_SUBSCRIPT_TOKEN = new RegExp(`\\b${SUB_BASE}_${SUB_TAIL}\\b`, "g");
+const BARE_SQRT_TOKEN = /\bsqrt\s*\([^()]*\)/gi;
+// Single combined regex (rather than three sequential .replace passes) so a wrapped
+// match's own inserted $ characters can never be re-scanned by a later alternative.
+const BARE_MATH_TOKEN = new RegExp(
+  [BARE_SQRT_TOKEN.source, BARE_EXPONENT_TOKEN.source, BARE_SUBSCRIPT_TOKEN.source].join("|"),
+  "gi"
+);
+// $...$ spans and [IMAGE: ...]/[SMILES: ...] tags (which can contain "_" in filenames,
+// e.g. "master_page-01.png") must never be scanned for bare-math tokens.
+const PROTECTED_SPAN = /\$\$[^$]*\$\$|\$[^$]*\$|\[(?:IMAGE|SMILES):[^\]]*\]/g;
+
+function isBareAsciiMath(v: string): boolean {
+  return BARE_SQRT_WHOLE.test(v) || BARE_EXPONENT_WHOLE.test(v) || BARE_SUBSCRIPT_WHOLE.test(v);
 }
 
-// Detection-only counterpart to ensureMathDelimited, for prompt/explanation text: those
-// mix prose and math, so unlike a pure-math option value there's no safe way to
-// auto-wrap "the whole string" — attempting to guess where an embedded math fragment
-// ends within a sentence is a fabrication risk on a live exam. Instead this just flags
-// the question for a human glance (see qaFlags below) by checking whether a raw LaTeX
-// command survives outside of any existing $...$ span.
-function hasUndelimitedLatex(text: string): boolean {
+// Wraps only the bare-math tokens found outside of protected spans, leaving surrounding
+// prose untouched — safe to run over mixed prose+math text (prompt/explanation), unlike
+// the whole-string wrap path in ensureMathDelimited below.
+function wrapBareMathTokens(text: string): string {
+  PROTECTED_SPAN.lastIndex = 0;
+  let result = "";
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = PROTECTED_SPAN.exec(text)) !== null) {
+    result += text.slice(lastIndex, m.index).replace(BARE_MATH_TOKEN, (t) => `$${t}$`);
+    result += m[0];
+    lastIndex = PROTECTED_SPAN.lastIndex;
+  }
+  result += text.slice(lastIndex).replace(BARE_MATH_TOKEN, (t) => `$${t}$`);
+  return result;
+}
+
+// wholeValueIsMath=true (the default, used for option values, where every value seen in
+// practice is pure math with no surrounding prose) wraps the entire string as soon as it
+// contains a raw LaTeX command anywhere — safe there because there's no prose to corrupt.
+// prompt/explanation are multi-sentence prose that may merely *mention* a LaTeX command
+// partway through (e.g. "Using Rydberg formula 1/\lambda = ..."), so callers there must
+// pass wholeValueIsMath=false: a bare backslash command no longer triggers a whole-string
+// wrap (that would swallow surrounding English text into math mode) and instead falls
+// through to hasUndelimitedLatex flagging, same as before this file's math-delimiting fix.
+export function ensureMathDelimited(value: string, wholeValueIsMath = true): string {
+  const v = value.trim();
+  if (!v || v.includes("$")) return value;
+  if (isBareAsciiMath(v)) return `$${v}$`;
+  if (wholeValueIsMath && RAW_LATEX_COMMAND.test(v)) return `$${v}$`;
+  return wrapBareMathTokens(value);
+}
+
+// Detection-only counterpart to ensureMathDelimited, for whatever bare LaTeX/ASCII math
+// ensureMathDelimited couldn't confidently auto-fix: raw backslash LaTeX commands
+// embedded in prose are never auto-wrapped (no safe way to guess where the math fragment
+// ends within a sentence — a fabrication risk on a live exam), and the bare-ASCII
+// patterns here are intentionally looser than the auto-wrap token regexes above (no
+// upper bound on tail length, no requirement that sqrt(...) parens balance on one level)
+// so edge cases the auto-fix conservatively skips still surface for a human glance
+// instead of silently shipping broken text.
+const LOOSE_BARE_MATH = /[A-Za-z0-9)\]]\^[A-Za-z0-9({-]|\b[A-Za-z0-9]{1,2}_[A-Za-z0-9{]|\bsqrt\s*\(/i;
+
+export function hasUndelimitedLatex(text: string): boolean {
   if (!text) return false;
-  const withoutMathSpans = text.replace(/\${1,2}[^$]*\${1,2}/g, "");
-  return RAW_LATEX_COMMAND.test(withoutMathSpans);
+  const stripped = text
+    .replace(/\${1,2}[^$]*\${1,2}/g, "")
+    .replace(/\[(?:IMAGE|SMILES):[^\]]*\]/g, "");
+  return RAW_LATEX_COMMAND.test(stripped) || LOOSE_BARE_MATH.test(stripped);
 }
 
 // Shared by the diagram-embedding logic in extractQuestionsFromPdfText's final .map()
@@ -3010,7 +3091,8 @@ export async function extractQuestionsFromPdfText(params: {
       }
     }
 
-    let promptText = q.prompt || "";
+    let promptText = ensureMathDelimited(q.prompt || "", false);
+    const explanationText = ensureMathDelimited(q.explanation || "", false);
     const pageNum = q.pageNumber;
 
     if (pageNum && params.diagrams) {
@@ -3103,10 +3185,10 @@ export async function extractQuestionsFromPdfText(params: {
     if (options.length !== 4) {
       qaFlags.push(`wrong_option_count:${options.length}`);
     }
-    if (PLACEHOLDER_OPTION_PATTERN.test(promptText) || PLACEHOLDER_OPTION_PATTERN.test(q.explanation || "")) {
+    if (PLACEHOLDER_OPTION_PATTERN.test(promptText) || PLACEHOLDER_OPTION_PATTERN.test(explanationText)) {
       qaFlags.push("placeholder_leak");
     }
-    if (hasUndelimitedLatex(promptText) || hasUndelimitedLatex(q.explanation || "")) {
+    if (hasUndelimitedLatex(promptText) || hasUndelimitedLatex(explanationText)) {
       qaFlags.push("undelimited_latex");
     }
     if (promptMentionsFigure(promptText.toLowerCase()) && !promptText.includes("[IMAGE:")) {
@@ -3139,7 +3221,7 @@ export async function extractQuestionsFromPdfText(params: {
       negativeMarks: q.negativeMarks || 0,
       correctOptionIds,
       options,
-      explanation: q.explanation || "",
+      explanation: explanationText,
       sourceType: params.sourceType,
       bookId: params.bookId,
       // Mark unverified if no correct answer was detected (garbled OCR, missing answer key)
