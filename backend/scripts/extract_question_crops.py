@@ -155,7 +155,15 @@ def extract_question_crops(pdf_path, output_dir, book_id):
             results.append({
                 "questionNumber": q_num,
                 "page": page_idx + 1,
-                "cropUrl": f"/uploads/crops/{filename}"
+                "cropUrl": f"/uploads/crops/{filename}",
+                # Normalised (0-1) vertical bounds of this question's OWN region —
+                # yEnd deliberately stops before the "Ans." marker (see y_end logic
+                # above), so a diagram whose bbox falls inside [yStart, yEnd] is
+                # provably part of the question itself, never its solution/answer.
+                # Lets the diagram-assignment logic in ai-generator.ts match by real
+                # page geometry instead of guessing from question order.
+                "yStart": round(y_start / ph, 4),
+                "yEnd": round(y_end / ph, 4)
             })
         except Exception as e:
             sys.stderr.write(f"[crop] Q{q_num} failed: {e}\n")

@@ -23,6 +23,15 @@ async function ensureSchema() {
       PRIMARY KEY (collection, id)
     )
   `);
+  // Backs the global, source-agnostic serialNumber every question gets on first save
+  // (see upsertRecord below) — a short, always-unique number admins/students can use
+  // to reference a specific question without needing its bookId/page/internal id.
+  await pool.query(`CREATE SEQUENCE IF NOT EXISTS question_serial_seq`);
+}
+
+export async function nextQuestionSerial(): Promise<number> {
+  const result = await pool.query(`SELECT nextval('question_serial_seq') AS n`);
+  return Number(result.rows[0].n);
 }
 
 async function countCollection(collection: string) {
@@ -68,6 +77,12 @@ export async function getRecord<T>(collection: string, id: string): Promise<T | 
 }
 
 export async function upsertRecord<T extends RecordWithId>(collection: string, data: T) {
+  // Assign a serial once, on first save, and never again — edits (which re-upsert the
+  // same id with serialNumber already set) must keep the original number so it stays a
+  // stable reference, not a re-issued one.
+  if (collection === "questions" && (data as any).serialNumber == null) {
+    (data as any).serialNumber = await nextQuestionSerial();
+  }
   await pool.query(
     `
       INSERT INTO app_records (collection, id, data, updated_at)

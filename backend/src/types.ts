@@ -167,6 +167,11 @@ export interface Question {
   isVerified?: boolean;
   bookId?: string;
   questionNumber?: number;
+  /** Global, source-agnostic sequential number assigned once on first save (see
+   * upsertRecord in data/database.ts) — unlike questionNumber (per-book, PDF-extraction
+   * only), this is always present and unique across the whole question bank, so admins
+   * can reference a specific question ("Q#1247") without needing its book/page/id. */
+  serialNumber?: number;
   integerAnswer?: number;     // for type === "integer" (JEE Section B)
   pyqYear?: number;           // e.g. 2022
   pyqExamName?: string;       // e.g. "JEE Mains", "NEET", "GUJCET", "JEE Advanced"

@@ -146,7 +146,7 @@ export async function extractPdfDiagrams(
 export async function extractPdfQuestionCrops(
   filePath: string,
   bookId: string
-): Promise<PdfExtractResult<{ questionNumber: number; page: number; cropUrl: string }>> {
+): Promise<PdfExtractResult<{ questionNumber: number; page: number; cropUrl: string; yStart?: number; yEnd?: number }>> {
   const defaultPython = process.platform === "win32" ? "python" : "python3";
   const pythonPath = process.env.PDF_PYTHON_PATH || defaultPython;
   const scriptPath = path.join(scriptsRoot, "extract_question_crops.py");

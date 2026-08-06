@@ -806,6 +806,11 @@ export function QuestionBankPage() {
                             style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#7c3aed" }}
                           />
                         )}
+                        {question.serialNumber != null && (
+                          <span className="tag" style={{ background: "#374151", color: "white", borderColor: "#374151", fontWeight: "bold" }}>
+                            #{question.serialNumber}
+                          </span>
+                        )}
                         <span className="tag">{question.subjectName}</span>
                         <span className="tag muted" style={{ marginLeft: "5px" }}>{question.topicName}</span>
                         {question.pageNumber && (
@@ -888,6 +893,11 @@ export function QuestionBankPage() {
                       onChange={() => toggleQuestionSelection(question)}
                       style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#7c3aed" }}
                     />
+                  )}
+                  {question.serialNumber != null && (
+                    <span className="tag" style={{ background: "#374151", color: "white", borderColor: "#374151", fontWeight: "bold" }}>
+                      #{question.serialNumber}
+                    </span>
                   )}
                   <span className="tag">{question.subjectName}</span>
                   <span className="tag muted" style={{ marginLeft: "5px" }}>{question.topicName}</span>

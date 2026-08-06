@@ -2337,6 +2337,28 @@ function promptMentionsFigure(promptLower: string): boolean {
   );
 }
 
+// Same "does this question need a diagram" test used both to decide whether to attach
+// one and to rank a question against its page-siblings when there are more
+// diagram-needing questions on a page than confident question-region diagram candidates
+// (see the assignment loop in extractQuestionsFromPdfText's final .map()).
+function hasImageOnlyOption(options: any[] | undefined): boolean {
+  return (options || []).some((opt: any) => {
+    const val = (opt.value || "").trim();
+    if (val.length >= 4) return false;
+    if (/^-?\d+(\.\d+)?$/.test(val)) return false; // pure numbers aren't image placeholders
+    if (val === opt.label || val === `(${opt.label})`) return true;
+    return val.length < 3;
+  });
+}
+
+function needsDiagramFor(pq: any): boolean {
+  return (
+    pq._hasDiagram === true ||
+    promptMentionsFigure((pq.prompt || "").toLowerCase()) ||
+    hasImageOnlyOption(pq.options)
+  );
+}
+
 function looksLikeUntranscribedOption(value: unknown, label: string): boolean {
   const v = String(value ?? "").trim();
   if (!v) return true;
@@ -2595,6 +2617,14 @@ export async function extractQuestionsFromPdfText(params: {
   // missing-question diagnostic below catch a question vision never mentioned on ANY
   // page (so it never even entered foundNumbers), not just gaps below vision's own max.
   expectedQuestionNumbers?: number[];
+  // Per-question normalised vertical bounds on their source page, from the same
+  // extract_question_crops.py pass — yEnd deliberately stops before that question's own
+  // "Ans." marker. Lets the diagram-assignment logic below match a diagram to a question
+  // by real page geometry (is this diagram's bbox actually inside the question's own
+  // region?) instead of guessing from page order, which is what let an answer-explanation
+  // diagram bleed into an unrelated question's prompt (see needsDiagramFor/candidateDiagrams
+  // below). Keyed by questionNumber; absent entries fall back to order-based matching.
+  questionBounds?: Map<number, { page: number; yStart: number; yEnd: number }>;
 }): Promise<{ questions: Question[]; missingNumbers: number[]; expectedTotal: number }> {
   const pageDelimiter = /--- PAGE \d+ ---/gi;
   const parts = params.text.split(pageDelimiter);
@@ -3118,46 +3148,60 @@ export async function extractQuestionsFromPdfText(params: {
       });
 
       if (pageDiagrams.length > 0) {
-        const lowerPrompt = promptText.toLowerCase();
-
-        // Vision model may report hasDiagram: true when structural formulas appear in question/options
-        const visionReportedDiagram = q._hasDiagram === true;
-
-        // Detect if any option value is missing or suspiciously short AND is not a plain number.
-        // Pure numeric options like "3", "5", "2" should NOT trigger image assignment.
-        const hasImageOnlyOption = q.options?.some((opt: any) => {
-          const val = (opt.value || "").trim();
-          if (val.length >= 4) return false;
-          if (/^-?\d+(\.\d+)?$/.test(val)) return false;  // skip pure numbers
-          if (val === opt.label || val === `(${opt.label})`) return true;
-          return val.length < 3; // very short non-numeric value = likely image placeholder
-        }) ?? false;
-
-        const needsDiagram = visionReportedDiagram || promptMentionsFigure(lowerPrompt) || hasImageOnlyOption;
+        const needsDiagram = needsDiagramFor({ ...q, prompt: promptText });
 
         if (needsDiagram && !promptText.includes("[IMAGE:")) {
-          // Prefer question-area images (above the Ans. marker on the page).
-          // Only fall back to all diagrams when there is exactly one on the page
-          // (unambiguous single-diagram page where classification is uncertain).
-          const qImgDiagrams = pageDiagrams.filter((d: any) => d.isQuestionImage !== false);
-          const candidateDiagrams = qImgDiagrams.length > 0
-            ? qImgDiagrams
-            : pageDiagrams.length === 1 ? pageDiagrams : [];
+          const bounds = typeof q._questionNumber === "number"
+            ? params.questionBounds?.get(q._questionNumber)
+            : undefined;
 
-          if (candidateDiagrams.length > 0) {
-            // Use question ordering to pick among multiple candidates on the same page.
-            const questionsOnPage = allParsedQuestions.filter(
-              (pq: any) => pq.pageNumber === pageNum
-            );
-            const questionIndexOnPage = Math.max(
-              questionsOnPage.findIndex(
+          if (bounds && bounds.page === pageNum) {
+            // Ground truth path: does this diagram's bbox actually fall inside THIS
+            // question's own region (its center-y between yStart and the question's
+            // own "Ans." marker)? This is the same region extract_question_crops.py
+            // renders as the question's crop image, so a match here is provably part
+            // of the question — never a neighbor's or its own solution's diagram.
+            const match = pageDiagrams.find((d: any) => {
+              if (!Array.isArray(d.bbox) || d.bbox.length !== 4) return false;
+              const centerY = (d.bbox[0] + d.bbox[2]) / 2;
+              return centerY >= bounds.yStart && centerY <= bounds.yEnd;
+            });
+            if (match) {
+              promptText += `
+[IMAGE: ${match.url}]`;
+            }
+            // No match: this question's own region genuinely has no diagram in it
+            // (e.g. vision mis-self-reported _hasDiagram) — leave unattached rather
+            // than guess; missing_referenced_diagram (below) flags it if warranted.
+          } else {
+            // Fallback for pages/questions without crop-derived bounds (crop
+            // extraction failed, or this question came from a non-PDF recovery path).
+            // Prefer question-area images; only fall back to all diagrams when there's
+            // exactly one on the page (unambiguous single-diagram page).
+            const qImgDiagrams = pageDiagrams.filter((d: any) => d.isQuestionImage !== false);
+            const candidateDiagrams = qImgDiagrams.length > 0
+              ? qImgDiagrams
+              : pageDiagrams.length === 1 ? pageDiagrams : [];
+
+            if (candidateDiagrams.length > 0) {
+              // Only the questions on THIS page that ALSO need a diagram compete for
+              // these candidates, matched 1:1 in page order — with no reuse. Reusing
+              // the same diagram across every remaining needing-question once
+              // candidates ran out (the old Math.min-capped index) silently attached
+              // one question's diagram to an unrelated question instead. Skipping the
+              // assignment when there's no unique slot left is the safer default.
+              const questionsOnPage = uniqueQuestions.filter(
+                (pq: any) => pq.pageNumber === pageNum
+              );
+              const needingQuestionsOnPage = questionsOnPage.filter(needsDiagramFor);
+              const needIndex = needingQuestionsOnPage.findIndex(
                 (pq: any) => pq._questionNumber === q._questionNumber || pq.prompt === q.prompt
-              ),
-              0
-            );
-            const diagramIndex = Math.min(questionIndexOnPage, candidateDiagrams.length - 1);
-            promptText += `
-[IMAGE: ${candidateDiagrams[diagramIndex].url}]`;
+              );
+              if (needIndex >= 0 && needIndex < candidateDiagrams.length) {
+                promptText += `
+[IMAGE: ${candidateDiagrams[needIndex].url}]`;
+              }
+            }
           }
         }
       }

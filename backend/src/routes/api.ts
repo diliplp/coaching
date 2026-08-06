@@ -1411,6 +1411,16 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
       // independent ground truth for the missing-question diagnostic below.
       const expectedQuestionNumbers = [...new Set(crops.map((c: any) => c.questionNumber).filter((n: any) => typeof n === "number"))] as number[];
 
+      // Same crop pass also gives each question's own on-page vertical bounds (yEnd
+      // stops before its "Ans." marker) — lets the diagram-assignment logic match a
+      // diagram to a question by real geometry instead of guessing from page order.
+      const questionBounds = new Map<number, { page: number; yStart: number; yEnd: number }>();
+      for (const c of crops as any[]) {
+        if (typeof c.questionNumber === "number" && typeof c.page === "number" && typeof c.yStart === "number" && typeof c.yEnd === "number") {
+          questionBounds.set(c.questionNumber, { page: c.page, yStart: c.yStart, yEnd: c.yEnd });
+        }
+      }
+
       const { questions: extracted, missingNumbers, expectedTotal } = await extractQuestionsFromPdfText({
         text: parsedText,
         subjectId: book.subjectId,
@@ -1429,6 +1439,7 @@ apiRouter.post("/subject-books/:bookId/extract-mcq-questions", requireRole(["sup
         sectionMap: sectionMap.size > 0 ? sectionMap : undefined,
         topicsBySubject,
         expectedQuestionNumbers,
+        questionBounds: questionBounds.size > 0 ? questionBounds : undefined,
       });
 
       // Note: we deliberately do NOT blanket-embed each question's own whole-question
