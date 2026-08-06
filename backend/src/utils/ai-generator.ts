@@ -3122,10 +3122,45 @@ export async function extractQuestionsFromPdfText(params: {
     }
 
     let promptText = ensureMathDelimited(q.prompt || "", false);
-    const explanationText = ensureMathDelimited(q.explanation || "", false);
+    let explanationText = ensureMathDelimited(q.explanation || "", false);
     const pageNum = q.pageNumber;
 
     if (pageNum && params.diagrams) {
+      const bounds = typeof q._questionNumber === "number"
+        ? params.questionBounds?.get(q._questionNumber)
+        : undefined;
+
+      // A diagram printed in the solution/answer area (isQuestionImage === false, e.g.
+      // the energy-level diagram a worked answer refers to) isn't part of the question —
+      // but it isn't nothing either. It belongs in the explanation. Match it the same
+      // geometric way as the prompt match below: does the diagram's bbox fall inside
+      // this question's own answer window (from its "Ans." marker to wherever the next
+      // question starts on the page, or page end)?
+      if (bounds && bounds.page === pageNum && q.explanation && !explanationText.includes("[IMAGE:")) {
+        const solutionDiagrams = params.diagrams.filter(d => {
+          if (d.page !== pageNum || d.isQuestionImage !== false) return false;
+          if (!Array.isArray(d.bbox) || d.bbox.length !== 4) return false;
+          const area = Math.abs(d.bbox[3] - d.bbox[1]) * Math.abs(d.bbox[2] - d.bbox[0]);
+          return area >= 0.005;
+        });
+        if (solutionDiagrams.length > 0) {
+          let windowEnd = 1;
+          for (const b of params.questionBounds!.values()) {
+            if (b.page === pageNum && b.yStart > bounds.yEnd && b.yStart < windowEnd) {
+              windowEnd = b.yStart;
+            }
+          }
+          const solutionMatch = solutionDiagrams.find(d => {
+            const centerY = (d.bbox[0] + d.bbox[2]) / 2;
+            return centerY >= bounds.yEnd && centerY <= windowEnd;
+          });
+          if (solutionMatch) {
+            explanationText += `
+[IMAGE: ${solutionMatch.url}]`;
+          }
+        }
+      }
+
       // Filter: must be on the right page and large enough to be a real diagram (≥0.5% area).
       // Watermarks in header/footer are already excluded by extract_diagrams.py, but guard
       // against anything in the top 15% or bottom 10% that slipped through.
@@ -3151,10 +3186,6 @@ export async function extractQuestionsFromPdfText(params: {
         const needsDiagram = needsDiagramFor({ ...q, prompt: promptText });
 
         if (needsDiagram && !promptText.includes("[IMAGE:")) {
-          const bounds = typeof q._questionNumber === "number"
-            ? params.questionBounds?.get(q._questionNumber)
-            : undefined;
-
           if (bounds && bounds.page === pageNum) {
             // Ground truth path: does this diagram's bbox actually fall inside THIS
             // question's own region (its center-y between yStart and the question's
