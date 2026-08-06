@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { apiClient } from "../api/client";
+import { BRANDING } from "../config/branding";
 
 const BOARDS = ["CBSE", "ICSE", "GSEB"] as const;
 
@@ -108,7 +109,7 @@ export function AdmissionFormPage() {
               Application Submitted Successfully!
             </h2>
             <p style={{ color: "#64748b", lineHeight: 1.7, maxWidth: "380px", margin: "0 auto" }}>
-              Thank you for applying to <strong>BSA Classes 11-12 ({ACADEMIC_YEAR})</strong>.<br />
+              Thank you for applying to <strong>{BRANDING.admissionLabel} ({ACADEMIC_YEAR})</strong>.<br />
               We will contact you on the provided mobile number or email address.
             </p>
             <div style={{ marginTop: "28px", padding: "16px 24px", background: "#f0fdf4",
@@ -127,9 +128,9 @@ export function AdmissionFormPage() {
     <div style={styles.page}>
       <div style={styles.card}>
         <div style={styles.header}>
-          <img src="/logo.jpeg" alt="BSA Logo" style={styles.logo} />
+          <img src={BRANDING.logoUrl} alt={`${BRANDING.shortName} Logo`} style={styles.logo} />
           <div>
-            <h1 style={styles.title}>BSA Admission Form</h1>
+            <h1 style={styles.title}>{BRANDING.shortName} Admission Form</h1>
             <p style={styles.subtitle}>Classes 11-12 · Academic Year {ACADEMIC_YEAR}</p>
           </div>
         </div>

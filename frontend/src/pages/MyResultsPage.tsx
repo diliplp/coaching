@@ -4,6 +4,7 @@ import { apiClient } from "../api/client";
 import { RichText } from "../components/RichText";
 import { getStoredSession } from "../auth";
 import { liveExamState } from "../data/mockExamContext";
+import { BRANDING } from "../config/branding";
 
 type SubmissionSummary = {
   id: string;
@@ -117,9 +118,9 @@ export function MyResultsPage() {
         <div id="bsa-report-card" style={{ display: "none" }}>
           <div style={{ textAlign: "center", borderBottom: "2px solid black", paddingBottom: "14px", marginBottom: "20px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "14px", marginBottom: "8px" }}>
-              <img src="/logo.jpeg" alt="BSA Logo" style={{ width: "62px", height: "62px", objectFit: "contain" }} />
+              <img src={BRANDING.logoUrl} alt={`${BRANDING.shortName} Logo`} style={{ width: "62px", height: "62px", objectFit: "contain" }} />
               <div style={{ textAlign: "left" }}>
-                <div style={{ fontSize: "20px", fontWeight: "bold" }}>Brainwave Science Academy</div>
+                <div style={{ fontSize: "20px", fontWeight: "bold" }}>{BRANDING.instituteName}</div>
                 <div style={{ fontSize: "12px", color: "#555", marginTop: "2px" }}>Performance Report Card</div>
               </div>
             </div>
@@ -215,7 +216,7 @@ export function MyResultsPage() {
           })()}
 
           <div style={{ marginTop: "30px", paddingTop: "10px", borderTop: "1px solid #ccc", textAlign: "center", fontSize: "11px", color: "#888" }}>
-            Brainwave Science Academy · Generated on {new Date().toLocaleDateString("en-IN", { dateStyle: "long" })}
+            {BRANDING.instituteName} · Generated on {new Date().toLocaleDateString("en-IN", { dateStyle: "long" })}
           </div>
         </div>
 

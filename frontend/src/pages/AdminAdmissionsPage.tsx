@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { apiClient } from "../api/client";
+import { BRANDING } from "../config/branding";
 
 function getAcademicYear(): string {
   const now = new Date();
@@ -85,7 +86,7 @@ export function AdminAdmissionsPage() {
         <div>
           <h2 style={styles.title}>Admissions</h2>
           <p style={{ color: "#64748b", margin: "2px 0 0", fontSize: "0.9rem" }}>
-            BSA Classes 11-12 — {getAcademicYear()} · {admissions.length} total applications
+            {BRANDING.admissionLabel} — {getAcademicYear()} · {admissions.length} total applications
           </p>
         </div>
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { apiClient } from "../api/client";
 import { RichText } from "../components/RichText";
+import { BRANDING } from "../config/branding";
 
 export function OfflineExamBuilderPage() {
   const [className, setClassName] = useState("XII");
@@ -65,9 +66,9 @@ export function OfflineExamBuilderPage() {
         <div id="printable-paper" style={{ maxWidth: "800px", margin: "0 auto", padding: "40px", fontSize: "16px", lineHeight: "1.5" }}>
           {/* Academy header */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "16px", marginBottom: "10px" }}>
-            <img src="/logo.jpeg" alt="BSA Logo" style={{ width: "68px", height: "68px", objectFit: "contain" }} />
+            <img src={BRANDING.logoUrl} alt={`${BRANDING.shortName} Logo`} style={{ width: "68px", height: "68px", objectFit: "contain" }} />
             <div style={{ textAlign: "left" }}>
-              <div style={{ fontSize: "22px", fontWeight: "bold", letterSpacing: "0.3px" }}>Brainwave Science Academy</div>
+              <div style={{ fontSize: "22px", fontWeight: "bold", letterSpacing: "0.3px" }}>{BRANDING.instituteName}</div>
               <div style={{ fontSize: "13px", color: "#444", marginTop: "2px" }}>Excellence in Education</div>
             </div>
           </div>

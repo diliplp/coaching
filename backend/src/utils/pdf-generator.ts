@@ -2,6 +2,7 @@ import puppeteer from "puppeteer";
 import fs from "fs";
 import path from "path";
 import { getAppState, getRecord } from "../data/database.js";
+import { BRANDING } from "../config/branding.js";
 
 // Subject key → display name + chapter count (mirrors frontend ncert-syllabus.ts)
 const SUBJECT_INFO: Record<string, { name: string; chapters: number }> = {
@@ -43,7 +44,7 @@ async function generateAIGuidance(data: {
   const strongStr = strongTopics.slice(0, 3).map(t => `${t.name}: ${t.accuracy.toFixed(0)}%`).join("; ");
   const subjStr   = subjectSummary.map(s => `${s.name}: ${s.avg.toFixed(1)}%`).join(", ");
 
-  const prompt = `You are an academic mentor at Brainwave Science Academy writing a parent report card.
+  const prompt = `You are an academic mentor at ${BRANDING.instituteName} writing a parent report card.
 
 Write a single personalized performance guidance paragraph (4–5 sentences) for the parent of this student. Be warm, professional, and specific — mention actual topic names and numbers. Do NOT use bullet points, headers, or quotes. Plain paragraph only.
 
@@ -364,10 +365,10 @@ export async function generateStudentReportPDF(studentId: string, options: Repor
   <!-- HEADER -->
   <header class="header">
     <div class="header-left">
-      ${logoSrc ? `<img src="${logoSrc}" alt="BSA Logo" />` : ""}
+      ${logoSrc ? `<img src="${logoSrc}" alt="${BRANDING.shortName} Logo" />` : ""}
       <div>
-        <div class="inst-name">Brainwave Science Academy</div>
-        <div class="inst-tag">Excellence in Education • Performance Analysis Portal</div>
+        <div class="inst-name">${BRANDING.instituteName}</div>
+        <div class="inst-tag">${BRANDING.tagline}</div>
       </div>
     </div>
     <div class="badge">Parent Report Card</div>
@@ -504,13 +505,13 @@ export async function generateStudentReportPDF(studentId: string, options: Repor
       <div class="sig-sub">Department Faculty</div>
     </div>
     <div class="sig-center">
-      Brainwave Science Academy<br/>
+      ${BRANDING.instituteName}<br/>
       <span style="font-size:9.5px;">Report generated on ${today}</span>
     </div>
     <div class="sig-box">
       <div class="sig-line"></div>
       <div class="sig-title">Academy Director</div>
-      <div class="sig-sub">Brainwave Science Academy</div>
+      <div class="sig-sub">${BRANDING.instituteName}</div>
     </div>
   </footer>
 

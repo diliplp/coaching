@@ -3,6 +3,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { clearSession, getStoredSession } from "../auth";
 import { apiClient } from "../api/client";
+import { BRANDING } from "../config/branding";
 
 const navItems = [
   { to: "/", label: "Dashboard", roles: ["super_admin", "teacher", "student"], icon: "🏠" },
@@ -39,12 +40,12 @@ export function Layout() {
         </button>
         <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "15px" }}>
           {isCollapsed ? (
-            <img src="/logo.jpeg" alt="BSA Logo" style={{ width: "42px", height: "42px", borderRadius: "50%", objectFit: "contain", padding: "2px", background: "#fff", border: "1.5px solid var(--color-primary-light)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }} />
+            <img src={BRANDING.logoUrl} alt={`${BRANDING.shortName} Logo`} style={{ width: "42px", height: "42px", borderRadius: "50%", objectFit: "contain", padding: "2px", background: "#fff", border: "1.5px solid var(--color-primary-light)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }} />
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <img src="/logo.jpeg" alt="BSA Logo" style={{ width: "56px", height: "56px", borderRadius: "50%", objectFit: "contain", padding: "3px", background: "#fff", border: "2px solid var(--color-primary-light)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }} />
+              <img src={BRANDING.logoUrl} alt={`${BRANDING.shortName} Logo`} style={{ width: "56px", height: "56px", borderRadius: "50%", objectFit: "contain", padding: "3px", background: "#fff", border: "2px solid var(--color-primary-light)", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }} />
               <div>
-                <p className="eyebrow" style={{ margin: 0, fontSize: "0.72rem", letterSpacing: "0.5px", lineHeight: "1.2" }}>Brainwave Science Academy</p>
+                <p className="eyebrow" style={{ margin: 0, fontSize: "0.72rem", letterSpacing: "0.5px", lineHeight: "1.2" }}>{BRANDING.instituteName}</p>
                 <h1 style={{ margin: "2px 0 0", fontSize: "1.25rem", fontWeight: "700", color: "var(--color-text)" }}>Exam Portal</h1>
               </div>
             </div>
