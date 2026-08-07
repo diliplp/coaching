@@ -7,12 +7,14 @@ interface StatusModalProps {
 export function StatusModal({ status, defaultStatus, onClose }: StatusModalProps) {
   if (!status || status === defaultStatus) return null;
 
-  const isProcessing = status.includes("...") || 
-                       status.toLowerCase().includes("ing") || 
-                       status.toLowerCase().includes("analyzing") || 
-                       status.toLowerCase().includes("generating") ||
-                       status.toLowerCase().includes("working");
-                       
+  // Every in-progress message set by callers deliberately ends with "..." (e.g.
+  // "Generating exam...", "Uploading PDF book...") — that's the only reliable signal.
+  // A broader "contains 'ing'" check used to live here too, but any *finished* message
+  // that happened to contain a word like "missing" or "flagging" (e.g. "Done! 24 of 25
+  // extracted — 1 MISSING") matched it, permanently stuck the spinner, and hid the
+  // Okay button (gated on !isProcessing) with no way to close the modal.
+  const isProcessing = status.includes("...");
+
   const isError = status.toLowerCase().includes("fail") || 
                   status.toLowerCase().includes("error") || 
                   status.toLowerCase().includes("unable") || 
