@@ -3285,19 +3285,71 @@ export async function extractQuestionsFromPdfText(params: {
     // default subject (the common case, where it's always correct).
     const fallbackTopicId = resolvedSubjectId === params.subjectId ? params.topicId : topicsForResolvedSubject[0]?.id ?? params.topicId;
     const resolvedTopicId = matchTopicId(q.topicName, topicsForResolvedSubject) ?? fallbackTopicId;
+
+    // Parse reference tags (e.g., "JEE MAIN 2023", "KVPY 2012"), difficulty tags ("Difficult"), and topic tags from text
+    const extractedTags: string[] = Array.isArray(q.tags) ? [...q.tags] : [];
+    let detectedDifficulty: "easy" | "medium" | "hard" = (["easy", "medium", "hard"].includes(q.difficulty) ? q.difficulty : "medium") as "easy" | "medium" | "hard";
+    let detectedPyqYear: number | undefined = params.pyqYear;
+    let detectedPyqExamName: string | undefined = params.pyqExamName;
+
+    const tagMatches = promptText.matchAll(/\(([^)]*(?:JEE|MAIN|ADV|KVPY|GUJCET|NEET|AIEEE|IIT|Easy|Medium|Hard|Difficult|Diﬀcult|Advanced)[^)]*)\)/gi);
+    for (const tm of tagMatches) {
+      const parts = tm[1].split(",").map(s => s.trim()).filter(Boolean);
+      for (const part of parts) {
+        let clean = part.replace(/\s+/g, " ");
+        clean = clean.replace(/diﬀcult/i, "Difficult").replace(/diffcult/i, "Difficult");
+
+        if (/^easy$/i.test(clean)) {
+          detectedDifficulty = "easy";
+          if (!extractedTags.includes("Easy")) extractedTags.push("Easy");
+        } else if (/^medium$/i.test(clean)) {
+          detectedDifficulty = "medium";
+          if (!extractedTags.includes("Medium")) extractedTags.push("Medium");
+        } else if (/^(hard|difficult|advanced)$/i.test(clean)) {
+          detectedDifficulty = "hard";
+          const capitalized = clean.charAt(0).toUpperCase() + clean.slice(1);
+          if (!extractedTags.includes(capitalized)) extractedTags.push(capitalized);
+        } else {
+          if (/\b(easy)\b/i.test(clean)) detectedDifficulty = "easy";
+          if (/\b(medium)\b/i.test(clean)) detectedDifficulty = "medium";
+          if (/\b(hard|difficult|advanced)\b/i.test(clean)) detectedDifficulty = "hard";
+          if (!extractedTags.includes(clean)) extractedTags.push(clean);
+
+          const yearMatch = clean.match(/(19\d{2}|20\d{2})/);
+          if (yearMatch && !detectedPyqYear) {
+            detectedPyqYear = parseInt(yearMatch[1], 10);
+          }
+          if (!detectedPyqExamName) {
+            if (/JEE/i.test(clean)) detectedPyqExamName = /MAIN/i.test(clean) ? "JEE Mains" : "JEE Advanced";
+            else if (/IIT/i.test(clean)) detectedPyqExamName = "JEE Advanced";
+            else if (/AIEEE/i.test(clean)) detectedPyqExamName = "AIEEE";
+            else if (/KVPY/i.test(clean)) detectedPyqExamName = "KVPY";
+            else if (/GUJCET/i.test(clean)) detectedPyqExamName = "GUJCET";
+            else if (/NEET/i.test(clean)) detectedPyqExamName = "NEET";
+          }
+        }
+      }
+    }
+
+    // Tag related topic on question
+    const matchedTopicObj = topicsForResolvedSubject.find(t => t.id === resolvedTopicId);
+    if (matchedTopicObj && !extractedTags.includes(matchedTopicObj.name)) {
+      extractedTags.push(matchedTopicObj.name);
+    }
+
     return {
       id: qId,
       subjectId: resolvedSubjectId,
       topicId: resolvedTopicId,
       type: correctOptionIds.length > 1 ? "multi_correct" : "single_correct",
       prompt: promptText,
-      difficulty: q.difficulty || "medium",
+      difficulty: detectedDifficulty,
       marks: q.marks || 1,
       negativeMarks: q.negativeMarks || 0,
       correctOptionIds,
       options,
       explanation: explanationText,
-      sourceType: params.sourceType,
+      sourceType: detectedPyqExamName ? "pyq" : params.sourceType,
       bookId: params.bookId,
       // Mark unverified if no correct answer was detected (garbled OCR, missing answer key)
       isVerified: correctOptionIds.length > 0,
@@ -3306,8 +3358,9 @@ export async function extractQuestionsFromPdfText(params: {
       qaFlags,
       qaStatus: qaFlags.length > 0 ? "flagged" : "unreviewed",
       qaCheckedAt: new Date().toISOString(),
-      ...(params.pyqYear !== undefined && { pyqYear: params.pyqYear }),
-      ...(params.pyqExamName !== undefined && { pyqExamName: params.pyqExamName }),
+      tags: extractedTags.length > 0 ? extractedTags : undefined,
+      ...(detectedPyqYear !== undefined && { pyqYear: detectedPyqYear }),
+      ...(detectedPyqExamName !== undefined && { pyqExamName: detectedPyqExamName }),
       ...(params.pyqSession !== undefined && { pyqSession: params.pyqSession }),
     };
   });

@@ -176,6 +176,7 @@ export interface Question {
   pyqYear?: number;           // e.g. 2022
   pyqExamName?: string;       // e.g. "JEE Mains", "NEET", "GUJCET", "JEE Advanced"
   pyqSession?: string;        // e.g. "January Session", "Paper 1"
+  tags?: string[];            // Reference/year tags (e.g. "JEE MAIN 2023"), difficulty tags, or topic tags
   passageText?: string;       // paragraph/comprehension stimulus shown above the question
   pageNumber?: number;        // source PDF page this question was extracted from (extraction pipeline only)
   /** Post-extraction QA signals (additive to isVerified, not a replacement — isVerified
@@ -257,6 +258,9 @@ export interface TeacherCustomExamRequest {
   scheduledEndTime?: string;
   rules: WeightedExamRule[];
   allowedSourceTypes?: QuestionSource[];
+  difficulty?: "easy" | "medium" | "hard" | "mixed";
+  tag?: string;
+  tags?: string[];
   /** When true, hard-excludes questions already used in ANY previous exam for this
    * batch (not just exams with the same generation signature — see the existing softer
    * sourceSignature-based dedup in getUsedQuestionIds/pickQuestions, which only avoids

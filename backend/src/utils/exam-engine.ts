@@ -342,6 +342,19 @@ export async function generateCustomExam(request: TeacherCustomExamRequest): Pro
     subjectQuestions = subjectQuestions.filter(q => request.allowedSourceTypes?.includes(q.sourceType || "custom"));
   }
 
+  // Apply Difficulty Filtering
+  if (request.difficulty && request.difficulty !== "mixed") {
+    subjectQuestions = subjectQuestions.filter(q => q.difficulty === request.difficulty);
+  }
+
+  // Apply Tag Filtering
+  if (request.tag) {
+    const filterTagLower = request.tag.toLowerCase();
+    subjectQuestions = subjectQuestions.filter(q => q.tags?.some(t => t.toLowerCase().includes(filterTagLower)));
+  } else if (Array.isArray(request.tags) && request.tags.length > 0) {
+    subjectQuestions = subjectQuestions.filter(q => q.tags?.some(t => request.tags!.includes(t)));
+  }
+
   // Opt-in hard exclusion of questions already used in ANY previous exam for this batch
   // (distinct from the softer sourceSignature-based preference below, which only avoids
   // repeats across identically-shaped re-generations of the same exam).

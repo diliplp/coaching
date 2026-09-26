@@ -13,7 +13,10 @@ export const pool = new Pool({
 
 type RecordWithId = { id: string };
 
-async function ensureSchema() {
+let schemaEnsured = false;
+
+export async function ensureSchema() {
+  if (schemaEnsured) return;
   await pool.query(`
     CREATE TABLE IF NOT EXISTS app_records (
       collection TEXT NOT NULL,
@@ -27,9 +30,11 @@ async function ensureSchema() {
   // (see upsertRecord below) — a short, always-unique number admins/students can use
   // to reference a specific question without needing its bookId/page/internal id.
   await pool.query(`CREATE SEQUENCE IF NOT EXISTS question_serial_seq`);
+  schemaEnsured = true;
 }
 
 export async function nextQuestionSerial(): Promise<number> {
+  await ensureSchema();
   const result = await pool.query(`SELECT nextval('question_serial_seq') AS n`);
   return Number(result.rows[0].n);
 }

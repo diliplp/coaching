@@ -485,7 +485,7 @@ apiRouter.get("/question-bank", requireAuth, async (req, res) => {
 });
 
 apiRouter.post("/questions", requireRole(["super_admin", "teacher"]), async (req, res) => {
-  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation, passageText, sourceType, bookId, pageNumber, isVerified } = req.body;
+  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation, passageText, sourceType, bookId, pageNumber, isVerified, tags, pyqYear, pyqExamName, pyqSession } = req.body;
   if (!subjectId || !topicId || !prompt || !options || !correctOptionIds) {
     return res.status(400).json({ message: "Missing required fields" });
   }
@@ -506,7 +506,11 @@ apiRouter.post("/questions", requireRole(["super_admin", "teacher"]), async (req
     sourceType: sourceType || "custom",
     bookId: bookId || undefined,
     pageNumber: pageNumber || undefined,
-    isVerified: isVerified !== undefined ? isVerified : false
+    isVerified: isVerified !== undefined ? isVerified : false,
+    tags: Array.isArray(tags) ? tags : undefined,
+    pyqYear: pyqYear ? Number(pyqYear) : undefined,
+    pyqExamName: pyqExamName || undefined,
+    pyqSession: pyqSession || undefined
   };
 
   await upsertRecord("questions", newQuestion);
@@ -515,7 +519,7 @@ apiRouter.post("/questions", requireRole(["super_admin", "teacher"]), async (req
 
 apiRouter.put("/questions/:id", requireRole(["super_admin", "teacher"]), async (req, res) => {
   const id = req.params.id as string;
-  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation, passageText, sourceType, bookId, pageNumber, isVerified } = req.body;
+  const { subjectId, topicId, type, prompt, difficulty, marks, negativeMarks, correctOptionIds, options, explanation, passageText, sourceType, bookId, pageNumber, isVerified, tags, pyqYear, pyqExamName, pyqSession } = req.body;
 
   const { getRecord } = await import("../data/database.js");
   const existing = await getRecord<any>("questions", id);
@@ -537,7 +541,11 @@ apiRouter.put("/questions/:id", requireRole(["super_admin", "teacher"]), async (
     sourceType: sourceType || "custom",
     bookId: bookId !== undefined ? bookId : existing?.bookId,
     pageNumber: pageNumber !== undefined ? pageNumber : existing?.pageNumber,
-    isVerified: isVerified !== undefined ? isVerified : existing?.isVerified
+    isVerified: isVerified !== undefined ? isVerified : existing?.isVerified,
+    tags: Array.isArray(tags) ? tags : existing?.tags,
+    pyqYear: pyqYear !== undefined ? Number(pyqYear) : existing?.pyqYear,
+    pyqExamName: pyqExamName !== undefined ? pyqExamName : existing?.pyqExamName,
+    pyqSession: pyqSession !== undefined ? pyqSession : existing?.pyqSession
   };
 
   await upsertRecord("questions", updatedQuestion);

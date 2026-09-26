@@ -38,6 +38,7 @@ export interface Question {
   pyqYear?: number;
   pyqExamName?: string;
   pyqSession?: string;
+  tags?: string[];
   passageText?: string;
   pageNumber?: number;
   isVerified?: boolean;

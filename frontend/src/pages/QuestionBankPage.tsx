@@ -49,6 +49,7 @@ export function QuestionBankPage() {
   const [selectedSourceType, setSelectedSourceType] = useState<string>("");
   const [books, setBooks] = useState<SubjectBook[]>([]);
   const [selectedBookId, setSelectedBookId] = useState<string>("");
+  const [selectedTag, setSelectedTag] = useState<string>("");
   const [activeQuestionIdForPdf, setActiveQuestionIdForPdf] = useState<string>("");
   const [pdfPageNumber, setPdfPageNumber] = useState<number>(1);
 
@@ -182,12 +183,17 @@ export function QuestionBankPage() {
     return <p>Loading question bank...</p>;
   }
 
+  const availableTags = Array.from(
+    new Set((data?.questions || []).flatMap((q: any) => q.tags || []))
+  ).sort();
+
   const filteredQuestions = data.questions.filter((question: any) => {
     if (selectedSubjectId && question.subjectId !== selectedSubjectId) return false;
     if (selectedTopicId && question.topicId !== selectedTopicId) return false;
     if (selectedDifficulty && question.difficulty !== selectedDifficulty) return false;
     if (selectedSourceType && question.sourceType !== selectedSourceType) return false;
     if (selectedBookId && question.bookId !== selectedBookId) return false;
+    if (selectedTag && (!question.tags || !question.tags.some((t: string) => t.toLowerCase().includes(selectedTag.toLowerCase())))) return false;
     return true;
   });
 
@@ -705,7 +711,22 @@ export function QuestionBankPage() {
             </select>
           </label>
 
-          {(selectedSubjectId || selectedTopicId || selectedDifficulty || selectedSourceType || selectedBookId) && (
+          <label className="field" style={{ margin: 0 }}>
+            <span>Filter by Tag</span>
+            <select
+              value={selectedTag}
+              onChange={(e) => setSelectedTag(e.target.value)}
+            >
+              <option value="">All Tags ({availableTags.length})</option>
+              {availableTags.map((tag: string) => (
+                <option key={tag} value={tag}>
+                  {tag}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {(selectedSubjectId || selectedTopicId || selectedDifficulty || selectedSourceType || selectedBookId || selectedTag) && (
             <button
               className="secondary-button"
               style={{ height: "38px" }}
@@ -715,6 +736,7 @@ export function QuestionBankPage() {
                 setSelectedDifficulty("");
                 setSelectedSourceType("");
                 setSelectedBookId("");
+                setSelectedTag("");
                 setActiveQuestionIdForPdf("");
               }}
             >
@@ -816,6 +838,26 @@ export function QuestionBankPage() {
                         {question.pageNumber && (
                           <span className="tag primary" style={{ marginLeft: "5px" }}>Page {question.pageNumber}</span>
                         )}
+                        {Array.isArray(question.tags) && question.tags.map((t: string, idx: number) => {
+                          const isDiff = ["Easy", "Medium", "Hard", "Difficult", "Advanced"].includes(t);
+                          const isOrange = !isDiff && (t.includes("JEE") || t.includes("KVPY") || t.includes("IIT") || t.includes("AIEEE") || t.includes("NEET") || t.includes("GUJCET"));
+                          return (
+                            <span
+                              key={idx}
+                              className="tag"
+                              style={{
+                                marginLeft: "4px",
+                                background: isOrange ? "#ffedd5" : isDiff ? (t === "Easy" ? "#dcfce7" : t === "Medium" ? "#fef9c3" : "#fee2e2") : "#e0e7ff",
+                                color: isOrange ? "#c2410c" : isDiff ? (t === "Easy" ? "#15803d" : t === "Medium" ? "#a16207" : "#b91c1c") : "#4338ca",
+                                borderColor: isOrange ? "#fed7aa" : isDiff ? (t === "Easy" ? "#bbf7d0" : t === "Medium" ? "#fef08a" : "#fca5a5") : "#c7d2fe",
+                                fontWeight: "bold",
+                                fontSize: "0.75rem"
+                              }}
+                            >
+                              {t}
+                            </span>
+                          );
+                        })}
                         {question.isVerified && (
                           <span className="tag" style={{ marginLeft: "5px", background: "#d4edda", color: "#155724", borderColor: "#c3e6cb" }}>
                             VERIFIED
@@ -919,6 +961,26 @@ export function QuestionBankPage() {
                       {[(question as any).pyqExamName, (question as any).pyqYear, (question as any).pyqSession].filter(Boolean).join(" ")}
                     </span>
                   )}
+                  {Array.isArray(question.tags) && question.tags.map((t: string, idx: number) => {
+                    const isDiff = ["Easy", "Medium", "Hard", "Difficult", "Advanced"].includes(t);
+                    const isOrange = !isDiff && (t.includes("JEE") || t.includes("KVPY") || t.includes("IIT") || t.includes("AIEEE") || t.includes("NEET") || t.includes("GUJCET"));
+                    return (
+                      <span
+                        key={idx}
+                        className="tag"
+                        style={{
+                          marginLeft: "4px",
+                          background: isOrange ? "#ffedd5" : isDiff ? (t === "Easy" ? "#dcfce7" : t === "Medium" ? "#fef9c3" : "#fee2e2") : "#e0e7ff",
+                          color: isOrange ? "#c2410c" : isDiff ? (t === "Easy" ? "#15803d" : t === "Medium" ? "#a16207" : "#b91c1c") : "#4338ca",
+                          borderColor: isOrange ? "#fed7aa" : isDiff ? (t === "Easy" ? "#bbf7d0" : t === "Medium" ? "#fef08a" : "#fca5a5") : "#c7d2fe",
+                          fontWeight: "bold",
+                          fontSize: "0.75rem"
+                        }}
+                      >
+                        {t}
+                      </span>
+                    );
+                  })}
                   {question.isVerified && (
                     <span className="tag" style={{ marginLeft: "5px", background: "#d4edda", color: "#155724", borderColor: "#c3e6cb" }}>
                       VERIFIED
