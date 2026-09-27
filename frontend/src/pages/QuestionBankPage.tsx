@@ -43,7 +43,13 @@ export function QuestionBankPage() {
     isVerified: false
   });
 
+  // Pagination & Server-side filtering state
+  const [page, setPage] = useState<number>(1);
+  const [limit, setLimit] = useState<number>(20);
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [debouncedSearch, setDebouncedSearch] = useState<string>("");
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
+  const [selectedChapterId, setSelectedChapterId] = useState<string>("");
   const [selectedTopicId, setSelectedTopicId] = useState<string>("");
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>("");
   const [selectedSourceType, setSelectedSourceType] = useState<string>("");
@@ -52,6 +58,8 @@ export function QuestionBankPage() {
   const [selectedTag, setSelectedTag] = useState<string>("");
   const [activeQuestionIdForPdf, setActiveQuestionIdForPdf] = useState<string>("");
   const [pdfPageNumber, setPdfPageNumber] = useState<number>(1);
+  const [isFetching, setIsFetching] = useState<boolean>(false);
+  const [jumpPageInput, setJumpPageInput] = useState<string>("");
 
   // AI Review + image upload state
   const [aiReviewLoadingId, setAiReviewLoadingId] = useState<string>("");
@@ -74,15 +82,61 @@ export function QuestionBankPage() {
   const session = getStoredSession();
   const isTeacher = session?.user.role === "super_admin" || session?.user.role === "teacher";
 
-  const refreshData = () => {
-    apiClient.getQuestionBank().then(setData).catch(console.error);
+  // Debounce search query input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const loadQuestionBank = async () => {
+    setIsFetching(true);
+    try {
+      const res = await apiClient.getQuestionBank({
+        page,
+        limit,
+        subjectId: selectedSubjectId || undefined,
+        chapterId: selectedChapterId || undefined,
+        topicId: selectedTopicId || undefined,
+        difficulty: selectedDifficulty || undefined,
+        tag: selectedTag || undefined,
+        sourceType: selectedSourceType || undefined,
+        bookId: selectedBookId || undefined,
+        search: debouncedSearch || undefined
+      });
+      setData(res);
+    } catch (err) {
+      console.error("Failed to load question bank:", err);
+    } finally {
+      setIsFetching(false);
+    }
   };
 
   useEffect(() => {
-    refreshData();
+    loadQuestionBank();
+  }, [
+    page,
+    limit,
+    selectedSubjectId,
+    selectedChapterId,
+    selectedTopicId,
+    selectedDifficulty,
+    selectedTag,
+    selectedSourceType,
+    selectedBookId,
+    debouncedSearch
+  ]);
+
+  useEffect(() => {
     apiClient.getSubjectBooks().then(res => setBooks(res.books)).catch(console.error);
     apiClient.getOverview().then(setOverviewData).catch(console.error);
   }, []);
+
+  const refreshData = () => {
+    loadQuestionBank();
+  };
 
   const toggleQuestionSelection = (question: any) => {
     setSelectedForExam(prev => {
@@ -179,24 +233,6 @@ export function QuestionBankPage() {
     }
   };
 
-  if (!data) {
-    return <p>Loading question bank...</p>;
-  }
-
-  const availableTags = Array.from(
-    new Set((data?.questions || []).flatMap((q: any) => q.tags || []))
-  ).sort();
-
-  const filteredQuestions = data.questions.filter((question: any) => {
-    if (selectedSubjectId && question.subjectId !== selectedSubjectId) return false;
-    if (selectedTopicId && question.topicId !== selectedTopicId) return false;
-    if (selectedDifficulty && question.difficulty !== selectedDifficulty) return false;
-    if (selectedSourceType && question.sourceType !== selectedSourceType) return false;
-    if (selectedBookId && question.bookId !== selectedBookId) return false;
-    if (selectedTag && (!question.tags || !question.tags.some((t: string) => t.toLowerCase().includes(selectedTag.toLowerCase())))) return false;
-    return true;
-  });
-
   const handleOpenForm = (question?: any) => {
     setAiReviewNotes("");
     if (question) {
@@ -210,7 +246,7 @@ export function QuestionBankPage() {
         marks: question.marks,
         negativeMarks: question.negativeMarks,
         correctOptionIds: question.correctOptionIds,
-        options: question.options.map((o: any) => ({ ...o })), // Deep-ish copy of options array to avoid direct mutation
+        options: question.options.map((o: any) => ({ ...o })),
         explanation: question.explanation || "",
         passageText: question.passageText || "",
         sourceType: question.sourceType || "custom",
@@ -263,10 +299,6 @@ export function QuestionBankPage() {
     }
   };
 
-  // Renders the source PDF page next to the question and asks a vision model to compare
-  // the two — returns a suggestion only, never writes directly. If it finds an issue, we
-  // open the normal edit form pre-filled with the AI's corrected fields so the admin can
-  // review/tweak before saving, same as if they'd typed the fix by hand.
   const handleAiReview = async (question: any) => {
     setAiReviewLoadingId(question.id);
     try {
@@ -411,6 +443,150 @@ export function QuestionBankPage() {
       }
     });
   };
+
+  if (!data) {
+    return (
+      <div className="page" style={{ textAlign: "center", padding: "60px" }}>
+        <div className="spinner" style={{ margin: "0 auto 15px" }}></div>
+        <p className="muted-copy">Loading Question Bank...</p>
+      </div>
+    );
+  }
+
+  const totalCount = data.totalCount ?? data.questions.length;
+  const totalPages = data.totalPages ?? (Math.ceil(totalCount / limit) || 1);
+  const currentPage = data.page ?? page;
+
+  const filteredChapters = data.chapters.filter(
+    (c) => !selectedSubjectId || c.subjectId === selectedSubjectId
+  );
+  const filteredTopics = data.topics.filter((t) => {
+    if (selectedSubjectId && t.subjectId !== selectedSubjectId) return false;
+    if (selectedChapterId && t.chapterId !== selectedChapterId) return false;
+    return true;
+  });
+
+  const hasActiveFilters = Boolean(
+    selectedSubjectId ||
+    selectedChapterId ||
+    selectedTopicId ||
+    selectedDifficulty ||
+    selectedSourceType ||
+    selectedBookId ||
+    selectedTag ||
+    searchQuery
+  );
+
+  const handleClearFilters = () => {
+    setSelectedSubjectId("");
+    setSelectedChapterId("");
+    setSelectedTopicId("");
+    setSelectedDifficulty("");
+    setSelectedSourceType("");
+    setSelectedBookId("");
+    setSelectedTag("");
+    setSearchQuery("");
+    setActiveQuestionIdForPdf("");
+    setPage(1);
+  };
+
+  // Helper Pagination Controls Component
+  const renderPaginationControls = () => (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "white", borderRadius: "10px", border: "1px solid var(--color-border)", margin: "15px 0", flexWrap: "wrap", gap: "12px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "0.9rem", color: "var(--color-text-dark)" }}>
+        <span>
+          Showing <strong>{totalCount > 0 ? (currentPage - 1) * limit + 1 : 0} - {Math.min(currentPage * limit, totalCount)}</strong> of <strong>{totalCount.toLocaleString()}</strong> questions
+        </span>
+        {isFetching && <span style={{ color: "#7c3aed", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "4px" }}>⚡ Loading...</span>}
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+        {/* Page Size Selector */}
+        <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.85rem", margin: 0 }}>
+          <span style={{ color: "var(--color-text-muted)" }}>Per page:</span>
+          <select
+            value={limit}
+            onChange={(e) => {
+              setLimit(Number(e.target.value));
+              setPage(1);
+            }}
+            style={{ padding: "4px 8px", borderRadius: "6px", border: "1px solid var(--color-border)", fontSize: "0.85rem" }}
+          >
+            <option value={20}>20</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
+        </label>
+
+        {/* Page Navigation Buttons */}
+        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+          <button
+            className="secondary-button"
+            disabled={currentPage <= 1 || isFetching}
+            onClick={() => setPage(1)}
+            style={{ padding: "5px 10px", fontSize: "0.85rem" }}
+            title="First Page"
+          >
+            «
+          </button>
+          <button
+            className="secondary-button"
+            disabled={currentPage <= 1 || isFetching}
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            style={{ padding: "5px 12px", fontSize: "0.85rem" }}
+          >
+            Prev
+          </button>
+
+          <span style={{ padding: "0 8px", fontSize: "0.88rem", fontWeight: 600 }}>
+            Page {currentPage} of {totalPages}
+          </span>
+
+          <button
+            className="secondary-button"
+            disabled={currentPage >= totalPages || isFetching}
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            style={{ padding: "5px 12px", fontSize: "0.85rem" }}
+          >
+            Next
+          </button>
+          <button
+            className="secondary-button"
+            disabled={currentPage >= totalPages || isFetching}
+            onClick={() => setPage(totalPages)}
+            style={{ padding: "5px 10px", fontSize: "0.85rem" }}
+            title="Last Page"
+          >
+            »
+          </button>
+        </div>
+
+        {/* Jump to Page */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const p = parseInt(jumpPageInput);
+            if (p >= 1 && p <= totalPages) {
+              setPage(p);
+              setJumpPageInput("");
+            }
+          }}
+          style={{ display: "flex", alignItems: "center", gap: "4px" }}
+        >
+          <input
+            type="number"
+            min={1}
+            max={totalPages}
+            placeholder="Go to..."
+            value={jumpPageInput}
+            onChange={(e) => setJumpPageInput(e.target.value)}
+            style={{ width: "65px", padding: "4px 8px", borderRadius: "6px", border: "1px solid var(--color-border)", fontSize: "0.85rem" }}
+          />
+          <button type="submit" className="secondary-button" style={{ padding: "4px 10px", fontSize: "0.85rem" }}>Go</button>
+        </form>
+      </div>
+    </div>
+  );
 
   return (
     <div className="page">
@@ -627,16 +803,60 @@ export function QuestionBankPage() {
         </article>
       )}
 
-      {/* Filters Section */}
-      <article className="panel" style={{ marginBottom: "20px", padding: "15px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "15px", alignItems: "end" }}>
+      {/* Search & Filters Section */}
+      <article className="panel" style={{ marginBottom: "20px", padding: "18px" }}>
+        {/* Real-time Search Box */}
+        <div style={{ marginBottom: "16px" }}>
+          <div style={{ position: "relative" }}>
+            <input
+              type="text"
+              placeholder="🔍 Search questions by keyword, formula, tag, serial number (e.g. #1247)..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "10px 14px 10px 40px",
+                borderRadius: "8px",
+                border: "1.5px solid var(--color-border)",
+                fontSize: "0.95rem",
+                background: "#fafafa"
+              }}
+            />
+            <span style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", fontSize: "1.1rem", color: "#6b7280" }}>
+              🔍
+            </span>
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                style={{
+                  position: "absolute",
+                  right: "12px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  border: "none",
+                  background: "none",
+                  cursor: "pointer",
+                  color: "#6b7280",
+                  fontSize: "1rem"
+                }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Filters Dropdowns Grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", alignItems: "end" }}>
           <label className="field" style={{ margin: 0 }}>
-            <span>Filter by Subject</span>
+            <span>Subject</span>
             <select
               value={selectedSubjectId}
               onChange={(e) => {
                 setSelectedSubjectId(e.target.value);
+                setSelectedChapterId("");
                 setSelectedTopicId("");
+                setPage(1);
               }}
             >
               <option value="">All Subjects</option>
@@ -649,40 +869,66 @@ export function QuestionBankPage() {
           </label>
 
           <label className="field" style={{ margin: 0 }}>
-            <span>Filter by Topic</span>
+            <span>Chapter</span>
             <select
-              value={selectedTopicId}
-              onChange={(e) => setSelectedTopicId(e.target.value)}
+              value={selectedChapterId}
+              onChange={(e) => {
+                setSelectedChapterId(e.target.value);
+                setSelectedTopicId("");
+                setPage(1);
+              }}
             >
-              <option value="">All Topics</option>
-              {data.topics
-                .filter((t) => !selectedSubjectId || t.subjectId === selectedSubjectId)
-                .map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
+              <option value="">All Chapters</option>
+              {filteredChapters.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
             </select>
           </label>
 
           <label className="field" style={{ margin: 0 }}>
-            <span>Filter by Difficulty</span>
+            <span>Topic</span>
+            <select
+              value={selectedTopicId}
+              onChange={(e) => {
+                setSelectedTopicId(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">All Topics</option>
+              {filteredTopics.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field" style={{ margin: 0 }}>
+            <span>Difficulty</span>
             <select
               value={selectedDifficulty}
-              onChange={(e) => setSelectedDifficulty(e.target.value)}
+              onChange={(e) => {
+                setSelectedDifficulty(e.target.value);
+                setPage(1);
+              }}
             >
               <option value="">All Difficulties</option>
               <option value="easy">Easy</option>
               <option value="medium">Medium</option>
-              <option value="hard">Hard</option>
+              <option value="hard">Hard / Difficult / Advanced</option>
             </select>
           </label>
 
           <label className="field" style={{ margin: 0 }}>
-            <span>Filter by Source</span>
+            <span>Source</span>
             <select
               value={selectedSourceType}
-              onChange={(e) => setSelectedSourceType(e.target.value)}
+              onChange={(e) => {
+                setSelectedSourceType(e.target.value);
+                setPage(1);
+              }}
             >
               <option value="">All Sources</option>
               <option value="pyq">PYQ</option>
@@ -693,13 +939,14 @@ export function QuestionBankPage() {
           </label>
 
           <label className="field" style={{ margin: 0 }}>
-            <span>Filter by Document / Book</span>
+            <span>Document / Book</span>
             <select
               value={selectedBookId}
               onChange={(e) => {
                 setSelectedBookId(e.target.value);
                 setActiveQuestionIdForPdf("");
                 setPdfPageNumber(1);
+                setPage(1);
               }}
             >
               <option value="">Select Document...</option>
@@ -712,62 +959,54 @@ export function QuestionBankPage() {
           </label>
 
           <label className="field" style={{ margin: 0 }}>
-            <span>Filter by Tag</span>
-            <select
+            <span>Tag / Reference</span>
+            <input
+              type="text"
+              placeholder="e.g. JEE MAIN 2023..."
               value={selectedTag}
-              onChange={(e) => setSelectedTag(e.target.value)}
-            >
-              <option value="">All Tags ({availableTags.length})</option>
-              {availableTags.map((tag: string) => (
-                <option key={tag} value={tag}>
-                  {tag}
-                </option>
-              ))}
-            </select>
+              onChange={(e) => {
+                setSelectedTag(e.target.value);
+                setPage(1);
+              }}
+              style={{ padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--color-border)" }}
+            />
           </label>
 
-          {(selectedSubjectId || selectedTopicId || selectedDifficulty || selectedSourceType || selectedBookId || selectedTag) && (
+          {hasActiveFilters && (
             <button
               className="secondary-button"
               style={{ height: "38px" }}
-              onClick={() => {
-                setSelectedSubjectId("");
-                setSelectedTopicId("");
-                setSelectedDifficulty("");
-                setSelectedSourceType("");
-                setSelectedBookId("");
-                setSelectedTag("");
-                setActiveQuestionIdForPdf("");
-              }}
+              onClick={handleClearFilters}
             >
-              Clear Filters
+              Clear All Filters
             </button>
           )}
         </div>
       </article>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px", flexWrap: "wrap", gap: "10px" }}>
-        <p className="muted-copy" style={{ margin: 0 }}>
-          Showing <strong>{filteredQuestions.length}</strong> of {data.questions.length} questions
-        </p>
-        {isTeacher && filteredQuestions.length > 0 && (
+      {/* Select All on Page bar */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", flexWrap: "wrap", gap: "10px" }}>
+        {isTeacher && data.questions.length > 0 && (
           <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.85rem", cursor: "pointer", margin: 0 }}>
             <input
               type="checkbox"
-              checked={filteredQuestions.every((q: any) => selectedForExam.has(q.id))}
+              checked={data.questions.length > 0 && data.questions.every((q: any) => selectedForExam.has(q.id))}
               onChange={(e) => {
-                if (e.target.checked) selectAllQuestions(filteredQuestions);
-                else deselectAllQuestions(filteredQuestions);
+                if (e.target.checked) selectAllQuestions(data.questions);
+                else deselectAllQuestions(data.questions);
               }}
               style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#7c3aed" }}
             />
-            Select all {filteredQuestions.length} filtered question{filteredQuestions.length !== 1 ? "s" : ""} for exam
+            Select all {data.questions.length} questions on this page for exam
           </label>
         )}
       </div>
 
+      {/* Top Pagination Controls */}
+      {renderPaginationControls()}
+
       {selectedBookId ? (
-        <div style={{ display: "flex", gap: "20px", height: "calc(100vh - 250px)", minHeight: "650px", marginTop: "20px" }}>
+        <div style={{ display: "flex", gap: "20px", height: "calc(100vh - 250px)", minHeight: "650px", marginTop: "15px" }}>
           {/* Left Pane: PDF Viewer */}
           <div style={{ flex: 1.2, background: "white", borderRadius: "12px", border: "1px solid var(--color-border)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
             <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--color-border)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f8f9fa" }}>
@@ -784,20 +1023,14 @@ export function QuestionBankPage() {
             />
           </div>
 
-          {/* Right Pane: Questions List — sorted by page number to match PDF order */}
+          {/* Right Pane: Questions List */}
           <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "15px", paddingRight: "5px" }}>
-            {filteredQuestions.length === 0 ? (
+            {data.questions.length === 0 ? (
               <div style={{ textAlign: "center", padding: "40px", color: "var(--color-text-muted)" }}>
-                <p>No questions generated for this document yet.</p>
+                <p>No questions found matching your filter criteria.</p>
               </div>
             ) : (
-              [...filteredQuestions]
-                .sort((a: any, b: any) => {
-                  const aN = a.questionNumber ?? (a.pageNumber != null ? a.pageNumber * 1000 : 999999);
-                  const bN = b.questionNumber ?? (b.pageNumber != null ? b.pageNumber * 1000 : 999999);
-                  return aN - bN;
-                })
-                .map((question: any) => {
+              data.questions.map((question: any) => {
                 const isActive = activeQuestionIdForPdf === question.id;
                 return (
                   <article 
@@ -849,69 +1082,51 @@ export function QuestionBankPage() {
                                 marginLeft: "4px",
                                 background: isOrange ? "#ffedd5" : isDiff ? (t === "Easy" ? "#dcfce7" : t === "Medium" ? "#fef9c3" : "#fee2e2") : "#e0e7ff",
                                 color: isOrange ? "#c2410c" : isDiff ? (t === "Easy" ? "#15803d" : t === "Medium" ? "#a16207" : "#b91c1c") : "#4338ca",
-                                borderColor: isOrange ? "#fed7aa" : isDiff ? (t === "Easy" ? "#bbf7d0" : t === "Medium" ? "#fef08a" : "#fca5a5") : "#c7d2fe",
-                                fontWeight: "bold",
-                                fontSize: "0.75rem"
+                                borderColor: isOrange ? "#fed7aa" : isDiff ? (t === "Easy" ? "#bbf7d0" : t === "Medium" ? "#fef08a" : "#fecaca") : "#c7d2fe",
+                                fontWeight: isOrange || isDiff ? 600 : 500
                               }}
                             >
                               {t}
                             </span>
                           );
                         })}
-                        {question.isVerified && (
-                          <span className="tag" style={{ marginLeft: "5px", background: "#d4edda", color: "#155724", borderColor: "#c3e6cb" }}>
-                            VERIFIED
-                          </span>
-                        )}
-                        {(!question.correctOptionIds || question.correctOptionIds.length === 0) && (
-                          <span className="tag" style={{ marginLeft: "5px", background: "#f8d7da", color: "#721c24", borderColor: "#f5c6cb" }}>
-                            NO ANSWER
-                          </span>
-                        )}
                       </div>
-                      {isTeacher && (
-                        <div style={{ display: "flex", gap: "10px" }} onClick={(e) => e.stopPropagation()}>
-                          {!question.isVerified && (
-                            <button
-                              className="secondary-button"
-                              style={{ padding: "4px 8px", fontSize: "0.8rem", color: "#155724", borderColor: "#155724" }}
-                              onClick={() => handleVerify(question.id)}
-                            >
-                              Verify
-                            </button>
-                          )}
-                          {question.bookId && question.pageNumber && (
-                            <button
-                              className="secondary-button"
-                              style={{ padding: "4px 8px", fontSize: "0.8rem", color: "#4338ca", borderColor: "#4338ca" }}
-                              disabled={aiReviewLoadingId === question.id}
-                              onClick={() => handleAiReview(question)}
-                            >
-                              {aiReviewLoadingId === question.id ? "Reviewing…" : "🤖 AI Review"}
-                            </button>
-                          )}
-                          <button className="secondary-button" style={{ padding: "4px 8px", fontSize: "0.8rem" }} onClick={() => handleOpenForm(question)}>Edit</button>
-                          <button className="secondary-button" style={{ padding: "4px 8px", fontSize: "0.8rem", color: "red", borderColor: "red" }} onClick={() => handleDelete(question.id)}>Delete</button>
-                        </div>
-                      )}
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <span className="tag primary">{question.marks} Marks</span>
+                      </div>
                     </div>
-                    <h3><RichText content={question.prompt} /></h3>
-                    <p className="muted-copy">
-                      {question.type === "multi_correct" ? "Multi correct" : "Single correct"} • {question.difficulty} • {question.marks} marks • -{question.negativeMarks}
-                    </p>
-                    <ul className="option-list">
-                      {question.options.map((option: any) => (
-                        <li key={option.id} style={{ fontWeight: question.correctOptionIds.includes(option.id) ? "bold" : "normal", color: question.correctOptionIds.includes(option.id) ? "var(--color-primary)" : "inherit" }}>
-                          {option.label}. <RichText content={option.value} />
-                          {question.correctOptionIds.includes(option.id) && " ✓"}
-                        </li>
-                      ))}
-                    </ul>
-                    {question.explanation && (
-                      <div style={{ marginTop: "15px", padding: "10px", background: "var(--color-bg-secondary)", borderRadius: "4px", fontSize: "0.9rem" }}>
-                        <strong>Explanation:</strong> <RichText content={question.explanation} />
-                      </div>
-                    )}
+
+                    <div style={{ marginTop: "12px", color: "var(--color-text-dark)", lineHeight: "1.5" }}>
+                      <RichText content={question.prompt} />
+                    </div>
+
+                    <div style={{ marginTop: "15px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                      {question.options.map((option: any) => {
+                        const isCorrect = question.correctOptionIds.includes(option.id);
+                        return (
+                          <div 
+                            key={option.id} 
+                            style={{ 
+                              padding: "8px 12px", 
+                              borderRadius: "6px", 
+                              border: isCorrect ? "1px solid var(--color-primary)" : "1px solid var(--color-border)",
+                              background: isCorrect ? "var(--color-primary-light)" : "var(--color-bg-light)",
+                              fontSize: "0.9rem",
+                              display: "flex",
+                              alignItems: "flex-start",
+                              gap: "8px"
+                            }}
+                          >
+                            <strong style={{ color: isCorrect ? "var(--color-primary-dark)" : "var(--color-text-muted)", minWidth: "16px" }}>
+                              {option.label}.
+                            </strong>
+                            <div style={{ flex: 1 }}>
+                              <RichText content={option.value} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </article>
                 );
               })
@@ -919,308 +1134,191 @@ export function QuestionBankPage() {
           </div>
         </div>
       ) : (
-        <div className="question-grid">
-          {filteredQuestions.map((question: any) => (
-            <article
-              className="panel question-card"
-              key={question.id}
-              style={selectedForExam.has(question.id) ? { border: "2px solid #7c3aed", background: "#faf5ff" } : {}}
-            >
-              <div className="row-between">
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                  {isTeacher && (
-                    <input
-                      type="checkbox"
-                      checked={selectedForExam.has(question.id)}
-                      onChange={() => toggleQuestionSelection(question)}
-                      style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#7c3aed" }}
-                    />
-                  )}
-                  {question.serialNumber != null && (
-                    <span className="tag" style={{ background: "#374151", color: "white", borderColor: "#374151", fontWeight: "bold" }}>
-                      #{question.serialNumber}
+        /* Regular List View */
+        <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+          {data.questions.length === 0 ? (
+            <div className="panel" style={{ textAlign: "center", padding: "50px 20px" }}>
+              <p className="eyebrow">No Questions Found</p>
+              <h3>No questions match your selected filters.</h3>
+              <p className="muted-copy" style={{ marginTop: "8px" }}>Try clearing search keywords or choosing different subject/topic filters.</p>
+              {hasActiveFilters && (
+                <button className="secondary-button" style={{ marginTop: "15px" }} onClick={handleClearFilters}>
+                  Clear All Filters
+                </button>
+              )}
+            </div>
+          ) : (
+            data.questions.map((question: any) => (
+              <article className="panel question-card" key={question.id}>
+                <div className="row-between">
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                    {isTeacher && (
+                      <input
+                        type="checkbox"
+                        checked={selectedForExam.has(question.id)}
+                        onChange={() => toggleQuestionSelection(question)}
+                        style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#7c3aed" }}
+                      />
+                    )}
+                    {question.serialNumber != null && (
+                      <span className="tag" style={{ background: "#374151", color: "white", borderColor: "#374151", fontWeight: "bold" }}>
+                        #{question.serialNumber}
+                      </span>
+                    )}
+                    <span className="tag">{question.subjectName}</span>
+                    <span className="tag muted" style={{ marginLeft: "5px" }}>{question.topicName}</span>
+                    {Array.isArray(question.tags) && question.tags.map((t: string, idx: number) => {
+                      const isDiff = ["Easy", "Medium", "Hard", "Difficult", "Advanced"].includes(t);
+                      const isOrange = !isDiff && (t.includes("JEE") || t.includes("KVPY") || t.includes("IIT") || t.includes("AIEEE") || t.includes("NEET") || t.includes("GUJCET"));
+                      return (
+                        <span
+                          key={idx}
+                          className="tag"
+                          style={{
+                            marginLeft: "4px",
+                            background: isOrange ? "#ffedd5" : isDiff ? (t === "Easy" ? "#dcfce7" : t === "Medium" ? "#fef9c3" : "#fee2e2") : "#e0e7ff",
+                            color: isOrange ? "#c2410c" : isDiff ? (t === "Easy" ? "#15803d" : t === "Medium" ? "#a16207" : "#b91c1c") : "#4338ca",
+                            borderColor: isOrange ? "#fed7aa" : isDiff ? (t === "Easy" ? "#bbf7d0" : t === "Medium" ? "#fef08a" : "#fecaca") : "#c7d2fe",
+                            fontWeight: isOrange || isDiff ? 600 : 500
+                          }}
+                        >
+                          {t}
+                        </span>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <span className="tag primary">{question.marks} Marks</span>
+                    <span className={`tag ${question.difficulty === "easy" ? "success" : question.difficulty === "medium" ? "warning" : "danger"}`}>
+                      {question.difficulty.toUpperCase()}
                     </span>
-                  )}
-                  <span className="tag">{question.subjectName}</span>
-                  <span className="tag muted" style={{ marginLeft: "5px" }}>{question.topicName}</span>
-                  {question.sourceType && (
-                    <span
-                      className="tag"
-                      style={{
-                        marginLeft: "5px",
-                        background: question.sourceType === "pyq" ? "#fff3cd" : (question.sourceType === "reference" ? "#d1ecf1" : "#e2e3e5"),
-                        color: question.sourceType === "pyq" ? "#856404" : (question.sourceType === "reference" ? "#0c5460" : "#383d41"),
-                        borderColor: question.sourceType === "pyq" ? "#ffeeba" : (question.sourceType === "reference" ? "#bee5eb" : "#d6d8db")
-                      }}
-                    >
-                      {question.sourceType.toUpperCase()}
-                    </span>
-                  )}
-                  {(question as any).pyqYear && (
-                    <span className="tag" style={{ marginLeft: "5px", background: "#fef9c3", color: "#713f12", borderColor: "#fde68a", fontWeight: "bold" }}>
-                      {[(question as any).pyqExamName, (question as any).pyqYear, (question as any).pyqSession].filter(Boolean).join(" ")}
-                    </span>
-                  )}
-                  {Array.isArray(question.tags) && question.tags.map((t: string, idx: number) => {
-                    const isDiff = ["Easy", "Medium", "Hard", "Difficult", "Advanced"].includes(t);
-                    const isOrange = !isDiff && (t.includes("JEE") || t.includes("KVPY") || t.includes("IIT") || t.includes("AIEEE") || t.includes("NEET") || t.includes("GUJCET"));
+                    {isTeacher && (
+                      <div style={{ display: "flex", gap: "6px", marginLeft: "10px" }}>
+                        <button
+                          className="secondary-button"
+                          style={{ padding: "4px 10px", fontSize: "0.8rem", color: "#4f46e5", borderColor: "#c7d2fe" }}
+                          disabled={aiReviewLoadingId === question.id}
+                          onClick={() => handleAiReview(question)}
+                          title="Run AI audit against original PDF page"
+                        >
+                          {aiReviewLoadingId === question.id ? "🤖 Reviewing..." : "🤖 AI Audit"}
+                        </button>
+                        <button className="secondary-button" style={{ padding: "4px 10px", fontSize: "0.8rem" }} onClick={() => handleOpenForm(question)}>
+                          Edit
+                        </button>
+                        <button className="secondary-button" style={{ padding: "4px 10px", fontSize: "0.8rem", color: "red", borderColor: "red" }} onClick={() => handleDelete(question.id)}>
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ marginTop: "12px", color: "var(--color-text-dark)", lineHeight: "1.5" }}>
+                  <RichText content={question.prompt} />
+                </div>
+
+                <div style={{ marginTop: "15px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  {question.options.map((option: any) => {
+                    const isCorrect = question.correctOptionIds.includes(option.id);
                     return (
-                      <span
-                        key={idx}
-                        className="tag"
-                        style={{
-                          marginLeft: "4px",
-                          background: isOrange ? "#ffedd5" : isDiff ? (t === "Easy" ? "#dcfce7" : t === "Medium" ? "#fef9c3" : "#fee2e2") : "#e0e7ff",
-                          color: isOrange ? "#c2410c" : isDiff ? (t === "Easy" ? "#15803d" : t === "Medium" ? "#a16207" : "#b91c1c") : "#4338ca",
-                          borderColor: isOrange ? "#fed7aa" : isDiff ? (t === "Easy" ? "#bbf7d0" : t === "Medium" ? "#fef08a" : "#fca5a5") : "#c7d2fe",
-                          fontWeight: "bold",
-                          fontSize: "0.75rem"
+                      <div 
+                        key={option.id} 
+                        style={{ 
+                          padding: "8px 12px", 
+                          borderRadius: "6px", 
+                          border: isCorrect ? "1px solid var(--color-primary)" : "1px solid var(--color-border)",
+                          background: isCorrect ? "var(--color-primary-light)" : "var(--color-bg-light)",
+                          fontSize: "0.9rem",
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: "8px"
                         }}
                       >
-                        {t}
-                      </span>
+                        <strong style={{ color: isCorrect ? "var(--color-primary-dark)" : "var(--color-text-muted)", minWidth: "16px" }}>
+                          {option.label}.
+                        </strong>
+                        <div style={{ flex: 1 }}>
+                          <RichText content={option.value} />
+                        </div>
+                      </div>
                     );
                   })}
-                  {question.isVerified && (
-                    <span className="tag" style={{ marginLeft: "5px", background: "#d4edda", color: "#155724", borderColor: "#c3e6cb" }}>
-                      VERIFIED
-                    </span>
-                  )}
-                  {(!question.correctOptionIds || question.correctOptionIds.length === 0) && (
-                    <span className="tag" style={{ marginLeft: "5px", background: "#f8d7da", color: "#721c24", borderColor: "#f5c6cb" }}>
-                      NO ANSWER
-                    </span>
-                  )}
                 </div>
-                {isTeacher && (
-                  <div style={{ display: "flex", gap: "10px" }}>
-                    {!question.isVerified && (
-                      <button
-                        className="secondary-button"
-                        style={{ padding: "4px 8px", fontSize: "0.8rem", color: "#155724", borderColor: "#155724" }}
-                        onClick={() => handleVerify(question.id)}
-                      >
-                        Verify
-                      </button>
-                    )}
-                    <button className="secondary-button" style={{ padding: "4px 8px", fontSize: "0.8rem" }} onClick={() => handleOpenForm(question)}>Edit</button>
-                    <button className="secondary-button" style={{ padding: "4px 8px", fontSize: "0.8rem", color: "red", borderColor: "red" }} onClick={() => handleDelete(question.id)}>Delete</button>
-                  </div>
-                )}
-              </div>
-              <h3><RichText content={question.prompt} /></h3>
-              <p className="muted-copy">
-                {question.type === "multi_correct" ? "Multi correct" : "Single correct"} • {question.difficulty} • {question.marks} marks • -{question.negativeMarks}
-              </p>
-              <ul className="option-list">
-                {question.options.map((option: any) => (
-                  <li key={option.id} style={{ fontWeight: question.correctOptionIds.includes(option.id) ? "bold" : "normal", color: question.correctOptionIds.includes(option.id) ? "var(--color-primary)" : "inherit" }}>
-                    {option.label}. <RichText content={option.value} />
-                    {question.correctOptionIds.includes(option.id) && " ✓"}
-                  </li>
-                ))}
-              </ul>
-              {question.explanation && (
-                <div style={{ marginTop: "15px", padding: "10px", background: "var(--color-bg-secondary)", borderRadius: "4px", fontSize: "0.9rem" }}>
-                  <strong>Explanation:</strong> <RichText content={question.explanation} />
-                </div>
-              )}
-            </article>
-          ))}
+              </article>
+            ))
+          )}
         </div>
       )}
 
-      {/* Sticky bottom bar — shows when questions are selected */}
-      {isTeacher && selectedForExam.size > 0 && (
-        <div style={{
-          position: "fixed",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          background: "#7c3aed",
-          color: "white",
-          padding: "14px 24px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          zIndex: 100,
-          boxShadow: "0 -4px 20px rgba(124,58,237,0.3)"
-        }}>
-          <div style={{ display: "flex", gap: "20px", alignItems: "center" }}>
-            <strong>{selectedForExam.size} question{selectedForExam.size !== 1 ? "s" : ""} selected</strong>
-            <span style={{ opacity: 0.85 }}>
-              Total marks: {Array.from(selectedForExam.values()).reduce((s, q) => s + q.marks, 0)}
-            </span>
-          </div>
-          <div style={{ display: "flex", gap: "10px" }}>
-            <button
-              onClick={() => setSelectedForExam(new Map())}
-              style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.4)", color: "white", padding: "8px 16px", borderRadius: "6px", cursor: "pointer" }}
-            >
-              Clear
-            </button>
-            <button
-              onClick={() => setIsBuilderOpen(true)}
-              style={{ background: "white", border: "none", color: "#7c3aed", padding: "8px 20px", borderRadius: "6px", fontWeight: "bold", cursor: "pointer" }}
-            >
-              Review & Build Exam
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Bottom Pagination Controls */}
+      {renderPaginationControls()}
 
-      {/* Exam Builder Drawer */}
+      {/* Manual Exam Builder Modal */}
       {isBuilderOpen && (
-        <div style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 200,
-          display: "flex"
-        }}>
-          {/* Backdrop */}
-          <div
-            style={{ flex: 1, background: "rgba(0,0,0,0.4)" }}
-            onClick={() => setIsBuilderOpen(false)}
-          />
-          {/* Drawer panel */}
-          <div style={{
-            width: "min(520px, 95vw)",
-            background: "var(--color-bg)",
-            height: "100%",
-            overflowY: "auto",
-            display: "flex",
-            flexDirection: "column",
-            boxShadow: "-4px 0 24px rgba(0,0,0,0.15)"
-          }}>
-            <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--color-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Manual Exam Builder</p>
-                <h3 style={{ margin: "4px 0 0" }}>{selectedForExam.size} Questions</h3>
-              </div>
-              <button onClick={() => setIsBuilderOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.4rem", color: "var(--color-text-muted)" }}>✕</button>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "20px" }}>
+          <div className="panel stack" style={{ width: "100%", maxWidth: "700px", maxHeight: "90vh", overflowY: "auto", background: "white" }}>
+            <div className="row-between">
+              <h3>Create Custom Exam ({selectedForExam.size} Questions)</h3>
+              <button className="secondary-button" onClick={() => setIsBuilderOpen(false)}>✕</button>
             </div>
 
-            {/* Question list with editable marks */}
-            <div style={{ padding: "16px 24px", flex: 1 }}>
-              <p style={{ fontSize: "0.85rem", color: "var(--color-text-muted)", margin: "0 0 12px" }}>
-                Adjust per-question marks below. These apply only to this exam — the question bank is unchanged.
-              </p>
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "24px" }}>
-                {Array.from(selectedForExam.values()).map((q, idx) => (
-                  <div key={q.questionId} style={{ padding: "12px", border: "1px solid var(--color-border)", borderRadius: "8px", background: "var(--color-bg-secondary)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px" }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: "0 0 4px", fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
-                          #{idx + 1} · {q.subjectName} · {q.topicName} · <em>{q.difficulty}</em>
-                        </p>
-                        <p style={{ margin: 0, fontSize: "0.88rem", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
-                          {q.prompt.replace(/<[^>]+>/g, "").slice(0, 120)}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => {
-                          const next = new Map(selectedForExam);
-                          next.delete(q.questionId);
-                          setSelectedForExam(next);
-                        }}
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-muted)", fontSize: "1.1rem", padding: "0 4px", flexShrink: 0 }}
-                        title="Remove"
-                      >✕</button>
+            <div className="grid-two">
+              <label className="field">
+                <span>Exam Title</span>
+                <input type="text" placeholder="e.g. Weekly Maths Test" value={examName} onChange={e => setExamName(e.target.value)} required />
+              </label>
+              <label className="field">
+                <span>Assign to Batch</span>
+                <select value={examBatchId} onChange={e => setExamBatchId(e.target.value)} required>
+                  <option value="">Select Batch...</option>
+                  {overviewData?.batches.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="grid-two">
+              <label className="field">
+                <span>Duration (Minutes)</span>
+                <input type="number" min={5} max={300} value={examDuration} onChange={e => setExamDuration(Number(e.target.value))} />
+              </label>
+              <label className="field">
+                <span>Schedule Start (Optional)</span>
+                <input type="datetime-local" value={examScheduleStart} onChange={e => setExamScheduleStart(e.target.value)} />
+              </label>
+            </div>
+
+            <div style={{ marginTop: "10px" }}>
+              <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>Selected Questions:</span>
+              <div className="stack" style={{ marginTop: "8px", maxHeight: "250px", overflowY: "auto" }}>
+                {Array.from(selectedForExam.values()).map((item, idx) => (
+                  <div key={item.questionId} style={{ padding: "8px 12px", border: "1px solid var(--color-border)", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", background: "#fafafa" }}>
+                    <div style={{ flex: 1, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <strong>Q{idx + 1}:</strong> {item.prompt.substring(0, 60)}...
                     </div>
-                    <div style={{ display: "flex", gap: "12px", marginTop: "10px" }}>
-                      <label style={{ flex: 1 }}>
-                        <span style={{ display: "block", fontSize: "0.75rem", color: "var(--color-text-muted)", marginBottom: "3px" }}>Marks (+)</span>
-                        <input
-                          type="number"
-                          min={0}
-                          step={0.5}
-                          value={q.marks}
-                          onChange={e => updateSelectedMarks(q.questionId, "marks", Number(e.target.value))}
-                          style={{ width: "100%", padding: "5px 8px", border: "1px solid var(--color-border)", borderRadius: "5px", background: "var(--color-bg)", color: "var(--color-text)" }}
-                        />
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                      <label style={{ fontSize: "0.78rem", display: "flex", alignItems: "center", gap: "4px" }}>
+                        +Marks:
+                        <input type="number" value={item.marks} onChange={e => updateSelectedMarks(item.questionId, "marks", Number(e.target.value))} style={{ width: "45px", padding: "2px 4px", fontSize: "0.8rem" }} />
                       </label>
-                      <label style={{ flex: 1 }}>
-                        <span style={{ display: "block", fontSize: "0.75rem", color: "var(--color-text-muted)", marginBottom: "3px" }}>Negative (−)</span>
-                        <input
-                          type="number"
-                          min={0}
-                          step={0.25}
-                          value={q.negativeMarks}
-                          onChange={e => updateSelectedMarks(q.questionId, "negativeMarks", Number(e.target.value))}
-                          style={{ width: "100%", padding: "5px 8px", border: "1px solid var(--color-border)", borderRadius: "5px", background: "var(--color-bg)", color: "var(--color-text)" }}
-                        />
+                      <label style={{ fontSize: "0.78rem", display: "flex", alignItems: "center", gap: "4px" }}>
+                        -Marks:
+                        <input type="number" value={item.negativeMarks} onChange={e => updateSelectedMarks(item.questionId, "negativeMarks", Number(e.target.value))} style={{ width: "45px", padding: "2px 4px", fontSize: "0.8rem" }} />
                       </label>
+                      <button className="secondary-button" style={{ padding: "2px 6px", fontSize: "0.75rem", color: "red", borderColor: "red" }} onClick={() => setSelectedForExam(prev => { const n = new Map(prev); n.delete(item.questionId); return n; })}>✕</button>
                     </div>
                   </div>
                 ))}
               </div>
+            </div>
 
-              {/* Exam config */}
-              <div style={{ borderTop: "1px solid var(--color-border)", paddingTop: "20px" }}>
-                <h4 style={{ margin: "0 0 14px" }}>Exam Settings</h4>
-                <div className="stack" style={{ gap: "12px" }}>
-                  <label className="field" style={{ margin: 0 }}>
-                    <span>Exam Name</span>
-                    <input
-                      type="text"
-                      value={examName}
-                      onChange={e => setExamName(e.target.value)}
-                      placeholder="e.g. Chapter 3 Practice Test"
-                    />
-                  </label>
-                  <label className="field" style={{ margin: 0 }}>
-                    <span>Batch</span>
-                    <select value={examBatchId} onChange={e => setExamBatchId(e.target.value)}>
-                      <option value="">Select batch...</option>
-                      {overviewData?.batches.map(b => (
-                        <option key={b.id} value={b.id}>{b.name}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="field" style={{ margin: 0 }}>
-                    <span>Duration (minutes)</span>
-                    <input
-                      type="number"
-                      min={5}
-                      value={examDuration}
-                      onChange={e => setExamDuration(Number(e.target.value))}
-                    />
-                  </label>
-                  <div className="grid-two" style={{ gap: "12px" }}>
-                    <label className="field" style={{ margin: 0 }}>
-                      <span>Scheduled Start (optional)</span>
-                      <input
-                        type="datetime-local"
-                        value={examScheduleStart}
-                        onChange={e => setExamScheduleStart(e.target.value)}
-                      />
-                    </label>
-                    <label className="field" style={{ margin: 0 }}>
-                      <span>Scheduled End (optional)</span>
-                      <input
-                        type="datetime-local"
-                        value={examScheduleEnd}
-                        onChange={e => setExamScheduleEnd(e.target.value)}
-                      />
-                    </label>
-                  </div>
-                </div>
-
-                <div style={{ marginTop: "20px", padding: "12px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", fontSize: "0.85rem", color: "#166534" }}>
-                  <strong>Summary:</strong> {selectedForExam.size} questions •{" "}
-                  Total {Array.from(selectedForExam.values()).reduce((s, q) => s + q.marks, 0)} marks •{" "}
-                  {examDuration} min
-                </div>
-
-                <button
-                  className="primary-button"
-                  style={{ width: "100%", marginTop: "16px", padding: "12px", fontSize: "1rem" }}
-                  onClick={handleGenerateManualExam}
-                  disabled={isGenerating || !examName.trim() || !examBatchId}
-                >
-                  {isGenerating ? "Creating exam…" : "Create Exam"}
-                </button>
-              </div>
+            <div className="row-between" style={{ marginTop: "20px" }}>
+              <button className="secondary-button" onClick={() => setIsBuilderOpen(false)}>Cancel</button>
+              <button className="primary-button" disabled={isGenerating} onClick={handleGenerateManualExam}>
+                {isGenerating ? "Creating Exam..." : "Create Exam"}
+              </button>
             </div>
           </div>
         </div>

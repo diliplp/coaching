@@ -188,7 +188,34 @@ export const apiClient = {
     ),
   updateExam: (id: string, payload: { name?: string; durationMinutes?: number; scheduledStartTime?: string; scheduledEndTime?: string; batchId?: string }) =>
     request<any>(`/exams/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
-  getQuestionBank: () => request<QuestionBankResponse>("/question-bank"),
+  getQuestionBank: (params?: {
+    page?: number;
+    limit?: number;
+    subjectId?: string;
+    chapterId?: string;
+    topicId?: string;
+    difficulty?: string;
+    tag?: string;
+    sourceType?: string;
+    bookId?: string;
+    search?: string;
+  }) => {
+    const query = new URLSearchParams();
+    if (params) {
+      if (params.page) query.append("page", String(params.page));
+      if (params.limit) query.append("limit", String(params.limit));
+      if (params.subjectId) query.append("subjectId", params.subjectId);
+      if (params.chapterId) query.append("chapterId", params.chapterId);
+      if (params.topicId) query.append("topicId", params.topicId);
+      if (params.difficulty) query.append("difficulty", params.difficulty);
+      if (params.tag) query.append("tag", params.tag);
+      if (params.sourceType) query.append("sourceType", params.sourceType);
+      if (params.bookId) query.append("bookId", params.bookId);
+      if (params.search) query.append("search", params.search);
+    }
+    const queryString = query.toString();
+    return request<QuestionBankResponse>(`/question-bank${queryString ? `?${queryString}` : ""}`);
+  },
   createQuestion: (payload: any) => request<any>("/questions", { method: "POST", body: JSON.stringify(payload) }),
   updateQuestion: (id: string, payload: any) => request<any>(`/questions/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
   deleteQuestion: (id: string) => request<void>(`/questions/${id}`, { method: "DELETE" }),

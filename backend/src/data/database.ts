@@ -26,11 +26,111 @@ export async function ensureSchema() {
       PRIMARY KEY (collection, id)
     )
   `);
-  // Backs the global, source-agnostic serialNumber every question gets on first save
-  // (see upsertRecord below) — a short, always-unique number admins/students can use
-  // to reference a specific question without needing its bookId/page/internal id.
   await pool.query(`CREATE SEQUENCE IF NOT EXISTS question_serial_seq`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_app_records_collection ON app_records (collection)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_app_records_subject_id ON app_records ((data->>'subjectId')) WHERE collection = 'questions'`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_app_records_topic_id ON app_records ((data->>'topicId')) WHERE collection = 'questions'`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_app_records_difficulty ON app_records ((data->>'difficulty')) WHERE collection = 'questions'`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_app_records_book_id ON app_records ((data->>'bookId')) WHERE collection = 'questions'`);
   schemaEnsured = true;
+}
+
+export interface QuestionBankQueryParams {
+  page?: number;
+  limit?: number;
+  subjectId?: string;
+  chapterId?: string;
+  topicId?: string;
+  difficulty?: string;
+  tag?: string;
+  sourceType?: string;
+  bookId?: string;
+  search?: string;
+}
+
+export async function queryPaginatedQuestions(
+  params: QuestionBankQueryParams,
+  topicsList: Array<{ id: string; chapterId: string }>
+) {
+  await ensureSchema();
+
+  const page = Math.max(1, Number(params.page) || 1);
+  const limit = Math.min(100, Math.max(1, Number(params.limit) || 20));
+  const offset = (page - 1) * limit;
+
+  const conditions: string[] = ["collection = 'questions'"];
+  const values: any[] = [];
+  let paramIdx = 1;
+
+  if (params.subjectId) {
+    conditions.push(`data->>'subjectId' = $${paramIdx++}`);
+    values.push(params.subjectId);
+  }
+
+  if (params.topicId) {
+    conditions.push(`data->>'topicId' = $${paramIdx++}`);
+    values.push(params.topicId);
+  } else if (params.chapterId) {
+    const topicIds = topicsList.filter(t => t.chapterId === params.chapterId).map(t => t.id);
+    if (topicIds.length > 0) {
+      conditions.push(`data->>'topicId' = ANY($${paramIdx++})`);
+      values.push(topicIds);
+    } else {
+      conditions.push("1 = 0");
+    }
+  }
+
+  if (params.difficulty) {
+    conditions.push(`data->>'difficulty' = $${paramIdx++}`);
+    values.push(params.difficulty);
+  }
+
+  if (params.sourceType) {
+    conditions.push(`data->>'sourceType' = $${paramIdx++}`);
+    values.push(params.sourceType);
+  }
+
+  if (params.bookId) {
+    conditions.push(`data->>'bookId' = $${paramIdx++}`);
+    values.push(params.bookId);
+  }
+
+  if (params.tag) {
+    conditions.push(`data->'tags' @> jsonb_build_array($${paramIdx++})`);
+    values.push(params.tag);
+  }
+
+  if (params.search && params.search.trim()) {
+    const s = params.search.trim();
+    conditions.push(`(data->>'prompt' ILIKE '%' || $${paramIdx} || '%' OR data->>'id' ILIKE '%' || $${paramIdx} || '%' OR data->>'serialNumber' = $${paramIdx})`);
+    values.push(s);
+    paramIdx++;
+  }
+
+  const whereClause = conditions.join(" AND ");
+
+  const countSql = `SELECT COUNT(*)::int AS count FROM app_records WHERE ${whereClause}`;
+  const countResult = await pool.query(countSql, values);
+  const totalCount = countResult.rows[0]?.count ?? 0;
+
+  const dataSql = `
+    SELECT data
+    FROM app_records
+    WHERE ${whereClause}
+    ORDER BY updated_at DESC, id ASC
+    LIMIT $${paramIdx++} OFFSET $${paramIdx++}
+  `;
+  const dataValues = [...values, limit, offset];
+  const dataResult = await pool.query(dataSql, dataValues);
+  const questions = dataResult.rows.map(r => r.data);
+
+  return {
+    questions,
+    totalCount,
+    page,
+    limit,
+    totalPages: Math.ceil(totalCount / limit) || 1
+  };
 }
 
 export async function nextQuestionSerial(): Promise<number> {

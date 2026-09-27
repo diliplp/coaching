@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import bcrypt from "bcryptjs";
 import { Router, Request, Response } from "express";
 import multer from "multer";
-import { getAppState, getRecord, listRecords, upsertRecord, deleteRecord } from "../data/database.js";
+import { getAppState, getRecord, listRecords, upsertRecord, deleteRecord, queryPaginatedQuestions } from "../data/database.js";
 import type { AppStore } from "../data/seed-data.js";
 import { booksUploadsRoot } from "../utils/paths.js";
 import {
@@ -443,14 +443,10 @@ apiRouter.get("/question-bank", requireAuth, async (req, res) => {
   const state = await getAppState();
   const isStudent = auth?.role === "student";
 
-  // Students only get subjects/chapters/topics for their own class+stream (e.g. a
-  // student in 11th Science shouldn't see 12th-JEE or 11th-Commerce subjects in their
-  // Self-Practice Builder) — mirrors the same classId+streamId match already used for
-  // batch-scoped exam generation in exam-engine.ts and ExamBuilderPage.tsx. Teachers and
-  // admins keep the full unfiltered list, same as before.
   let subjects = state.subjects;
   let chapters = state.chapters;
   let topics = state.topics;
+
   if (isStudent) {
     const user = state.users.find(u => u.id === auth?.sub);
     const student = user?.studentId ? state.students.find(s => s.id === user.studentId) : undefined;
@@ -464,10 +460,34 @@ apiRouter.get("/question-bank", requireAuth, async (req, res) => {
       chapters = [];
       topics = [];
     }
+    return res.json({
+      subjects,
+      chapters,
+      topics,
+      questions: [],
+      totalCount: 0,
+      page: 1,
+      limit: 20,
+      totalPages: 0
+    });
   }
 
-  // If student, return metadata but NO questions
-  const questions = isStudent ? [] : state.questions.map((question) => ({
+  const queryParams = {
+    page: req.query.page ? Number(req.query.page) : 1,
+    limit: req.query.limit ? Number(req.query.limit) : 20,
+    subjectId: req.query.subjectId ? String(req.query.subjectId) : undefined,
+    chapterId: req.query.chapterId ? String(req.query.chapterId) : undefined,
+    topicId: req.query.topicId ? String(req.query.topicId) : undefined,
+    difficulty: req.query.difficulty ? String(req.query.difficulty) : undefined,
+    tag: req.query.tag ? String(req.query.tag) : undefined,
+    sourceType: req.query.sourceType ? String(req.query.sourceType) : undefined,
+    bookId: req.query.bookId ? String(req.query.bookId) : undefined,
+    search: req.query.search ? String(req.query.search) : undefined,
+  };
+
+  const { questions: rawQuestions, totalCount, page, limit, totalPages } = await queryPaginatedQuestions(queryParams, state.topics);
+
+  const questions = rawQuestions.map((question: any) => ({
     ...question,
     subjectName: state.subjects.find((subject) => subject.id === question.subjectId)?.name ?? "Unknown",
     topicName: state.topics.find((topic) => topic.id === question.topicId)?.name ?? "Unknown",
@@ -480,7 +500,11 @@ apiRouter.get("/question-bank", requireAuth, async (req, res) => {
     subjects,
     chapters,
     topics,
-    questions
+    questions,
+    totalCount,
+    page,
+    limit,
+    totalPages
   });
 });
 

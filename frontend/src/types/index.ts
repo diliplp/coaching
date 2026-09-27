@@ -16,6 +16,10 @@ export interface QuestionBankResponse {
   chapters: Array<{ id: string; name: string; subjectId: string; bookId?: string }>;
   topics: Array<{ id: string; name: string; subjectId: string; chapterId: string; bookId?: string }>;
   questions: Question[];
+  totalCount?: number;
+  page?: number;
+  limit?: number;
+  totalPages?: number;
 }
 
 export interface Question {
